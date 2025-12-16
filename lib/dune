@@ -1,0 +1,4 @@
+(library
+ (name novac)
+ (preprocess (pps ppx_deriving.show))
+ (libraries easy_logging))

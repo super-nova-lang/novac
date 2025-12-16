@@ -1,7 +1,0 @@
-.{
-    .name = .novac,
-    .version = "0.0.1",
-    .minimum_zig_version = "0.16.0",
-    .paths = .{"src/*"},
-    .fingerprint = 0x7b44a782d345eb67,
-}
