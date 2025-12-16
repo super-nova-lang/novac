@@ -1,39 +1,40 @@
 open Testing
 open Panic
 
-let add :: a: i32, b: i32 -> i32 = a + b
+let add :: a: i32, b: i32 -> i32 = {a + b}
 
 (* Both a and b are of type i32 *)
-let sub :: (a, b): i32 =
-    return a - b;
+let sub :: a, b =
+  return a - b;
 
 let mul :: a, b = { a * b }
-#[curry]
-let mul_5 :: mul <- 5
+let mul_5 :: mul <- 5;
 (* Multiple curried args are separated by a comma *)
 
 #[recursive]
-let factorial :: of = match of with
-    | 0 -> 1
-    | x if x < 0 -> panic!("factroial is not defined for negative numbers: got: {}", x)
-    | x -> x * factorial(x - 1)
+let factorial :: of = {
+  match of with
+  | 0 -> 1
+  | x if x < 0 -> panic!("factroial is not defined for negative numbers: got: {}", x)
+  | x -> x * factorial(x - 1)
+}
 
 (*
-    This main take in no args.
-    If you wanted to get the command args length and the args themselves
-        the signature would be `let main :: argc, argv = ...`
+  This main take in no args.
+  If you wanted to get the command args length and the args themselves
+    the signature would be `let main :: argc, argv = ...`
 *)
 let main :: () = {
-    let res = add(1, 5);
-    assert!(res == 6);
+  let res = add(1, 5);
+  assert!(res == 6);
 
-    let res = sub(5, 15);
-    assert!(res == -10);
+  let res = sub(5, 15);
+  assert!(res == -10);
 
-    let res = mul(2, 5);
-    assert!(res == 10);
+  let res = mul(2, 5);
+  assert!(res == 10);
 
-    let res_curry = mul_5(10, 5);
-    assert!(res_curry == 10 * 5);
+  let res_curry = mul_5(10);
+  assert!(res_curry == 10 * 5);
 }
 

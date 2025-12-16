@@ -7,6 +7,9 @@ type t =
   | Return
   | If
   | Else
+  | Struct
+  | Mut
+  | Defer
   (* Tokens *)
   (* - Double *)
   | Double_colon (* :: *)
@@ -70,5 +73,8 @@ let from_string = function
   | "return" -> Return
   | "if" -> If
   | "else" -> Else
+  | "struct" -> Struct
+  | "mut" -> Mut
+  | "defer" -> Defer
   | s -> Ident s
 ;;
