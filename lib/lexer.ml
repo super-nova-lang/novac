@@ -37,6 +37,7 @@ let lex input =
     | '&' :: '&' :: cs -> And :: loop cs
     | '&' :: '.' :: cs -> Bitwise_and :: loop cs
     | '<' :: '=' :: cs -> Lesser_eql :: loop cs
+    | '<' :: '-' :: cs -> Back_arrow :: loop cs
     | '>' :: '=' :: cs -> Greater_eql :: loop cs
     (* - Single *)
     | '~' :: cs -> Tilde :: loop cs

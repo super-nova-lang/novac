@@ -10,7 +10,7 @@ let is_white c = c = ' ' || c = '\n' || c = '\t'
 let is_alpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 let is_numer c = c >= '0' && c <= '9'
 let is_alnum c = is_alpha c || is_numer c
-let is_ident c = is_alnum c || c = '\''
+let is_ident c = is_alnum c || c = '\'' || c = '_'
 
 let rec consume ~f acc = function
   | x :: xs when f x -> consume ~f (acc ^ String.make 1 x) xs

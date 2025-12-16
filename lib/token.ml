@@ -10,6 +10,7 @@ type t =
   | Fat_arrow (* => *)
   | Double_eql
   | Skinny_arrow (* -> *)
+  | Back_arrow (* <- *)
   | Pipe (* |> *)
   | Or (* || *)
   | Bitwise_or (* |. *)

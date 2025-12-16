@@ -7,9 +7,10 @@ let add :: a: i32, b: i32 -> i32 = a + b
 let sub :: (a, b): i32 =
     return a - b;
 
-let mul             :: a, b = { a * b }
-let mul_add_5_curry :: a, b = mul(add(5), b)
-let mul_add_5_piped :: a, b = mul(a |> add(5), b)
+let mul :: a, b = { a * b }
+#[curry]
+let mul_5 :: mul <- 5
+(* Multiple curried args are separated by a comma *)
 
 #[recursive]
 let factorial :: of = match of with
@@ -23,6 +24,16 @@ let factorial :: of = match of with
         the signature would be `let main :: argc, argv = ...`
 *)
 let main :: () = {
+    let res = add(1, 5);
     assert!(res == 6);
+
+    let res = sub(5, 15);
+    assert!(res == -10);
+
+    let res = mul(2, 5);
+    assert!(res == 10);
+
+    let res_curry = mul_5(10, 5);
+    assert!(res_curry == 10 * 5);
 }
 
