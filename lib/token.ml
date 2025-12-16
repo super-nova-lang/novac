@@ -1,6 +1,9 @@
 type t =
   (* Keywords *)
   | Let
+  | Open
+  | Match
+  | With
   (* Tokens *)
   (* - Double *)
   | Double_colon (* :: *)
@@ -14,6 +17,7 @@ type t =
   | Bitwise_and (* &. *)
   | Lesser_eql
   | Greater_eql
+  | UnitToken (* () *)
   (* - Single*)
   | Tilde
   | Back_tick
@@ -53,3 +57,11 @@ type t =
   | Eof
   | Unknown of char
 [@@deriving show]
+
+let from_string = function
+  | "let" -> Let
+  | "open" -> Open
+  | "match" -> Match
+  | "with" -> With
+  | s -> Ident s
+;;

@@ -20,7 +20,7 @@ let lex input =
     (* Read ident *)
     | c :: cs when is_alpha c ->
       let s, rest = consume ~f:is_ident (String.make 1 c) cs in
-      Ident s :: loop rest
+      Token.from_string s :: loop rest
     (* Read number *)
     | c :: cs when is_numer c ->
       let s, rest = consume ~f:is_numer (String.make 1 c) cs in
