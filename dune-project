@@ -5,22 +5,23 @@
 (generate_opam_files true)
 
 (source
- (github username/reponame))
+ (github super-nova-lang/novac))
 
-(authors "Author Name <author@example.com>")
+(authors "Ashton Sickler <ashton.sickler06@gmail.com>")
 
-(maintainers "Maintainer Name <maintainer@example.com>")
+(maintainers "Ashton Sickler <ashton.sickler06@gmail.com>")
 
 (license LICENSE)
 
-(documentation https://url/to/documentation)
-
 (package
  (name novac)
- (synopsis "A short synopsis")
- (description "A longer description")
- (depends ocaml easy_logging spectrum ppx_deriving ppx_inline_test)
+ (synopsis "Supernova Compiler")
+ (description "Supernova Compiler")
+ (depends
+  ocaml
+  easy_logging
+  spectrum
+  ppx_deriving
+  ppx_inline_test)
  (tags
-  ("add topics" "to describe" your project)))
-
-; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html
+  ("compiler" "supernova" "novac")))
