@@ -24,7 +24,7 @@ let lex input =
     (* Read number *)
     | c :: cs when is_numer c ->
       let s, rest = consume ~f:is_numer (String.make 1 c) cs in
-      Number s :: loop rest
+      Number (int_of_string s) :: loop rest
     (* Tokens *)
     (* - Double *)
     | ':' :: ':' :: cs -> Double_colon :: loop cs

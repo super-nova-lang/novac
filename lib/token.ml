@@ -4,6 +4,9 @@ type t =
   | Open
   | Match
   | With
+  | Return
+  | If
+  | Else
   (* Tokens *)
   (* - Double *)
   | Double_colon (* :: *)
@@ -54,7 +57,7 @@ type t =
   | String of string
   | Char of char
   | Ident of string
-  | Number of string
+  | Number of int
   | Eof
   | Unknown of char
 [@@deriving show]
@@ -64,5 +67,8 @@ let from_string = function
   | "open" -> Open
   | "match" -> Match
   | "with" -> With
+  | "return" -> Return
+  | "if" -> If
+  | "else" -> Else
   | s -> Ident s
 ;;

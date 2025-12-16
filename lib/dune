@@ -1,4 +1,18 @@
+(rule
+ (target spec.ml)
+ (deps ../examples/spec.no)
+ (action
+  (with-stdout-to spec.ml
+   (progn
+    (echo "let content = {s|")
+    (run cat ../examples/spec.no)
+    (echo "|s}")))))
+
 (library
  (name novac)
- (preprocess (pps ppx_deriving.show))
- (libraries easy_logging))
+ (inline_tests)
+ (preprocess 
+   (pps
+     ppx_deriving.show
+     ppx_inline_test))
+ (libraries easy_logging spectrum))
