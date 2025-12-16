@@ -19,7 +19,7 @@
  (name novac)
  (synopsis "A short synopsis")
  (description "A longer description")
- (depends ocaml)
+ (depends ocaml easy_logging spectrum ppx_deriving ppx_inline_test)
  (tags
   ("add topics" "to describe" your project)))
 

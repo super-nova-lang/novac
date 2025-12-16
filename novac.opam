@@ -12,6 +12,10 @@ bug-reports: "https://github.com/username/reponame/issues"
 depends: [
   "dune" {>= "3.20"}
   "ocaml"
+  "easy_logging"
+  "spectrum"
+  "ppx_deriving"
+  "ppx_inline_test"
   "odoc" {with-doc}
 ]
 build: [
