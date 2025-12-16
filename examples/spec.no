@@ -16,7 +16,7 @@ let mul_5 :: mul <- 5
 let factorial :: of = match of with
     | 0 -> 1
     | x if x < 0 -> panic!("factroial is not defined for negative numbers: got: {}", x)
-    | x -> x * factorial(x)
+    | x -> x * factorial(x - 1)
 
 (*
     This main take in no args.
