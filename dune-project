@@ -22,6 +22,7 @@
   easy_logging
   spectrum
   ppx_deriving
+  ppx_expect
   ppx_inline_test)
  (tags
   ("compiler" "supernova" "novac")))
