@@ -1,11 +1,21 @@
 (rule
- (target spec.ml)
+ (target spec_test.ml)
  (deps ../examples/spec.no)
  (action
-  (with-stdout-to spec.ml
+  (with-stdout-to spec_test.ml
    (progn
     (echo "let content = {s|")
     (run cat ../examples/spec.no)
+    (echo "|s}")))))
+
+(rule
+ (target person_test.ml)
+ (deps ../examples/person.no)
+ (action
+  (with-stdout-to person_test.ml
+   (progn
+    (echo "let content = {s|")
+    (run cat ../examples/person.no)
     (echo "|s}")))))
 
 (library

@@ -9,7 +9,7 @@ let rec print_diff ppx xs =
 let test toks = print_diff Token.show toks
 
 let%expect_test "test spec" =
-  let tokens = Lexer.lex Spec.content in
+  let tokens = Lexer.lex Spec_test.content in
   test tokens;
   [%expect
     {|
@@ -193,6 +193,99 @@ let%expect_test "test spec" =
     (Token.Number 10)
     Token.Star
     (Token.Number 5)
+    Token.Close_paren
+    Token.Semi_colon
+    Token.Close_brack
+    Token.Eof
+    |}]
+;;
+
+let%expect_test "test person" =
+  let tokens = Lexer.lex Person_test.content in
+  test tokens;
+  [%expect {|
+    Token.Hash
+    Token.Open_square
+    (Token.Ident "mutable")
+    Token.Open_paren
+    (Token.Ident "age")
+    Token.Comma
+    (Token.Ident "income")
+    Token.Close_paren
+    Token.Close_square
+    Token.Hash
+    Token.Open_square
+    (Token.Ident "derive")
+    Token.Open_paren
+    (Token.Ident "Showing")
+    Token.Close_paren
+    Token.Close_square
+    Token.Let
+    (Token.Ident "Person")
+    Token.Double_colon
+    (Token.Ident "name")
+    Token.Comma
+    (Token.Ident "age")
+    Token.Comma
+    Token.Question
+    (Token.Ident "income")
+    Token.Eql
+    (Token.Number 1000)
+    Token.Eql
+    Token.Return
+    Token.Struct
+    Token.Open_brack
+    (Token.Ident "name")
+    Token.Colon
+    (Token.Ident "string")
+    Token.Eql
+    (Token.Ident "name")
+    Token.Comma
+    (Token.Ident "age")
+    Token.Colon
+    (Token.Ident "i8")
+    Token.Eql
+    (Token.Ident "age")
+    Token.Comma
+    (Token.Ident "income")
+    Token.Colon
+    (Token.Ident "i32")
+    Token.Eql
+    (Token.Ident "income")
+    Token.Comma
+    Token.Close_brack
+    Token.Semi_colon
+    Token.Let
+    (Token.Ident "main")
+    Token.Double_colon
+    Token.Open_paren
+    Token.Close_paren
+    Token.Eql
+    Token.Open_brack
+    Token.Let
+    (Token.Ident "p1")
+    Token.Eql
+    (Token.Ident "Person")
+    Token.Open_paren
+    (Token.String "Ashton")
+    Token.Comma
+    (Token.Number 19)
+    Token.Comma
+    (Token.Ident "income")
+    Token.Double_colon
+    (Token.Number 0)
+    Token.Close_paren
+    Token.Semi_colon
+    (Token.Ident "println")
+    Token.Bang
+    Token.Open_paren
+    (Token.String "p1: {s}")
+    Token.Comma
+    (Token.Ident "p1")
+    Token.Dot
+    (Token.Ident "show")
+    Token.Open_paren
+    Token.Close_paren
     Token.Close_paren
     Token.Semi_colon
     Token.Close_brack

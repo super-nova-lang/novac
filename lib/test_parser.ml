@@ -9,10 +9,11 @@ let rec print_diff ppx xs =
 let test node = print_diff Node.show_node node
 
 let%expect_test "test spec" =
-  let tokens = Lexer.lex Spec.content in
+  let tokens = Lexer.lex Spec_test.content in
   let nodes = Parser.parse tokens in
   test nodes;
-  [%expect {|
+  [%expect
+    {|
     (Node.Open_mod "Testing")
     (Node.Open_mod "Panic")
     Node.Decl {name = "add";
@@ -83,6 +84,58 @@ let%expect_test "test spec" =
            [(Token.Ident "assert"); Token.Bang; Token.Open_paren;
              (Token.Ident "res_curry"); Token.Double_eql; (Token.Number 10);
              Token.Star; (Token.Number 5); Token.Close_paren])
+        ]}
+    |}]
+;;
+
+let%expect_test "test person" =
+  let tokens = Lexer.lex Person_test.content in
+  let nodes = Parser.parse tokens in
+  test nodes;
+  [%expect {|
+    (Node.Unhandled (Token.Ident "Expected Tag Pattern"))
+    (Node.Unhandled Token.Open_square)
+    (Node.Unhandled (Token.Ident "mutable"))
+    (Node.Unhandled Token.Open_paren)
+    (Node.Unhandled (Token.Ident "age"))
+    (Node.Unhandled Token.Comma)
+    (Node.Unhandled (Token.Ident "income"))
+    (Node.Unhandled Token.Close_paren)
+    (Node.Unhandled Token.Close_square)
+    (Node.Unhandled (Token.Ident "Expected Tag Pattern"))
+    (Node.Unhandled Token.Open_square)
+    (Node.Unhandled (Token.Ident "derive"))
+    (Node.Unhandled Token.Open_paren)
+    (Node.Unhandled (Token.Ident "Showing"))
+    (Node.Unhandled Token.Close_paren)
+    (Node.Unhandled Token.Close_square)
+    Node.Decl {name = "Person";
+      params = [("name", None); ("age", None); ("income", None)];
+      ret_type = None;
+      body =
+      [(Node.Expr
+          [(Token.Number 1000); Token.Eql; Token.Return; Token.Struct;
+            Token.Open_brack; (Token.Ident "name"); Token.Colon;
+            (Token.Ident "string"); Token.Eql; (Token.Ident "name"); Token.Comma;
+            (Token.Ident "age"); Token.Colon; (Token.Ident "i8"); Token.Eql;
+            (Token.Ident "age"); Token.Comma; (Token.Ident "income");
+            Token.Colon; (Token.Ident "i32"); Token.Eql; (Token.Ident "income");
+            Token.Comma])
+        ]}
+    (Node.Unhandled Token.Close_brack)
+    (Node.Unhandled Token.Semi_colon)
+    Node.Decl {name = "main"; params = []; ret_type = None;
+      body =
+      [(Node.Expr
+          [Token.Let; (Token.Ident "p1"); Token.Eql; (Token.Ident "Person");
+            Token.Open_paren; (Token.String "Ashton"); Token.Comma;
+            (Token.Number 19); Token.Comma; (Token.Ident "income");
+            Token.Double_colon; (Token.Number 0); Token.Close_paren]);
+        (Node.Expr
+           [(Token.Ident "println"); Token.Bang; Token.Open_paren;
+             (Token.String "p1: {s}"); Token.Comma; (Token.Ident "p1");
+             Token.Dot; (Token.Ident "show"); Token.Open_paren;
+             Token.Close_paren; Token.Close_paren])
         ]}
     |}]
 ;;
