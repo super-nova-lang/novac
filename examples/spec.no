@@ -4,15 +4,15 @@ open Panic
 let add :: a: i32, b: i32 -> i32 = {a + b}
 
 (* Both a and b are of type i32 *)
-let sub :: a, b =
+let sub :: a, b -> i32 =
   return a - b;
 
-let mul :: a, b = { a * b }
+let mul :: a, b -> i32 = { a * b }
 let mul_5 :: mul <- 5;
 (* Multiple curried args are separated by a comma *)
 
 #[recursive]
-let factorial :: of = {
+let factorial :: of -> i32 = {
   match of with
   | 0 -> 1
   | x if x < 0 -> panic!("factroial is not defined for negative numbers: got: {}", x)

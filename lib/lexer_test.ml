@@ -41,6 +41,8 @@ let%expect_test "test spec" =
     (Token.Ident "a")
     Token.Comma
     (Token.Ident "b")
+    Token.Skinny_arrow
+    (Token.Ident "i32")
     Token.Eql
     Token.Return
     (Token.Ident "a")
@@ -53,6 +55,8 @@ let%expect_test "test spec" =
     (Token.Ident "a")
     Token.Comma
     (Token.Ident "b")
+    Token.Skinny_arrow
+    (Token.Ident "i32")
     Token.Eql
     Token.Open_brack
     (Token.Ident "a")
@@ -74,6 +78,8 @@ let%expect_test "test spec" =
     (Token.Ident "factorial")
     Token.Double_colon
     (Token.Ident "of")
+    Token.Skinny_arrow
+    (Token.Ident "i32")
     Token.Eql
     Token.Open_brack
     Token.Match
