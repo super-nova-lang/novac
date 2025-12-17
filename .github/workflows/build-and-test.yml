@@ -22,7 +22,6 @@ jobs:
           ocaml-compiler: 5.2
 
       - name: Install dependencies
-        uses: actions/cache@v4
         run: |
           opam install . --deps-only --with-test
           opam install easy_logging spectrum ppx_deriving ppx_inline_test
