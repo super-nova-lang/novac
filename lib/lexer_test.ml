@@ -34,12 +34,11 @@ let test ~expected ~got =
 ;;
 
 let spec_tokens =
-  (* open Testing *)
   [ Open
-  ; Ident "Testing" (* open Panic *)
+  ; Ident "Testing"
   ; Open
   ; Ident "Panic"
-  ; Let (* let add :: a: i32, b: i32 -> i32 = {a + b} *)
+  ; Let
   ; Ident "add"
   ; Double_colon
   ; Ident "a"
@@ -52,24 +51,26 @@ let spec_tokens =
   ; Skinny_arrow
   ; Ident "i32"
   ; Eql
-  ; Open_brack
   ; Ident "a"
   ; Plus
   ; Ident "b"
-  ; Close_brack
-  ; Let (* let sub :: a, b = return a - b;*)
+  ; Let
   ; Ident "sub"
   ; Double_colon
+  ; Open_paren
   ; Ident "a"
   ; Comma
   ; Ident "b"
+  ; Close_paren
+  ; Colon
+  ; Ident "i32"
   ; Eql
   ; Return
   ; Ident "a"
   ; Dash
   ; Ident "b"
   ; Semi_colon
-  ; Let (* let mul :: a, b = { a * b } *)
+  ; Let
   ; Ident "mul"
   ; Double_colon
   ; Ident "a"
@@ -81,31 +82,33 @@ let spec_tokens =
   ; Star
   ; Ident "b"
   ; Close_brack
-  ; Let (* let mul_5 :: mul <- 5; *)
+  ; Hash
+  ; Open_square
+  ; Ident "curry"
+  ; Close_square
+  ; Let
   ; Ident "mul_5"
   ; Double_colon
   ; Ident "mul"
   ; Back_arrow
   ; Number 5
-  ; Semi_colon
-  ; Hash (* #[recursive] *)
+  ; Hash
   ; Open_square
   ; Ident "recursive"
   ; Close_square
-  ; Let (* let factorial :: of = { *)
+  ; Let
   ; Ident "factorial"
   ; Double_colon
   ; Ident "of"
   ; Eql
-  ; Open_brack
-  ; Match (* match of with *)
+  ; Match
   ; Ident "of"
   ; With
-  ; Bar (* | 0 -> 0*)
+  ; Bar
   ; Number 0
   ; Skinny_arrow
   ; Number 1
-  ; Bar (* | c if x < 0 -> panic!("...", x) *)
+  ; Bar
   ; Ident "x"
   ; If
   ; Ident "x"
@@ -119,7 +122,7 @@ let spec_tokens =
   ; Comma
   ; Ident "x"
   ; Close_paren
-  ; Bar (* | x -> x * factorial(x - 1) *)
+  ; Bar
   ; Ident "x"
   ; Skinny_arrow
   ; Ident "x"
@@ -130,8 +133,7 @@ let spec_tokens =
   ; Dash
   ; Number 1
   ; Close_paren
-  ; Close_brack (* } *)
-  ; Let (* let main :: () = { *)
+  ; Let
   ; Ident "main"
   ; Double_colon
   ; Open_paren
@@ -199,6 +201,8 @@ let spec_tokens =
   ; Ident "mul_5"
   ; Open_paren
   ; Number 10
+  ; Comma
+  ; Number 5
   ; Close_paren
   ; Semi_colon
   ; Ident "assert"
