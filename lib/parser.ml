@@ -1,123 +1,100 @@
-open Token
 open Node
+open Token
 
-(* Helpers *)
-let rec parse_type toks =
-  match toks with
-  | Ident t :: rest -> Some (Type_ident t, rest)
-  | _ -> None
+exception Parser_unhandled of string
+exception Parser_expected of string
+exception Parser_expected_many of string list
+exception End_of_params
+exception Parsing_error of string
 
-and parse_params toks acc =
-  match toks with
-  | Skinny_arrow :: _ | Eql :: _ -> List.rev acc, toks
-  | Ident name :: Colon :: rest ->
-    (match parse_type rest with
-     | Some (t, Comma :: r) -> parse_params r ((name, Some t) :: acc)
-     | Some (t, r) -> parse_params r ((name, Some t) :: acc)
-     | None -> List.rev acc, rest)
-  | Ident name :: Comma :: rest -> parse_params rest ((name, None) :: acc)
-  | Ident name :: rest -> parse_params rest ((name, None) :: acc)
-  | _ :: rest -> parse_params rest acc
-  | [] -> List.rev acc, []
-
-and consume_expr current toks =
-  match toks with
-  | Semi_colon :: rest -> Expr (List.rev current), rest, true (* delimited *)
-  | Close_brack :: _ -> Expr (List.rev current), toks, false (* end of block *)
-  | [] -> Expr (List.rev current), [], false
-  | t :: rest -> consume_expr (t :: current) rest
-
-and parse_block toks acc =
-  match toks with
-  | Close_brack :: rest -> List.rev acc, rest
-  | _ ->
-    let node, rest, delimited = consume_expr [] toks in
-    (match rest, delimited with
-     | Close_brack :: final, _ -> List.rev (node :: acc), final
-     | _, true -> parse_block rest (node :: acc) (* Semi found, continue *)
-     | _, false -> List.rev (node :: acc), rest)
-
-and parse_curry_arg toks =
-  match toks with
-  | Ident k :: Eql :: rest ->
-    let expr, final, _ = consume_expr [] rest in
-    (match expr with
-     | Expr _ as ex -> Named (k, [ ex ]), final
-     | _ -> Named (k, []), final)
-  | _ ->
-    let expr, final, _ = consume_expr [] toks in
-    (match expr with
-     | Expr _ as ex -> Positional [ ex ], final
-     | _ -> Positional [], final)
-
-and parse_curry_args toks acc =
-  match toks with
-  | [] -> List.rev acc, []
-  (* Handle delimiters that might end the statement *)
-  | Semi_colon :: rest -> List.rev acc, rest
-  | Comma :: rest ->
-    let arg, next = parse_curry_arg rest in
-    parse_curry_args next (arg :: acc)
-  | _ ->
-    (* Try parsing the first/next argument if no comma seen yet (start of list) *)
-    let arg, next = parse_curry_arg toks in
-    (match next with
-     | Comma :: r -> parse_curry_args r (arg :: acc)
-     | _ -> List.rev (arg :: acc), next)
-
-and parse_curried name toks =
-  match toks with
-  | Ident target :: Back_arrow :: rest ->
-    let args, final = parse_curry_args rest [] in
-    (* Consume trailing semicolon if present *)
-    let final' =
-      match final with
-      | Semi_colon :: f -> f
-      | _ -> final
-    in
-    Curry_Decl { name; target_fn = target; args } :: parse' final'
-  | _ -> Unhandled (Ident "Invalid Curry Syntax") :: parse' toks
-
-and parse_decl toks =
-  match toks with
-  | Ident name :: Double_colon :: rest ->
-    (match rest with
-     (* Lookahead: If we see Ident followed by <-, it is a Curry Decl *)
-     | Ident _ :: Back_arrow :: _ -> parse_curried name rest
-     | _ ->
-       (* Existing Standard Decl Logic *)
-       let params, rest_after_params = parse_params rest [] in
-       let ret_type, rest_after_type =
-         match rest_after_params with
-         | Skinny_arrow :: t_toks ->
-           (match parse_type t_toks with
-            | Some (t, r) -> Some t, r
-            | None -> None, t_toks)
-         | _ -> None, rest_after_params
-       in
-       (match rest_after_type with
-        | Eql :: Open_brack :: body_toks ->
-          let body, final = parse_block body_toks [] in
-          Decl { name; params; ret_type; body } :: parse' final
-        | Eql :: body_toks ->
-          let expr, final, _ = consume_expr [] body_toks in
-          Decl { name; params; ret_type; body = [ expr ] } :: parse' final
-        | _ -> Unhandled (Ident "Expected Body") :: parse' rest_after_type))
-  | _ -> Unhandled (Ident "Expected Decl Pattern") :: parse' toks
-
-and parse_tag toks =
-  match toks with
-  | Open_square :: Ident t :: Close_square :: rest -> Tag t :: parse' rest
-  | _ -> Unhandled (Ident "Expected Tag Pattern") :: parse' toks
-
-and parse' toks =
-  match toks with
-  | [] -> []
-  | [ Eof ] -> []
-  | Open :: Ident mod_name :: rest -> Open_mod mod_name :: parse' rest
-  | Hash :: rest -> parse_tag rest
-  | Let :: rest -> parse_decl rest
-  | t :: tail -> Unhandled t :: parse' tail
+let errno ~msg loc t =
+  Format.sprintf "%s:%d:%d: %s: %s" loc.file loc.row loc.col msg (Token.show t)
 ;;
 
-let parse toks = parse' toks
+let rec parse ts = parse' (List.split ts)
+
+and parse' = function
+  | [], [] -> []
+  | [ Eof ], _ -> []
+  | Open :: ts, _ :: ls ->
+    (try
+       let stmt, (ts', ls') = parse_open_statement ts ls in
+       stmt :: parse' (ts', ls')
+     with
+     | Parsing_error msg ->
+       let rec advance = function
+         | Semi_colon :: ts, _ :: ls -> ts, ls
+         | _ :: ts, _ :: ls -> advance (ts, ls)
+         | _ -> ts, ls
+       in
+       let ts', ls' = advance (ts, ls) in
+       Error msg :: parse' (ts', ls'))
+  | t :: ts, l :: ls ->
+    (match t with
+     | Close_brack -> parse' (ts, ls)
+     | _ ->
+       let node = Error (errno ~msg:"expected statement start but found" l t) in
+       node :: parse' (ts, ls))
+  | _, _ -> failwith "unreachable"
+
+and parse_open_statement ts ls =
+  let mods, (ts_m, ls_m) = parse_open_modules (ts, ls) in
+  match ts_m, ls_m with
+  | With :: Open_brack :: ts_w, _ :: _ :: ls_w ->
+    let items, (ts_f, ls_f) = parse_items ts_w ls_w in
+    Statement (Open_stmt { mods; elements = items }), (ts_f, ls_f)
+  | _ -> Statement (Open_stmt { mods; elements = [] }), (ts_m, ls_m)
+
+and parse_items ts ls =
+  match ts, ls with
+  | Close_brack :: ts_r, _ :: ls_r -> [], (ts_r, ls_r)
+  | [], l :: _ ->
+    raise (Parsing_error (errno ~msg:"unclosed brace in with clause" l Token.Eof))
+  | _ ->
+    let item, (ts_i, ls_i) = parse_item ts ls in
+    (match ts_i, ls_i with
+     | Comma :: ts_c, _ :: ls_c ->
+       (match ts_c, ls_c with
+        | Close_brack :: ts_r, _ :: ls_r -> [ item ], (ts_r, ls_r)
+        | _ ->
+          let rest, state = parse_items ts_c ls_c in
+          item :: rest, state)
+     | Close_brack :: _, _ -> [ item ], (ts_i, ls_i)
+     | t :: _, l :: _ ->
+       raise (Parsing_error (errno ~msg:"expected comma or closing brace but found" l t))
+     | _, _ -> failwith "unreachable")
+
+and parse_item ts ls =
+  let rec get_path ts ls =
+    match ts, ls with
+    | Ident i :: Dot :: ts_r, _ :: _ :: ls_r ->
+      let path, state = get_path ts_r ls_r in
+      i :: path, state
+    | Ident i :: ts_r, _ :: ls_r -> [ i ], (ts_r, ls_r)
+    | t :: _, l :: _ ->
+      raise (Parsing_error (errno ~msg:"expected identifier in path but found" l t))
+    | [], l :: _ ->
+      raise (Parsing_error (errno ~msg:"unexpected end of path" l Token.Eof))
+    | _, _ -> failwith "unreachable"
+  in
+  let path, (ts_p, ls_p) = get_path ts ls in
+  match ts_p, ls_p with
+  | As :: Ident alias :: ts_a, _ :: _ :: ls_a -> { path; alias = Some alias }, (ts_a, ls_a)
+  | As :: t :: _ts_a, l :: _ls_a ->
+    raise (Parsing_error (errno ~msg:"expected identifier after 'as' but found" l t))
+  | Comma :: _, _ -> { path; alias = None }, (ts_p, ls_p)
+  | Close_brack :: _, _ -> { path; alias = None }, (ts_p, ls_p)
+  | _ -> { path; alias = None }, (ts_p, ls_p)
+
+and parse_open_modules = function
+  | Ident m1 :: Dot :: ts, ls ->
+    let rest, (ts', ls') = parse_open_modules (ts, ls) in
+    m1 :: rest, (ts', ls')
+  | Ident m1 :: ts, ls -> [ m1 ], (ts, ls)
+  | t :: _, l :: _ ->
+    raise (Parsing_error (errno ~msg:"expected module identifier but found" l t))
+  | [], l :: _ ->
+    raise
+      (Parsing_error (errno ~msg:"unexpected end of input in module path" l Token.Eof))
+  | _, _ -> failwith "unreachable"
+;;
