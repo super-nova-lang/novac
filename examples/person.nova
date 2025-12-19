@@ -6,10 +6,10 @@ let Person ::
   name  : string = name,
   age   : i8     = age,
   income: i32    = income,
-};
+}
 
 
 let main :: () = {
-  let p1 = Person("Ashton", 19, income :: 0); (* Hashtag unemployed *)
-  println!("p1: {s}", p1.show());
+  let p1 = Person("Ashton", 19, income :: 0) (* Hashtag unemployed *)
+  println!("p1: {s}", p1.show())
 }

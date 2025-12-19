@@ -1,0 +1,88 @@
+(* Imports *)
+open MyModule
+open MyModule.InnerModule
+open Panic with { panic }
+open Assert with {
+  assert,
+  Static.static as assert_static,
+  assert_eq as is_eq,
+}
+
+(* Functions *)
+let add :: a: i32, b: i32 = a + b
+let sub :: a, b -> i32 = a - b
+
+let mul        :: a, b -> i32 = a * b
+let mul_by_5   :: mul <- 5
+let is_just_15 :: mul <- 5, 3
+
+(* Macro call *)
+assert_static!(
+  mul(5, 3) == mul_by_5(3) &&
+  15 == is_just_15()
+)
+
+(* Recursive Function *)
+#[recursive]
+let factorial :: of -> i32 =
+  match of with
+  | 0 -> 1
+  | x if x < 0 ->
+    panic!(
+      "factorial is not defined for negative numbers: got: {}",
+      x
+    )
+  | x -> x * factorial(x - 1)
+
+(* Unions *)
+let Job ::
+  salary,
+  ?language = "c++", (* #eww *)
+= enum {
+  programmer -> struct {
+    language : string,
+  },
+  other -> string,
+  sales_rep,
+} with {
+  salary : i32
+}
+
+let Person ::
+  name, age, job
+= struct {
+  name : string = name,
+  age  : u8     = age,
+  job  : job    = job,
+}
+
+let based_dev = Person(
+  "Ashton", 19,
+  Job.programmer(1_000, "nova")
+)
+
+let prob_some_creep = Person(
+  "Joe Shmoe", 37,
+  .sales_rep(),
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

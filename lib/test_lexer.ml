@@ -1,16 +1,16 @@
-let rec print_diff ppx xs =
+open Token
+
+let rec print_diff ~ppx xs =
   match xs with
-  | x :: xt ->
-    Format.printf "%s\n" (ppx x);
-    print_diff ppx xt
+  | (x, loc) :: xt ->
+    Format.printf "%s:%d:%d: %s\n" loc.file loc.row loc.col (ppx x);
+    print_diff ~ppx xt
   | [] -> ()
 ;;
 
-let test toks = print_diff Token.show toks
-
 let%expect_test "test spec" =
-  let tokens = Lexer.lex Spec_test.content in
-  test tokens;
+  let tokens = Lexer.lex "spec" Spec_test.content in
+  print_diff ~ppx:Token.show tokens;
   [%expect
     {|
     Token.Open
@@ -201,9 +201,10 @@ let%expect_test "test spec" =
 ;;
 
 let%expect_test "test person" =
-  let tokens = Lexer.lex Person_test.content in
-  test tokens;
-  [%expect {|
+  let tokens = Lexer.lex "person" Person_test.content in
+  print_diff ~ppx:Token.show tokens;
+  [%expect
+    {|
     Token.Hash
     Token.Open_square
     (Token.Ident "mutable")
@@ -254,7 +255,6 @@ let%expect_test "test person" =
     (Token.Ident "income")
     Token.Comma
     Token.Close_brack
-    Token.Semi_colon
     Token.Let
     (Token.Ident "main")
     Token.Double_colon
@@ -275,7 +275,6 @@ let%expect_test "test person" =
     Token.Double_colon
     (Token.Number 0)
     Token.Close_paren
-    Token.Semi_colon
     (Token.Ident "println")
     Token.Bang
     Token.Open_paren
@@ -287,7 +286,6 @@ let%expect_test "test person" =
     Token.Open_paren
     Token.Close_paren
     Token.Close_paren
-    Token.Semi_colon
     Token.Close_brack
     Token.Eof
     |}]
