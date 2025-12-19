@@ -4,6 +4,7 @@ type t =
   | Open
   | Match
   | With
+  | As
   | Return
   | If
   | Else
@@ -77,6 +78,7 @@ let from_string = function
   | "let" -> Let
   | "open" -> Open
   | "match" -> Match
+  | "as" -> As
   | "with" -> With
   | "return" -> Return
   | "if" -> If

@@ -2,10 +2,17 @@ open Token
 open Utils
 
 let lex file input =
-  let rec loop cs row col =
+  let rec lex_comment cs row col =
     let loc = { file; row; col } in
     match cs with
     | [] -> [ Eof, loc ]
+    | '*' :: ')' :: cs -> loop cs row col
+    | _ :: cs -> lex_comment cs row (col + 1)
+  and loop cs row col =
+    let loc = { file; row; col } in
+    match cs with
+    | [] -> [ Eof, loc ]
+    | '(' :: '*' :: cs -> lex_comment cs row (col + 2)
     (* Newline *)
     | '\n' :: cs -> loop cs (row + 1) 1
     (* Skip whitespace*)

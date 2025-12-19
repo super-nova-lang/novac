@@ -4,7 +4,7 @@ open MyModule.InnerModule
 open Panic with { panic }
 open Assert with {
   assert,
-  Static.static as assert_static,
+  Static.assert_static,
   assert_eq as is_eq,
 }
 

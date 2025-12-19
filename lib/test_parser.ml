@@ -23,7 +23,8 @@ let%expect_test "parse open statements" =
   in
   let nodes = Parser.parse tokens in
   print_diff ~ppx:Node.show nodes;
-  [%expect {|
+  [%expect
+    {|
     found: (Node.Statement (Node.Open_stmt { Node.mods = ["MyModule"]; elements = [] }))
     found: (Node.Statement
        (Node.Open_stmt { Node.mods = ["MyModule"; "SomeMod"]; elements = [] }))
