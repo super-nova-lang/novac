@@ -10,6 +10,8 @@ type t =
   | Struct
   | Mut
   | Defer
+  | True
+  | False
   (* Tokens *)
   (* - Double *)
   | Double_colon (* :: *)
@@ -65,6 +67,12 @@ type t =
   | Unknown of char
 [@@deriving show]
 
+type loc =
+  { file : string
+  ; row : int
+  ; col : int
+  }
+
 let from_string = function
   | "let" -> Let
   | "open" -> Open
@@ -76,5 +84,7 @@ let from_string = function
   | "struct" -> Struct
   | "mut" -> Mut
   | "defer" -> Defer
+  | "true" -> True
+  | "false" -> False
   | s -> Ident s
 ;;
