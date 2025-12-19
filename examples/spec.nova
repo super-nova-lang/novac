@@ -34,7 +34,7 @@ let factorial :: of -> i32 =
     )
   | x -> x * factorial(x - 1)
 
-(* Unions *)
+(* Enums *)
 let Job ::
   salary,
   ?language = "c++", (* #eww *)
@@ -46,6 +46,8 @@ let Job ::
   sales_rep,
 } with {
   salary : i32
+
+  let hourly :: self, hours = self.salary / hours
 }
 
 let Person ::
