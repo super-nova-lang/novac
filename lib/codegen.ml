@@ -4,8 +4,8 @@ module A = Ast
 exception Error of string
 
 let context = L.global_context ()
-let the_module = L.create_module context "Nova"
-let builder = L.builder context
+let the_module = ref (L.create_module context "Nova")
+let builder = ref (L.builder context)
 let named_values : (string, L.llvalue) Hashtbl.t = Hashtbl.create 10
 let named_value_types : (string, A.typ) Hashtbl.t = Hashtbl.create 10
 
@@ -23,10 +23,9 @@ let variant_map : (string, string * string) Hashtbl.t =
 ;;
 
 let variant_indices : (string, (string, int) Hashtbl.t) Hashtbl.t = Hashtbl.create 10
-;;
-
 let local_imports : (string, string) Hashtbl.t = Hashtbl.create 10
 let opened_modules : (string, string) Hashtbl.t = Hashtbl.create 10
+let external_link_names : (string, string) Hashtbl.t = Hashtbl.create 10
 let in_function = ref false
 let current_type_context : (string * A.typ) option ref = ref None
 let current_module_name = ref ""
@@ -38,9 +37,13 @@ let set_module_name name =
 
 let mangle tags name =
   let no_mangle =
-    List.exists (function A.Tag_name "no_mangle" -> true | _ -> false) tags
+    List.exists
+      (function
+        | A.Tag_name "no_mangle" -> true
+        | _ -> false)
+      tags
   in
-  if no_mangle || name = "main" || name = "malloc"
+  if no_mangle || name = "main"
   then name
   else if !current_module_name = ""
   then name
@@ -55,9 +58,10 @@ let resolve_name name =
     then name
     else (
       let mangled = !current_module_name ^ "_" ^ name in
-      if Hashtbl.mem named_values mangled
-         || Hashtbl.mem function_protos mangled
-         || Hashtbl.mem named_struct_types mangled
+      if
+        Hashtbl.mem named_values mangled
+        || Hashtbl.mem function_protos mangled
+        || Hashtbl.mem named_struct_types mangled
       then mangled
       else name)
 ;;
@@ -76,14 +80,14 @@ let find_struct_type name =
     let search_name_lc = String.lowercase_ascii resolved in
     let found = ref None in
     Hashtbl.iter
-      (fun k v ->
-         if String.lowercase_ascii k = search_name_lc then found := Some (v, k))
+      (fun k v -> if String.lowercase_ascii k = search_name_lc then found := Some (v, k))
       named_struct_types;
     (match !found with
      | Some _ as res -> res
      | None ->
-       if !current_module_name <> ""
-          && not (String.starts_with ~prefix:(!current_module_name ^ "_") resolved)
+       if
+         !current_module_name <> ""
+         && not (String.starts_with ~prefix:(!current_module_name ^ "_") resolved)
        then (
          let forced_mangled_lc =
            String.lowercase_ascii (!current_module_name ^ "_" ^ resolved)
@@ -142,13 +146,13 @@ let get_variant_index enum_name variant_name =
 let main_func_name = "main"
 
 let ensure_main () =
-  match L.lookup_function main_func_name the_module with
+  match L.lookup_function main_func_name !the_module with
   | Some f -> f
   | None ->
     let ft = L.function_type i32_type [||] in
-    let f = L.declare_function main_func_name ft the_module in
+    let f = L.declare_function main_func_name ft !the_module in
     let bb = L.append_block context "entry" f in
-    L.position_at_end bb builder;
+    L.position_at_end bb !builder;
     f
 ;;
 
@@ -156,7 +160,7 @@ let rec codegen_atom = function
   | A.Implicit_member m ->
     (try
        let _enum_name, func_name = Hashtbl.find variant_map m in
-       match L.lookup_function func_name the_module with
+       match L.lookup_function func_name !the_module with
        | Some f ->
          let _, ret_type = Hashtbl.find function_protos func_name in
          f, ret_type
@@ -165,7 +169,7 @@ let rec codegen_atom = function
      | Not_found -> raise (Error ("Unknown variant: " ^ m)))
   | A.Int i -> L.const_int i32_type i, A.User "i32"
   | A.Bool b -> L.const_int bool_type (if b then 1 else 0), A.User "bool"
-  | A.String s -> L.build_global_stringptr s "str" builder, A.User "string"
+  | A.String s -> L.build_global_stringptr s "str" !builder, A.User "string"
   | A.Ident name ->
     (try
        let resolved = resolve_name name in
@@ -184,10 +188,15 @@ let rec codegen_atom = function
         with
         | Not_found ->
           let resolved = resolve_name name in
-          (match L.lookup_function resolved the_module with
+          let actual_llvm_name =
+            match Hashtbl.find_opt external_link_names resolved with
+            | Some link -> link
+            | None -> resolved
+          in
+          (match L.lookup_function actual_llvm_name !the_module with
            | Some f ->
              let t =
-               try snd (Hashtbl.find function_protos resolved) with
+               try snd (Hashtbl.find function_protos actual_llvm_name) with
                | Not_found -> A.Unit_typ
              in
              f, t
@@ -206,8 +215,8 @@ and codegen_call = function
         Some (resolve_name name), None
       | A.Relational_expr
           (A.Relational_val
-             (A.Additive_val
-                (A.Multiplicative_val (A.Unary_member (obj_unary, member))))) ->
+             (A.Additive_val (A.Multiplicative_val (A.Unary_member (obj_unary, member)))))
+        ->
         (match obj_unary with
          | A.Unary_val (A.Ident maybe_mod_or_type) ->
            (match find_struct_type maybe_mod_or_type with
@@ -224,7 +233,8 @@ and codegen_call = function
                  (match obj_typ with
                   | A.User type_name ->
                     (match find_struct_type type_name with
-                     | Some (_, real_tname) -> Some (real_tname ^ "_" ^ member), Some obj_val
+                     | Some (_, real_tname) ->
+                       Some (real_tname ^ "_" ^ member), Some obj_val
                      | None -> Some (type_name ^ "_" ^ member), Some obj_val)
                   | _ -> None, None)))
          | _ ->
@@ -241,7 +251,8 @@ and codegen_call = function
             | _ -> None, None))
       | A.Relational_expr
           (A.Relational_val
-             (A.Additive_val (A.Multiplicative_val (A.Unary_val (A.Implicit_member m))))) ->
+             (A.Additive_val (A.Multiplicative_val (A.Unary_val (A.Implicit_member m)))))
+        ->
         (try Some (snd (Hashtbl.find variant_map m)), None with
          | Not_found -> None, None)
       | _ -> None, None
@@ -291,23 +302,32 @@ and codegen_call = function
                        L.classify_type (L.type_of arg), L.classify_type expected_type
                      with
                      | L.TypeKind.Pointer, L.TypeKind.Integer ->
-                       L.build_ptrtoint arg expected_type "argcast" builder
+                       L.build_ptrtoint arg expected_type "argcast" !builder
                      | L.TypeKind.Integer, L.TypeKind.Pointer ->
-                       L.build_inttoptr arg expected_type "argcast" builder
+                       L.build_inttoptr arg expected_type "argcast" !builder
                      | L.TypeKind.Integer, L.TypeKind.Integer ->
-                       L.build_intcast arg expected_type "argcast" builder
+                       L.build_intcast arg expected_type "argcast" !builder
                      | _ -> arg)
                    else arg)
                  else arg)
               args_with_padding
           in
           let func_val =
-            match L.lookup_function name the_module with
+            let actual_llvm_name =
+              match Hashtbl.find_opt external_link_names name with
+              | Some link -> link
+              | None -> name
+            in
+            match L.lookup_function actual_llvm_name !the_module with
             | Some f -> f
-            | None -> failwith ("proto but no func: " ^ name)
+            | None ->
+                (* If it's not found in the current module, declare it as external.
+                   We have its type from function_protos. *)
+                let ft, _ = Hashtbl.find function_protos name in (* Get ft from Nova-mangled name *)
+                L.declare_function actual_llvm_name ft !the_module (* Declare with LLVM name *)
           in
           let call_res =
-            L.build_call ft func_val (Array.of_list actual_args) "" builder
+            L.build_call ft func_val (Array.of_list actual_args) "" !builder
           in
           call_res, ret_ast_type
         with
@@ -329,9 +349,14 @@ and codegen_call = function
             in
             let arg_types = Array.of_list (List.map L.type_of actual_args) in
             let ft = L.function_type ret_type arg_types in
-            let f = L.declare_function name ft the_module in
+            let actual_llvm_name =
+              match Hashtbl.find_opt external_link_names name with
+              | Some link -> link
+              | None -> name
+            in
+            let f = L.declare_function actual_llvm_name ft !the_module in
             Hashtbl.add function_protos name (ft, ret_ast_type);
-            let call_res = L.build_call ft f (Array.of_list actual_args) "" builder in
+            let call_res = L.build_call ft f (Array.of_list actual_args) "" !builder in
             call_res, ret_ast_type))
      | None ->
        let _callee_val, _ = codegen_expr callee in
@@ -344,14 +369,14 @@ and codegen_call = function
              (A.Additive_val (A.Multiplicative_val (A.Unary_val (A.Ident s))))) -> s
       | _ -> "macro"
     in
-    if name = "println" || name = "my_printf"
+    if name = "println"
     then (
       let printf =
-        match L.lookup_function "printf" the_module with
+        match L.lookup_function "printf" !the_module with
         | Some f -> f
         | None ->
           let ft = L.var_arg_function_type i32_type [| string_type |] in
-          L.declare_function "printf" ft the_module
+          L.declare_function "printf" ft !the_module
       in
       let fmt_arg, other_args =
         match params with
@@ -361,10 +386,10 @@ and codegen_call = function
                   (A.Additive_val (A.Multiplicative_val (A.Unary_val (A.String s))))))
           :: rest ->
           let s' = if name = "println" then s ^ "\n" else s in
-          L.build_global_stringptr s' "fmt" builder, rest
+          L.build_global_stringptr s' "fmt" !builder, rest
         | _ ->
           let s' = if name = "println" then "\n" else "" in
-          L.build_global_stringptr s' "fmt" builder, params
+          L.build_global_stringptr s' "fmt" !builder, params
       in
       let args =
         fmt_arg
@@ -376,7 +401,7 @@ and codegen_call = function
       in
       let args_array = Array.of_list args in
       let ft = L.var_arg_function_type i32_type [| string_type |] in
-      L.build_call ft printf args_array "calltmp" builder, A.User "void")
+      L.build_call ft printf args_array "calltmp" !builder, A.User "void")
     else L.const_null i32_type, A.User "void"
 
 and codegen_unary = function
@@ -389,9 +414,9 @@ and codegen_unary = function
        (try
           let idx, field_ast_type = get_field_info type_name member in
           let struct_lltype = get_struct_type type_name in
-          let ptr = L.build_struct_gep struct_lltype obj_val idx "ptr" builder in
+          let ptr = L.build_struct_gep struct_lltype obj_val idx "ptr" !builder in
           let val_lltype = get_llvm_type field_ast_type in
-          let res = L.build_load val_lltype ptr "val" builder in
+          let res = L.build_load val_lltype ptr "val" !builder in
           res, field_ast_type
         with
         | _ -> raise (Error ("Unknown field " ^ member ^ " in struct " ^ type_name)))
@@ -403,30 +428,30 @@ and codegen_multiplicative = function
   | A.Mul (lhs, rhs) ->
     let l, _ = codegen_multiplicative lhs in
     let r, _ = codegen_unary rhs in
-    L.build_mul l r "multmp" builder, A.User "i32"
+    L.build_mul l r "multmp" !builder, A.User "i32"
   | A.Div (lhs, rhs) ->
     let l, _ = codegen_multiplicative lhs in
     let r, _ = codegen_unary rhs in
-    L.build_sdiv l r "divtmp" builder, A.User "i32"
+    L.build_sdiv l r "divtmp" !builder, A.User "i32"
   | A.Mod (lhs, rhs) ->
     let l, _ = codegen_multiplicative lhs in
     let r, _ = codegen_unary rhs in
-    L.build_srem l r "modtmp" builder, A.User "i32"
+    L.build_srem l r "modtmp" !builder, A.User "i32"
   | A.Pow (lhs, rhs) ->
     let l, _ = codegen_multiplicative lhs in
     let r, _ = codegen_unary rhs in
-    L.build_xor l r "xortmp" builder, A.User "i32"
+    L.build_xor l r "xortmp" !builder, A.User "i32"
 
 and codegen_additive = function
   | A.Additive_val mult -> codegen_multiplicative mult
   | A.Add (lhs, rhs) ->
     let l, _ = codegen_additive lhs in
     let r, _ = codegen_multiplicative rhs in
-    L.build_add l r "addtmp" builder, A.User "i32"
+    L.build_add l r "addtmp" !builder, A.User "i32"
   | A.Sub (lhs, rhs) ->
     let l, _ = codegen_additive lhs in
     let r, _ = codegen_multiplicative rhs in
-    L.build_sub l r "subtmp" builder, A.User "i32"
+    L.build_sub l r "subtmp" !builder, A.User "i32"
 
 and codegen_relational = function
   | A.Relational_val add -> codegen_additive add
@@ -438,11 +463,11 @@ and codegen_match (target, arms) =
   | A.User type_name ->
     (match find_struct_type type_name with
      | Some (lenum, actual_type_name) ->
-       let tag_ptr = L.build_struct_gep lenum target_val 0 "tag" builder in
-       let tag_val = L.build_load i32_type tag_ptr "tag" builder in
-       let parent_func = L.block_parent (L.insertion_block builder) in
+       let tag_ptr = L.build_struct_gep lenum target_val 0 "tag" !builder in
+       let tag_val = L.build_load i32_type tag_ptr "tag" !builder in
+       let parent_func = L.block_parent (L.insertion_block !builder) in
        let end_bb = L.append_block context "match_end" parent_func in
-       let res_alloca = L.build_alloca (L.pointer_type context) "match_res" builder in
+       let res_alloca = L.build_alloca (L.pointer_type context) "match_res" !builder in
        List.iteri
          (fun i (param, _if_opt, body) ->
             let arm_bb = L.append_block context ("arm_" ^ string_of_int i) parent_func in
@@ -469,7 +494,8 @@ and codegen_match (target, arms) =
                   | Relational_expr
                       (Relational_val
                          (Additive_val
-                            (Multiplicative_val (Ast.Unary_val (A.Implicit_member m))))) -> m
+                            (Multiplicative_val (Ast.Unary_val (A.Implicit_member m)))))
+                    -> m
                   | _ -> "unknown"
                 in
                 let v =
@@ -477,7 +503,8 @@ and codegen_match (target, arms) =
                   | [ A.Positional
                         (Relational_expr
                            (Relational_val
-                              (Additive_val (Multiplicative_val (Ast.Unary_val (A.Ident s))))))
+                              (Additive_val
+                                 (Multiplicative_val (Ast.Unary_val (A.Ident s))))))
                     ] -> Some s
                   | _ -> None
                 in
@@ -491,19 +518,19 @@ and codegen_match (target, arms) =
                 tag_val
                 (L.const_int i32_type expected_tag)
                 "tag_eq"
-                builder
+                !builder
             in
-            ignore (L.build_cond_br cond arm_bb next_bb builder);
-            L.position_at_end arm_bb builder;
+            ignore (L.build_cond_br cond arm_bb next_bb !builder);
+            L.position_at_end arm_bb !builder;
             let old_values = Hashtbl.copy named_values in
             let old_types = Hashtbl.copy named_value_types in
             (match var_bind with
              | Some s ->
                let data_ptr_ptr =
-                 L.build_struct_gep lenum target_val 1 "data_ptr_ptr" builder
+                 L.build_struct_gep lenum target_val 1 "data_ptr_ptr" !builder
                in
                let data_ptr =
-                 L.build_load (L.pointer_type context) data_ptr_ptr "data_ptr" builder
+                 L.build_load (L.pointer_type context) data_ptr_ptr "data_ptr" !builder
                in
                Hashtbl.add named_values s data_ptr;
                Hashtbl.add named_value_types s (A.User "string")
@@ -513,19 +540,19 @@ and codegen_match (target, arms) =
             let val_ptr =
               if L.classify_type (L.type_of val_) = L.TypeKind.Pointer
               then val_
-              else L.build_inttoptr val_ (L.pointer_type context) "cast" builder
+              else L.build_inttoptr val_ (L.pointer_type context) "cast" !builder
             in
-            ignore (L.build_store val_ptr res_alloca builder);
-            ignore (L.build_br end_bb builder);
+            ignore (L.build_store val_ptr res_alloca !builder);
+            ignore (L.build_br end_bb !builder);
             Hashtbl.clear named_values;
             Hashtbl.clear named_value_types;
             Hashtbl.iter (Hashtbl.add named_values) old_values;
             Hashtbl.iter (Hashtbl.add named_value_types) old_types;
-            L.position_at_end next_bb builder)
+            L.position_at_end next_bb !builder)
          arms;
-       ignore (L.build_br end_bb builder);
-       L.position_at_end end_bb builder;
-       let final_val = L.build_load (L.pointer_type context) res_alloca "res" builder in
+       ignore (L.build_br end_bb !builder);
+       L.position_at_end end_bb !builder;
+       let final_val = L.build_load (L.pointer_type context) res_alloca "res" !builder in
        final_val, A.User "string"
      | None -> raise (Error ("Match target is not an enum: " ^ type_name)))
   | _ -> raise (Error "Match target must be a user-defined type (enum)")
@@ -592,10 +619,10 @@ and codegen_decl = function
     let param_types = Array.of_list (List.map (fun (_, l, _) -> l) args_and_types) in
     let ret_type = L.pointer_type context in
     let func_type = L.function_type ret_type param_types in
-    let the_function = L.declare_function struct_name func_type the_module in
+    let the_function = L.declare_function struct_name func_type !the_module in
     Hashtbl.add function_protos struct_name (func_type, A.User struct_name);
     let bb = L.append_block context "entry" the_function in
-    L.position_at_end bb builder;
+    L.position_at_end bb !builder;
     let args = L.params the_function in
     Array.iteri
       (fun i a ->
@@ -605,20 +632,20 @@ and codegen_decl = function
          Hashtbl.add named_value_types n t)
       args;
     let struct_size = L.size_of lstruct in
-    let struct_size_i64 = L.build_intcast struct_size i64_type "size64" builder in
+    let struct_size_i64 = L.build_intcast struct_size i64_type "size64" !builder in
     let struct_alloca =
       L.build_call
         (L.function_type (L.pointer_type context) [| i64_type |])
-        (match L.lookup_function "malloc" the_module with
+        (match L.lookup_function "malloc" !the_module with
          | Some f -> f
          | None ->
            L.declare_function
              "malloc"
              (L.function_type (L.pointer_type context) [| i64_type |])
-             the_module)
+             !the_module)
         [| struct_size_i64 |]
         "struct"
-        builder
+        !builder
     in
     List.iteri
       (fun i (fname, ftyp, expr_opt) ->
@@ -630,24 +657,31 @@ and codegen_decl = function
          let field_lltype = get_llvm_type ftyp in
          let val_to_store_fixed =
            if L.type_of val_to_store <> field_lltype
-           then
-             match L.classify_type (L.type_of val_to_store), L.classify_type field_lltype with
+           then (
+             match
+               L.classify_type (L.type_of val_to_store), L.classify_type field_lltype
+             with
              | L.TypeKind.Integer, L.TypeKind.Integer ->
-               L.build_intcast val_to_store field_lltype "cast" builder
-             | _ -> val_to_store
+               L.build_intcast val_to_store field_lltype "cast" !builder
+             | _ -> val_to_store)
            else val_to_store
          in
-         let ptr = L.build_struct_gep lstruct struct_alloca i fname builder in
-         ignore (L.build_store val_to_store_fixed ptr builder))
+         let ptr = L.build_struct_gep lstruct struct_alloca i fname !builder in
+         ignore (L.build_store val_to_store_fixed ptr !builder))
       fields;
-    ignore (L.build_ret struct_alloca builder);
+    ignore (L.build_ret struct_alloca !builder);
     Hashtbl.clear named_values;
     Hashtbl.clear named_value_types;
     let old_ctx = !current_type_context in
     current_type_context := Some (struct_name, A.User struct_name);
     (match with_blk with
      | Some blk ->
-       List.iter (fun t -> match t with A.Statement s -> codegen_stmt s | _ -> ()) blk
+       List.iter
+         (fun t ->
+            match t with
+            | A.Statement s -> codegen_stmt s
+            | _ -> ())
+         blk
      | None -> ());
     current_type_context := old_ctx;
     the_function
@@ -721,83 +755,94 @@ and codegen_decl = function
          let param_types = List.map (fun (_, t) -> get_llvm_type t) !merged_params in
          let ret_type = L.pointer_type context in
          let ft = L.function_type ret_type (Array.of_list param_types) in
-         let v_func = L.declare_function variant_func_name ft the_module in
+         let v_func = L.declare_function variant_func_name ft !the_module in
          Hashtbl.add function_protos variant_func_name (ft, A.User enum_name);
          let bb = L.append_block context "entry" v_func in
-         L.position_at_end bb builder;
+         L.position_at_end bb !builder;
          let enum_size = L.size_of lenum in
-         let enum_size_i64 = L.build_intcast enum_size i64_type "size64" builder in
+         let enum_size_i64 = L.build_intcast enum_size i64_type "size64" !builder in
          let enum_alloc =
            L.build_call
              (L.function_type (L.pointer_type context) [| i64_type |])
-             (match L.lookup_function "malloc" the_module with
+             (match L.lookup_function "malloc" !the_module with
               | Some f -> f
               | None ->
                 L.declare_function
                   "malloc"
                   (L.function_type (L.pointer_type context) [| i64_type |])
-                  the_module)
+                  !the_module)
              [| enum_size_i64 |]
              "enum"
-             builder
+             !builder
          in
-         let tag_ptr = L.build_struct_gep lenum enum_alloc 0 "tag" builder in
-         ignore (L.build_store (L.const_int i32_type i) tag_ptr builder);
+         let tag_ptr = L.build_struct_gep lenum enum_alloc 0 "tag" !builder in
+         ignore (L.build_store (L.const_int i32_type i) tag_ptr !builder);
          let args = L.params v_func in
          let arg_map = Hashtbl.create 10 in
-         List.iteri (fun arg_i name -> Hashtbl.add arg_map name (Array.get args arg_i)) param_names;
+         List.iteri
+           (fun arg_i name -> Hashtbl.add arg_map name (Array.get args arg_i))
+           param_names;
          List.iteri
            (fun f_i (fname, _) ->
-              let ptr = L.build_struct_gep lenum enum_alloc (f_i + 2) fname builder in
+              let ptr = L.build_struct_gep lenum enum_alloc (f_i + 2) fname !builder in
               let arg_val =
                 try Hashtbl.find arg_map fname with
                 | Not_found -> L.const_null (get_llvm_type (A.User "i32"))
               in
-              ignore (L.build_store arg_val ptr builder))
+              ignore (L.build_store arg_val ptr !builder))
            common_fields;
          if variant_payload_fields <> []
          then (
-           let v_field_types = List.map (fun (_, t) -> get_llvm_type t) variant_payload_fields in
+           let v_field_types =
+             List.map (fun (_, t) -> get_llvm_type t) variant_payload_fields
+           in
            let data_struct_type = L.struct_type context (Array.of_list v_field_types) in
            let data_size = L.size_of data_struct_type in
-           let data_size_i64 = L.build_intcast data_size i64_type "size64" builder in
+           let data_size_i64 = L.build_intcast data_size i64_type "size64" !builder in
            let data_alloc =
              L.build_call
                (L.function_type (L.pointer_type context) [| i64_type |])
-               (L.lookup_function "malloc" the_module |> Option.get)
+               (L.lookup_function "malloc" !the_module |> Option.get)
                [| data_size_i64 |]
                "data"
-               builder
+               !builder
            in
            List.iteri
              (fun f_i (fname, _ftyp) ->
-                let ptr = L.build_struct_gep data_struct_type data_alloc f_i fname builder in
+                let ptr =
+                  L.build_struct_gep data_struct_type data_alloc f_i fname !builder
+                in
                 let arg_val =
                   try Hashtbl.find arg_map fname with
                   | Not_found -> L.const_null (get_llvm_type (A.User "i32"))
                 in
-                ignore (L.build_store arg_val ptr builder))
+                ignore (L.build_store arg_val ptr !builder))
              variant_payload_fields;
            let data_field_ptr =
-             L.build_struct_gep lenum enum_alloc 1 "data_ptr" builder
+             L.build_struct_gep lenum enum_alloc 1 "data_ptr" !builder
            in
-           ignore (L.build_store data_alloc data_field_ptr builder))
+           ignore (L.build_store data_alloc data_field_ptr !builder))
          else (
            let data_field_ptr =
-             L.build_struct_gep lenum enum_alloc 1 "data_ptr" builder
+             L.build_struct_gep lenum enum_alloc 1 "data_ptr" !builder
            in
            ignore
              (L.build_store
                 (L.const_pointer_null (L.pointer_type context))
                 data_field_ptr
-                builder));
-         ignore (L.build_ret enum_alloc builder))
+                !builder));
+         ignore (L.build_ret enum_alloc !builder))
       variants;
     let old_ctx = !current_type_context in
     current_type_context := Some (enum_name, A.User enum_name);
     (match with_blk with
      | Some blk ->
-       List.iter (fun t -> match t with A.Statement s -> codegen_stmt s | _ -> ()) blk
+       List.iter
+         (fun t ->
+            match t with
+            | A.Statement s -> codegen_stmt s
+            | _ -> ())
+         blk
      | None -> ());
     current_type_context := old_ctx;
     L.const_null (L.pointer_type context)
@@ -849,8 +894,9 @@ and codegen_decl = function
           match explicit_ret with
           | Some t -> t
           | None ->
-            if String.ends_with ~suffix:"_show" actual_name
-               || String.ends_with ~suffix:"_introduce" actual_name
+            if
+              String.ends_with ~suffix:"_show" actual_name
+              || String.ends_with ~suffix:"_introduce" actual_name
             then A.User "string"
             else (
               match body with
@@ -861,12 +907,12 @@ and codegen_decl = function
         let ft = L.function_type ret_type param_types in
         Hashtbl.add function_protos actual_name (ft, ret_ast_type);
         let the_function =
-          match L.lookup_function actual_name the_module with
-          | None -> L.declare_function actual_name ft the_module
+          match L.lookup_function actual_name !the_module with
+          | None -> L.declare_function actual_name ft !the_module
           | Some _ -> raise (Error ("Function already defined: " ^ actual_name))
         in
         let bb = L.append_block context "entry" the_function in
-        L.position_at_end bb builder;
+        L.position_at_end bb !builder;
         Hashtbl.clear named_values;
         Hashtbl.clear named_value_types;
         let args = L.params the_function in
@@ -883,13 +929,13 @@ and codegen_decl = function
           then (
             match L.classify_type (L.type_of ret_val), L.classify_type ret_type with
             | L.TypeKind.Pointer, L.TypeKind.Integer ->
-              L.build_ptrtoint ret_val i32_type "retcast" builder
+              L.build_ptrtoint ret_val i32_type "retcast" !builder
             | L.TypeKind.Integer, L.TypeKind.Pointer ->
-              L.build_inttoptr ret_val (L.pointer_type context) "retcast" builder
+              L.build_inttoptr ret_val (L.pointer_type context) "retcast" !builder
             | _ -> ret_val)
           else ret_val
         in
-        ignore (L.build_ret ret_val_fixed builder);
+        ignore (L.build_ret ret_val_fixed !builder);
         in_function := false;
         the_function
       with
@@ -897,16 +943,21 @@ and codegen_decl = function
         in_function := false;
         raise e)
   | A.Import_decl { name; calling_conf = _; link_name } ->
+    Logger.code#debug "Processing Import_decl: Nova name=%s, Link name=%s" name link_name;
     let param_types = [||] in
     let ft = L.var_arg_function_type i32_type param_types in
     let the_function =
-      match L.lookup_function link_name the_module with
-      | None -> L.declare_function link_name ft the_module
+      match L.lookup_function link_name !the_module with
+      | None -> L.declare_function link_name ft !the_module
       | Some f -> f
     in
-    let mangled_name = mangle [] name in
-    Hashtbl.add global_values mangled_name the_function;
-    Hashtbl.add function_protos mangled_name (ft, A.User "i32");
+    let nova_qualified_name =
+      if !current_module_name = "" then name
+      else !current_module_name ^ "_" ^ name
+    in
+    Hashtbl.add local_imports name nova_qualified_name;
+    Hashtbl.add external_link_names nova_qualified_name link_name;
+    Hashtbl.add function_protos nova_qualified_name (ft, A.User "i32");
     the_function
   | _ -> raise (Error "Declaration type not implemented")
 
@@ -933,7 +984,7 @@ and codegen_stmt = function
     ignore (ensure_main ());
     let f = ensure_main () in
     let bb = L.entry_block f in
-    L.position_at_end bb builder;
+    L.position_at_end bb !builder;
     ignore (codegen_expr expr)
   | _ -> raise (Error "Statement not implemented")
 ;;
@@ -945,39 +996,28 @@ let codegen (ast : A.t) =
     ignore (ensure_main ());
     let f = ensure_main () in
     let bb = L.entry_block f in
-    L.position_at_end bb builder;
+    L.position_at_end bb !builder;
     ignore (codegen_expr e)
   | A.Error e -> raise (Error e)
 ;;
 
 let finish_module () =
-  match L.lookup_function main_func_name the_module with
+  match L.lookup_function main_func_name !the_module with
   | Some f ->
     let bb = L.entry_block f in
-    L.position_at_end bb builder;
-    ignore (L.build_ret (L.const_int i32_type 0) builder)
+    L.position_at_end bb !builder;
+    ignore (L.build_ret (L.const_int i32_type 0) !builder)
   | None -> ()
 ;;
 
 let reset_module () =
   Hashtbl.clear named_values;
   Hashtbl.clear named_value_types;
-  Hashtbl.clear function_protos;
-  Hashtbl.clear global_values;
-  Hashtbl.clear named_struct_types;
-  Hashtbl.clear struct_field_indices;
-  Hashtbl.clear struct_field_types;
-  Hashtbl.clear variant_map;
-  Hashtbl.clear variant_indices;
-  Hashtbl.clear local_imports;
-  Hashtbl.clear opened_modules;
   in_function := false;
   current_type_context := None;
   current_module_name := "";
-  let funcs = ref [] in
-  L.iter_functions (fun f -> funcs := f :: !funcs) the_module;
-  List.iter L.delete_function !funcs;
-  let globals = ref [] in
-  L.iter_globals (fun g -> globals := g :: !globals) the_module;
-  List.iter L.delete_global !globals
-;;
+
+  L.dispose_module !the_module; (* Dispose the old module *)
+  the_module := L.create_module context "Nova"; (* Create a new module *)
+  builder := L.builder context; (* Create a new builder for the new module *)
+
