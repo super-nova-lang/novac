@@ -34,9 +34,9 @@ let get_ok_or_fail = function
   | Error err -> failwith err
 ;;
 
-let wrap_unary (u : Node.unary_expr) : Node.expression =
-  Node.Relational_expr
-    (Node.Relational_val (Node.Additive_val (Node.Multiplicative_val u)))
+let wrap_unary (u : Ast.unary_expr) : Ast.expression =
+  Ast.Relational_expr
+    (Ast.Relational_val (Ast.Additive_val (Ast.Multiplicative_val u)))
 ;;
 
 let rec parse p =
@@ -45,7 +45,7 @@ let rec parse p =
     match parse_toplevel p with
     | Ok stmt -> stmts := stmt :: !stmts
     | Error err ->
-      stmts := Node.Error err :: !stmts;
+      stmts := Ast.Error err :: !stmts;
       breakout p
   done;
   List.rev !stmts
@@ -67,7 +67,7 @@ and parse_toplevel p =
   match peek p with
   | Token.Let ->
     (match parse_decl_stmt p tags with
-     | Ok stmt -> Ok (Node.Statement stmt)
+     | Ok stmt -> Ok (Ast.Statement stmt)
      | Error err -> Error err)
   | Token.Ident _ ->
     let current_pos = p.pos in
@@ -81,15 +81,15 @@ and parse_toplevel p =
     if is_decl
     then (
       match parse_decl_stmt p tags with
-      | Ok stmt -> Ok (Node.Statement stmt)
+      | Ok stmt -> Ok (Ast.Statement stmt)
       | Error err -> Error err)
     else (
       match parse_statement p with
-      | Ok stmt -> Ok (Node.Statement stmt)
+      | Ok stmt -> Ok (Ast.Statement stmt)
       | Error err -> Error err)
   | _ ->
     (match parse_statement p with
-     | Ok stmt -> Ok (Node.Statement stmt)
+     | Ok stmt -> Ok (Ast.Statement stmt)
      | Error err -> Error err)
 
 and parse_statement p =
@@ -116,7 +116,7 @@ and parse_open_stmt p =
       elems)
     else []
   in
-  Ok (Node.Open_stmt { mods; elements })
+  Ok (Ast.Open_stmt { mods; elements })
 
 and parse_module_path p =
   let rec aux acc =
@@ -146,7 +146,7 @@ and parse_open_element p =
       | _ -> None (* Should be an error *))
     else None
   in
-  { Node.path; alias }
+  { Ast.path; alias }
 
 and parse_tags p =
   let rec aux acc =
@@ -164,15 +164,15 @@ and parse_tag p =
       if peek p = Token.Open_paren
       then (
         let call = parse_call_expr_with_name name p in
-        Node.Tag_call call)
-      else Node.Tag_name name
+        Ast.Tag_call call)
+      else Ast.Tag_name name
     | Token.Derive ->
       advance p;
       if peek p = Token.Open_paren
       then (
         let call = parse_call_expr_with_name "derive" p in
-        Node.Tag_call call)
-      else Node.Tag_name "derive"
+        Ast.Tag_call call)
+      else Ast.Tag_name "derive"
     | _ -> failwith "Expected identifier in tag"
   in
   expect p Token.Close_square |> ignore;
@@ -213,7 +213,7 @@ and parse_decl_stmt p tags =
         parse_list p [ Token.Semi_colon; Token.Eof; Token.Let ] (fun p ->
           parse_expression p |> get_ok_or_fail)
       in
-      Ok (Node.Decl_stmt (Node.Curry_decl { tags; name; curried; input })))
+      Ok (Ast.Decl_stmt (Ast.Curry_decl { tags; name; curried; input })))
     else (
       let params =
         if peek p = Token.Eql || peek p = Token.Skinny_arrow
@@ -239,7 +239,7 @@ and parse_decl_stmt p tags =
           parse_body p)
         else [], None
       in
-      Ok (Node.Decl_stmt (Node.Decl { tags; name; params; explicit_ret; body })))
+      Ok (Ast.Decl_stmt (Ast.Decl { tags; name; params; explicit_ret; body })))
   | Token.Back_arrow ->
     advance p;
     let curried =
@@ -251,7 +251,7 @@ and parse_decl_stmt p tags =
       parse_list p [ Token.Semi_colon; Token.Eof; Token.Let ] (fun p ->
         parse_expression p |> get_ok_or_fail)
     in
-    Ok (Node.Decl_stmt (Node.Curry_decl { tags; name; curried; input }))
+    Ok (Ast.Decl_stmt (Ast.Curry_decl { tags; name; curried; input }))
   | Token.Colon ->
     (* Variable with type, e.g. let x : i32 = 5 *)
     advance p;
@@ -263,12 +263,12 @@ and parse_decl_stmt p tags =
         parse_body p)
       else [], None
     in
-    Ok (Node.Decl_stmt (Node.Decl { tags; name; params = []; explicit_ret; body }))
+    Ok (Ast.Decl_stmt (Ast.Decl { tags; name; params = []; explicit_ret; body }))
   | Token.Eql | Token.Walrus ->
     (* Inferred variable, e.g. let x = 5 *)
     advance p;
     let body = parse_body p in
-    Ok (Node.Decl_stmt (Node.Decl { tags; name; params = []; explicit_ret = None; body }))
+    Ok (Ast.Decl_stmt (Ast.Decl { tags; name; params = []; explicit_ret = None; body }))
   | _ -> Error (Printf.sprintf "Unexpected token %s in declaration" (Token.show (peek p)))
 
 and parse_decl_param p =
@@ -283,7 +283,7 @@ and parse_decl_param p =
   if peek p = Token.Ellipsis
   then (
     advance p;
-    Node.Variadic name)
+    Ast.Variadic name)
   else (
     let param_type, default_value =
       if peek p = Token.Colon
@@ -309,18 +309,18 @@ and parse_decl_param p =
         None, default)
     in
     match is_optional, param_type, default_value with
-    | false, Some t, None -> Node.Typed (name, t)
-    | false, None, None -> Node.Untyped name
-    | true, Some t, Some e -> Node.OptionalTyped (name, t, e)
-    | true, None, Some e -> Node.OptionalUntyped (name, e)
+    | false, Some t, None -> Ast.Typed (name, t)
+    | false, None, None -> Ast.Untyped name
+    | true, Some t, Some e -> Ast.OptionalTyped (name, t, e)
+    | true, None, Some e -> Ast.OptionalUntyped (name, e)
     | _ -> failwith "Invalid parameter declaration")
 
 and parse_type p =
   match consume p with
-  | Token.Ident s -> Node.User s
+  | Token.Ident s -> Ast.User s
   | Token.Open_paren ->
     expect p Token.Close_paren |> ignore;
-    Node.Unit_typ
+    Ast.Unit_typ
   | _ -> failwith "Invalid type"
 
 and parse_body p =
@@ -360,17 +360,17 @@ and parse_body p =
 and parse_return_stmt p =
   expect p Token.Return |> ignore;
   if peek p = Token.Semi_colon || is_at_end p
-  then Ok (Node.Return_stmt Node.Naked)
+  then Ok (Ast.Return_stmt Ast.Naked)
   else (
     let expr = parse_expression p |> get_ok_or_fail in
-    Ok (Node.Return_stmt (With_expr expr)))
+    Ok (Ast.Return_stmt (With_expr expr)))
 
 and parse_if_stmt p =
   expect p Token.If |> ignore;
   let cond = parse_expression p |> get_ok_or_fail in
   let body = parse_body_as_t_list p in
   let elif = parse_else_stmt p in
-  Ok (Node.If_stmt { cond; body; elif })
+  Ok (Ast.If_stmt { cond; body; elif })
 
 and parse_else_stmt p =
   if peek p = Token.Else
@@ -382,11 +382,11 @@ and parse_else_stmt p =
       let cond = parse_expression p |> get_ok_or_fail in
       let body = parse_body_as_t_list p in
       let elif = parse_else_stmt p in
-      Node.Else_if (cond, body, elif))
+      Ast.Else_if (cond, body, elif))
     else (
       let body = parse_body_as_t_list p in
-      Node.Else body))
-  else Node.Nope
+      Ast.Else body))
+  else Ast.Nope
 
 and parse_body_as_t_list p =
   if peek p = Token.Open_brack
@@ -396,21 +396,21 @@ and parse_body_as_t_list p =
     while peek p <> Token.Close_brack do
       if peek p = Token.Eof then failwith "Unclosed block";
       match parse_statement p with
-      | Ok stmt -> stmts := Node.Statement stmt :: !stmts
+      | Ok stmt -> stmts := Ast.Statement stmt :: !stmts
       | Error err -> failwith err
     done;
     expect p Token.Close_brack |> ignore;
     List.rev !stmts)
   else (
     match parse_statement p with
-    | Ok stmt -> [ Node.Statement stmt ]
+    | Ok stmt -> [ Ast.Statement stmt ]
     | Error err -> failwith err)
 
 and parse_expression_stmt p =
   match parse_expression p with
   | Ok expr ->
     if peek p = Token.Semi_colon then advance p;
-    Ok (Node.Expression_stmt expr)
+    Ok (Ast.Expression_stmt expr)
   | Error err -> Error err
 
 and parse_expression p =
@@ -445,7 +445,7 @@ and parse_struct_expr p =
   let fields = parse_list p [ Token.Close_brack ] parse_struct_field in
   expect p Token.Close_brack |> ignore;
   let with_blk = parse_with_block p in
-  Ok (Node.Struct_expr (fields, with_blk))
+  Ok (Ast.Struct_expr (fields, with_blk))
 
 and parse_struct_field p =
   let name =
@@ -470,7 +470,7 @@ and parse_enum_expr p =
   let variants = parse_list p [ Token.Close_brack ] parse_enum_variant in
   expect p Token.Close_brack |> ignore;
   let with_blk = parse_with_block p in
-  Ok (Node.Enum_expr (variants, with_blk))
+  Ok (Ast.Enum_expr (variants, with_blk))
 
 and parse_enum_variant p =
   let name =
@@ -488,8 +488,8 @@ and parse_enum_variant p =
         expect p Token.Open_brack |> ignore;
         let fields = parse_list p [ Token.Close_brack ] parse_struct_field in
         expect p Token.Close_brack |> ignore;
-        Some (Node.Struct_body fields))
-      else Some (Node.Type_body (parse_type p)))
+        Some (Ast.Struct_body fields))
+      else Some (Ast.Type_body (parse_type p)))
     else None
   in
   name, body
@@ -506,7 +506,7 @@ and parse_macro_expr p =
     | Error err -> failwith err
   done;
   expect p Token.Close_brack |> ignore;
-  Ok (Node.Macro_expr (List.rev !stmts))
+  Ok (Ast.Macro_expr (List.rev !stmts))
 
 and parse_derive_expr p =
   expect p Token.Derive |> ignore;
@@ -520,68 +520,68 @@ and parse_derive_expr p =
     | Error err -> failwith err
   done;
   expect p Token.Close_brack |> ignore;
-  Ok (Node.Derive_expr (List.rev !stmts))
+  Ok (Ast.Derive_expr (List.rev !stmts))
 
 and parse_relational_expr p =
   let left = parse_additive_expr p |> get_ok_or_fail in
   match peek p with
   | Token.Double_eql ->
     advance p;
-    Ok (Node.Relational_expr (Node.Eql (left, parse_additive_expr p |> get_ok_or_fail)))
+    Ok (Ast.Relational_expr (Ast.Eql (left, parse_additive_expr p |> get_ok_or_fail)))
   | Token.Lesser_eql ->
     advance p;
-    Ok (Node.Relational_expr (Node.Leq (left, parse_additive_expr p |> get_ok_or_fail)))
+    Ok (Ast.Relational_expr (Ast.Leq (left, parse_additive_expr p |> get_ok_or_fail)))
   | Token.Greater_eql ->
     advance p;
-    Ok (Node.Relational_expr (Node.Geq (left, parse_additive_expr p |> get_ok_or_fail)))
+    Ok (Ast.Relational_expr (Ast.Geq (left, parse_additive_expr p |> get_ok_or_fail)))
   | Token.Lesser ->
     advance p;
-    Ok (Node.Relational_expr (Node.Lt (left, parse_additive_expr p |> get_ok_or_fail)))
+    Ok (Ast.Relational_expr (Ast.Lt (left, parse_additive_expr p |> get_ok_or_fail)))
   | Token.Greater ->
     advance p;
-    Ok (Node.Relational_expr (Node.Gt (left, parse_additive_expr p |> get_ok_or_fail)))
-  | _ -> Ok (Node.Relational_expr (Node.Relational_val left))
+    Ok (Ast.Relational_expr (Ast.Gt (left, parse_additive_expr p |> get_ok_or_fail)))
+  | _ -> Ok (Ast.Relational_expr (Ast.Relational_val left))
 
 and parse_additive_expr p =
   let rec aux left =
     match peek p with
     | Token.Plus ->
       advance p;
-      aux (Node.Add (left, parse_multiplicative_expr p |> get_ok_or_fail))
+      aux (Ast.Add (left, parse_multiplicative_expr p |> get_ok_or_fail))
     | Token.Dash ->
       advance p;
-      aux (Node.Sub (left, parse_multiplicative_expr p |> get_ok_or_fail))
+      aux (Ast.Sub (left, parse_multiplicative_expr p |> get_ok_or_fail))
     | _ -> left
   in
-  Ok (aux (Node.Additive_val (parse_multiplicative_expr p |> get_ok_or_fail)))
+  Ok (aux (Ast.Additive_val (parse_multiplicative_expr p |> get_ok_or_fail)))
 
 and parse_multiplicative_expr p =
   let rec aux left =
     match peek p with
     | Token.Star ->
       advance p;
-      aux (Node.Mul (left, parse_unary_expr p |> get_ok_or_fail))
+      aux (Ast.Mul (left, parse_unary_expr p |> get_ok_or_fail))
     | Token.Forward_slash ->
       advance p;
-      aux (Node.Div (left, parse_unary_expr p |> get_ok_or_fail))
+      aux (Ast.Div (left, parse_unary_expr p |> get_ok_or_fail))
     | Token.Mod ->
       advance p;
-      aux (Node.Mod (left, parse_unary_expr p |> get_ok_or_fail))
+      aux (Ast.Mod (left, parse_unary_expr p |> get_ok_or_fail))
     | Token.Carrot ->
       advance p;
-      aux (Node.Pow (left, parse_unary_expr p |> get_ok_or_fail))
+      aux (Ast.Pow (left, parse_unary_expr p |> get_ok_or_fail))
     | _ -> left
   in
-  Ok (aux (Node.Multiplicative_val (parse_unary_expr p |> get_ok_or_fail)))
+  Ok (aux (Ast.Multiplicative_val (parse_unary_expr p |> get_ok_or_fail)))
 
 and parse_unary_expr p =
   match peek p with
   | Token.Dash ->
     advance p;
-    Ok (Node.Neg (parse_unary_expr p |> get_ok_or_fail))
+    Ok (Ast.Neg (parse_unary_expr p |> get_ok_or_fail))
   | Token.Bang ->
     advance p;
-    Ok (Node.Not (parse_unary_expr p |> get_ok_or_fail))
+    Ok (Ast.Not (parse_unary_expr p |> get_ok_or_fail))
   | _ -> parse_primary p
 
 and parse_primary p =
@@ -590,7 +590,7 @@ and parse_primary p =
     | Token.Dot ->
       advance p;
       (match consume p with
-       | Token.Ident member -> aux (Node.Unary_member (left, member))
+       | Token.Ident member -> aux (Ast.Unary_member (left, member))
        | _ -> failwith "Expected identifier after .")
     | Token.Bang ->
       advance p;
@@ -599,30 +599,30 @@ and parse_primary p =
         advance p;
         let params = parse_list p [ Token.Close_paren ] parse_call_param in
         expect p Token.Close_paren |> ignore;
-        let call = Node.Macro_call (wrap_unary left, params) in
-        aux (Node.Unary_call call))
-      else Node.Not (aux left) (* This is a bit weird but Bang can be Not or Macro *)
+        let call = Ast.Macro_call (wrap_unary left, params) in
+        aux (Ast.Unary_call call))
+      else Ast.Not (aux left) (* This is a bit weird but Bang can be Not or Macro *)
     | Token.Open_paren ->
       advance p;
       let params = parse_list p [ Token.Close_paren ] parse_call_param in
       expect p Token.Close_paren |> ignore;
-      let call = Node.Decl_call (wrap_unary left, params) in
-      aux (Node.Unary_call call)
+      let call = Ast.Decl_call (wrap_unary left, params) in
+      aux (Ast.Unary_call call)
     | _ -> left
   in
   let res =
     match peek p with
     | Token.Ident name ->
       advance p;
-      Node.Unary_val (Node.Ident name)
+      Ast.Unary_val (Ast.Ident name)
     | Token.Dot ->
       advance p;
       (match consume p with
-       | Token.Ident name -> Node.Unary_val (Node.Implicit_member name)
+       | Token.Ident name -> Ast.Unary_val (Ast.Implicit_member name)
        | _ -> failwith "Expected identifier after .")
     | _ ->
       (match parse_atom p with
-       | Ok atom -> Node.Unary_val atom
+       | Ok atom -> Ast.Unary_val atom
        | Error err -> failwith err)
   in
   Ok (aux res)
@@ -633,10 +633,10 @@ and parse_call_expr_with_name name p =
   expect p Token.Open_paren |> ignore;
   let params = parse_list p [ Token.Close_paren ] parse_call_param in
   expect p Token.Close_paren |> ignore;
-  let target = Node.Unary_val (Node.Ident name) in
+  let target = Ast.Unary_val (Ast.Ident name) in
   if is_macro
-  then Node.Macro_call (wrap_unary target, params)
-  else Node.Decl_call (wrap_unary target, params)
+  then Ast.Macro_call (wrap_unary target, params)
+  else Ast.Decl_call (wrap_unary target, params)
 
 and parse_call_param p =
   if peek p = Token.Tilde
@@ -649,28 +649,28 @@ and parse_call_param p =
     in
     expect p Token.Eql |> ignore;
     let expr = parse_expression p |> get_ok_or_fail in
-    Node.Named (name, expr))
+    Ast.Named (name, expr))
   else (
     let expr = parse_expression p |> get_ok_or_fail in
-    Node.Positional expr)
+    Ast.Positional expr)
 
 and parse_atom p =
   match consume p with
-  | Token.Number n -> Ok (Node.Int n)
-  | Token.String s -> Ok (Node.String s)
-  | Token.Char c -> Ok (Node.Char c)
-  | Token.True -> Ok (Node.Bool true)
-  | Token.False -> Ok (Node.Bool false)
-  | Token.Ident s -> Ok (Node.Ident s)
+  | Token.Number n -> Ok (Ast.Int n)
+  | Token.String s -> Ok (Ast.String s)
+  | Token.Char c -> Ok (Ast.Char c)
+  | Token.True -> Ok (Ast.Bool true)
+  | Token.False -> Ok (Ast.Bool false)
+  | Token.Ident s -> Ok (Ast.Ident s)
   | Token.Open_paren ->
     if peek p = Token.Close_paren
     then (
       advance p;
-      Ok Node.Unit_val)
+      Ok Ast.Unit_val)
     else (
       let expr = parse_expression p |> get_ok_or_fail in
       expect p Token.Close_paren |> ignore;
-      Ok (Node.Grouping expr))
+      Ok (Ast.Grouping expr))
   | t ->
     Error
       (Printf.sprintf "Unexpected token %s at %s" (Token.show t) (Token.show_loc (loc p)))

@@ -10,7 +10,7 @@
 *   **`lib/`**: Contains the core compiler logic.
     *   `lexer.ml`: The lexer implementation.
     *   `parser.ml`: The parser implementation.
-    *   `node.ml`: AST node definitions.
+    *   `ast.ml`: AST node definitions.
     *   `token.ml`: Token definitions.
     *   `test.ml`: Expectation tests using `ppx_expect`.
     *   `dune`: Build configuration for the library.
