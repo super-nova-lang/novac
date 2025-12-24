@@ -181,17 +181,21 @@ and codegen_call = function
                             else
                               actual_args_provided
                           in
-                          (* Cast arguments to expected types *)
-                          List.mapi (fun i arg ->
-                            let expected_type = Array.get expected_arg_types i in
-                            if L.type_of arg <> expected_type then
-                              match L.classify_type (L.type_of arg), L.classify_type expected_type with
-                              | L.TypeKind.Pointer, L.TypeKind.Integer -> L.build_ptrtoint arg expected_type "argcast" builder
-                              | L.TypeKind.Integer, L.TypeKind.Pointer -> L.build_inttoptr arg expected_type "argcast" builder
-                              | L.TypeKind.Integer, L.TypeKind.Integer -> L.build_intcast arg expected_type "argcast" builder
-                              | _ -> arg
-                            else arg
-                          ) args_with_padding
+                                      (* Cast arguments to expected types *)
+                                      List.mapi (fun i arg ->
+                                        let expected_count = Array.length expected_arg_types in
+                                        if i < expected_count then
+                                          let expected_type = Array.get expected_arg_types i in
+                                          if L.type_of arg <> expected_type then
+                                            match L.classify_type (L.type_of arg), L.classify_type expected_type with
+                                            | L.TypeKind.Pointer, L.TypeKind.Integer -> L.build_ptrtoint arg expected_type "argcast" builder
+                                            | L.TypeKind.Integer, L.TypeKind.Pointer -> L.build_inttoptr arg expected_type "argcast" builder
+                                            | L.TypeKind.Integer, L.TypeKind.Integer -> L.build_intcast arg expected_type "argcast" builder
+                                            | _ -> arg
+                                          else arg
+                                        else arg
+                                      ) args_with_padding
+                          
                         in
               
               let func_val =
@@ -805,7 +809,28 @@ let codegen (ast : A.t) =
 let finish_module () =
   match L.lookup_function main_func_name the_module with
   | Some f ->
-      let bb = L.entry_block f in
-      L.position_at_end bb builder;
-      ignore (L.build_ret (L.const_int i32_type 0) builder)
+    let bb = L.entry_block f in
+    L.position_at_end bb builder;
+    ignore (L.build_ret (L.const_int i32_type 0) builder)
   | None -> ()
+;;
+
+let reset_module () =
+  Hashtbl.clear named_values;
+  Hashtbl.clear named_value_types;
+  Hashtbl.clear function_protos;
+  Hashtbl.clear global_values;
+  Hashtbl.clear named_struct_types;
+  Hashtbl.clear struct_field_indices;
+  Hashtbl.clear struct_field_types;
+  Hashtbl.clear variant_map;
+  Hashtbl.clear variant_indices;
+  in_function := false;
+  current_type_context := None;
+  let funcs = ref [] in
+  L.iter_functions (fun f -> funcs := f :: !funcs) the_module;
+  List.iter L.delete_function !funcs;
+  let globals = ref [] in
+  L.iter_globals (fun g -> globals := g :: !globals) the_module;
+  List.iter L.delete_global !globals
+;;
