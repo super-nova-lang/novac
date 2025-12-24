@@ -1,26 +1,55 @@
 open Novac
 open Cmdliner
 
-let process_lex files =
+let stdlib_flag =
+  let doc = "Use the standard library files from the 'stdlib' directory instead of providing files." in
+  Arg.(value & flag & info ["s"; "stdlib"] ~doc)
+
+let files_arg =
+  let doc = "Paths to the .nova files." in
+  Arg.(value & pos_all file [] & info [] ~docv:"FILES" ~doc)
+
+let stdlib_dir = "stdlib"
+
+let get_stdlib_files () =
+  let files = Sys.readdir stdlib_dir |> Array.to_list in
+  List.filter (fun f -> Filename.check_suffix f ".nova") files
+  |> List.map (fun f -> Filename.concat stdlib_dir f)
+;;
+
+let get_files_to_process stdlib_flag files =
+  if stdlib_flag
+  then get_stdlib_files ()
+  else if files = []
+  then (
+    Printf.eprintf "Error: No input files provided.\n";
+    exit 1)
+  else files
+;;
+
+let process_lex stdlib_flag files =
+  let files_to_process = get_files_to_process stdlib_flag files in
   List.iter
     (fun file ->
        Printf.printf "File: %s\n" file;
        let tokens = Lexer.lex_from_file file in
        List.iter (fun (t, _) -> Printf.printf "  found: %s\n" (Token.show t)) tokens)
-    files
+    files_to_process
 ;;
 
-let process_parse files =
+let process_parse stdlib_flag files =
+  let files_to_process = get_files_to_process stdlib_flag files in
   List.iter
     (fun file ->
        Printf.printf "File: %s\n" file;
        let tokens = Lexer.lex_from_file file in
        let nodes = Parser.parse (Parser.create tokens) in
        List.iter (fun n -> Printf.printf "  found: %s\n" (Ast.show n)) nodes)
-    files
+    files_to_process
 ;;
 
-let process_codegen files =
+let process_codegen stdlib_flag files =
+  let files_to_process = get_files_to_process stdlib_flag files in
   List.iter
     (fun file ->
        let module_name = Filename.remove_extension (Filename.basename file) in
@@ -28,12 +57,13 @@ let process_codegen files =
        let tokens = Lexer.lex_from_file file in
        let nodes = Parser.parse (Parser.create tokens) in
        List.iter Codegen.codegen nodes)
-    files;
+    files_to_process;
   Codegen.finish_module ();
   Llvm.dump_module Codegen.the_module
 ;;
 
-let compile_to_exe files exe_file =
+let compile_to_exe stdlib_flag files exe_file =
+  let files_to_process = get_files_to_process stdlib_flag files in
   List.iter
     (fun file ->
        let module_name = Filename.remove_extension (Filename.basename file) in
@@ -41,7 +71,7 @@ let compile_to_exe files exe_file =
        let tokens = Lexer.lex_from_file file in
        let nodes = Parser.parse (Parser.create tokens) in
        List.iter Codegen.codegen nodes)
-    files;
+    files_to_process;
   Codegen.finish_module ();
   let ll_code = Llvm.string_of_llmodule Codegen.the_module in
   let ll_file = Filename.temp_file "output" ".ll" in
@@ -54,15 +84,15 @@ let compile_to_exe files exe_file =
   exit_code
 ;;
 
-let process_compile files =
+let process_compile stdlib_flag files =
   let exe_file = "main" in
-  let exit_code = compile_to_exe files exe_file in
+  let exit_code = compile_to_exe stdlib_flag files exe_file in
   if exit_code <> 0 then exit exit_code
 ;;
 
-let process_run files =
+let process_run stdlib_flag files =
   let exe_file = Filename.temp_file "nova_run" ".exe" in
-  let exit_code = compile_to_exe files exe_file in
+  let exit_code = compile_to_exe stdlib_flag files exe_file in
   if exit_code <> 0
   then (
     Sys.remove exe_file;
@@ -75,39 +105,34 @@ let process_run files =
   if run_exit_code <> 0 then exit run_exit_code
 ;;
 
-let files =
-  let doc = "The files to process." in
-  Arg.(non_empty & pos_all string [] & info [] ~docv:"FILES" ~doc)
-;;
-
 let lex_cmd =
   let doc = "Lex the input files." in
   let info = Cmd.info "lex" ~doc in
-  Cmd.v info Term.(const process_lex $ files)
+  Cmd.v info Term.(const process_lex $ stdlib_flag $ files_arg)
 ;;
 
 let parse_cmd =
   let doc = "Parse the input files." in
   let info = Cmd.info "parse" ~doc in
-  Cmd.v info Term.(const process_parse $ files)
+  Cmd.v info Term.(const process_parse $ stdlib_flag $ files_arg)
 ;;
 
 let codegen_cmd =
   let doc = "Generate code for the input files." in
   let info = Cmd.info "codegen" ~doc in
-  Cmd.v info Term.(const process_codegen $ files)
+  Cmd.v info Term.(const process_codegen $ stdlib_flag $ files_arg)
 ;;
 
 let compile_cmd =
   let doc = "Compile the input files to an executable." in
   let info = Cmd.info "compile" ~doc in
-  Cmd.v info Term.(const process_compile $ files)
+  Cmd.v info Term.(const process_compile $ stdlib_flag $ files_arg)
 ;;
 
 let run_cmd =
   let doc = "Compile and run the input files." in
   let info = Cmd.info "run" ~doc in
-  Cmd.v info Term.(const process_run $ files)
+  Cmd.v info Term.(const process_run $ stdlib_flag $ files_arg)
 ;;
 
 let main_cmd =
