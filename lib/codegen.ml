@@ -9,6 +9,7 @@ let builder = L.builder context
 let named_values : (string, L.llvalue) Hashtbl.t = Hashtbl.create 10
 let function_protos : (string, L.lltype) Hashtbl.t = Hashtbl.create 10
 let global_values : (string, L.llvalue) Hashtbl.t = Hashtbl.create 10
+let in_function = ref false
 let i32_type = L.i32_type context
 let i64_type = L.i64_type context
 let bool_type = L.i1_type context
@@ -64,7 +65,14 @@ and codegen_multiplicative = function
     let l = codegen_multiplicative lhs in
     let r = codegen_unary rhs in
     L.build_sdiv l r "divtmp" builder
-  | _ -> raise (Error "Multiplicative op not implemented")
+  | A.Mod (lhs, rhs) ->
+    let l = codegen_multiplicative lhs in
+    let r = codegen_unary rhs in
+    L.build_srem l r "modtmp" builder
+  | A.Pow (lhs, rhs) ->
+    let l = codegen_multiplicative lhs in
+    let r = codegen_unary rhs in
+    L.build_xor l r "xortmp" builder
 
 and codegen_additive = function
   | A.Additive_val mult -> codegen_multiplicative mult
@@ -94,50 +102,68 @@ let get_llvm_type = function
   | _ -> i32_type (* Default to i32 for now *)
 ;;
 
-let codegen_decl = function
+let rec codegen_body (stmts, expr_opt) =
+  List.iter codegen_stmt stmts;
+  match expr_opt with
+  | Some expr -> codegen_expr expr
+  | None -> L.const_null i32_type (* Default void/nil *)
+
+and codegen_decl = function
   | A.Decl { name; params; body; explicit_ret; _ } ->
-    (* Prepare arguments *)
-    let args_and_types =
-      List.map
-        (function
-          | A.Typed (n, t) -> n, get_llvm_type t
-          | A.Untyped n -> n, i32_type (* Default to i32 *)
-          | _ -> raise (Error "Param type not supported"))
-        params
-    in
-    let param_types = Array.of_list (List.map snd args_and_types) in
-    let ret_type =
-      match explicit_ret with
-      | Some t -> get_llvm_type t
-      | None -> i32_type
-    in
-    let ft = L.function_type ret_type param_types in
-    Hashtbl.add function_protos name ft;
-    let the_function =
-      match L.lookup_function name the_module with
-      | None -> L.declare_function name ft the_module
-      | Some _ -> raise (Error ("Function already defined: " ^ name))
-    in
-    (* Create new block for function body *)
-    let bb = L.append_block context "entry" the_function in
-    L.position_at_end bb builder;
-    (* Update symbol table with args *)
-    Hashtbl.clear named_values;
-    let args = L.params the_function in
-    Array.iteri
-      (fun i a ->
-         let n, _ = List.nth args_and_types i in
-         L.set_value_name n a;
-         Hashtbl.add named_values n a)
-      args;
-    (* Generate body *)
-    let ret_val =
-      match body with
-      | [], Some expr -> codegen_expr expr
-      | _ -> raise (Error "Complex function body not implemented yet")
-    in
-    ignore (L.build_ret ret_val builder);
-    the_function
+    if !in_function
+    then (
+      (* Local declaration *)
+      if params <> [] then raise (Error "Nested functions not implemented");
+      let val_ = codegen_body body in
+      Hashtbl.add named_values name val_;
+      val_)
+    else (
+      (* Global function declaration *)
+      in_function := true;
+      try
+        (* Prepare arguments *)
+        let args_and_types =
+          List.map
+            (function
+              | A.Typed (n, t) -> n, get_llvm_type t
+              | A.Untyped n -> n, i32_type (* Default to i32 *)
+              | _ -> raise (Error "Param type not supported"))
+            params
+        in
+        let param_types = Array.of_list (List.map snd args_and_types) in
+        let ret_type =
+          match explicit_ret with
+          | Some t -> get_llvm_type t
+          | None -> i32_type
+        in
+        let ft = L.function_type ret_type param_types in
+        Hashtbl.add function_protos name ft;
+        let the_function =
+          match L.lookup_function name the_module with
+          | None -> L.declare_function name ft the_module
+          | Some _ -> raise (Error ("Function already defined: " ^ name))
+        in
+        (* Create new block for function body *)
+        let bb = L.append_block context "entry" the_function in
+        L.position_at_end bb builder;
+        (* Update symbol table with args *)
+        Hashtbl.clear named_values;
+        let args = L.params the_function in
+        Array.iteri
+          (fun i a ->
+             let n, _ = List.nth args_and_types i in
+             L.set_value_name n a;
+             Hashtbl.add named_values n a)
+          args;
+        (* Generate body *)
+        let ret_val = codegen_body body in
+        ignore (L.build_ret ret_val builder);
+        in_function := false;
+        the_function
+      with
+      | e ->
+        in_function := false;
+        raise e)
   | A.Import_decl { name; calling_conf = _; link_name } ->
     let ret_type = i32_type in
     let param_types = [| |] in
@@ -151,9 +177,8 @@ let codegen_decl = function
     Hashtbl.add function_protos name ft;
     the_function
   | _ -> raise (Error "Declaration type not implemented")
-;;
 
-let codegen_stmt = function
+and codegen_stmt = function
   | A.Decl_stmt decl -> ignore (codegen_decl decl)
   | A.Expression_stmt expr -> ignore (codegen_expr expr)
   | _ -> raise (Error "Statement not implemented")

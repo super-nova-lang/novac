@@ -1,3 +1,5 @@
+let printf :: import <- "c", "printf"
+
 let add :: a: i32, b: i32 = a + b
 let sub :: a, b -> i32 = a - b
 let mul :: a, b -> i32 = a * b
@@ -6,4 +8,9 @@ let my_complex_fn :: a, b, c -> i32 = {
     let res2 = b / res1;
     let res3 = c ^ (res1 - 55);
     res3
+}
+
+let main :: () = {
+    printf("add(6, 7) = %d\n", add(6, 7))
+    printf("mul(1, 1) = %d", mul(1, 1))
 }
