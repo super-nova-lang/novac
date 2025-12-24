@@ -47,9 +47,14 @@ The compiler provides several commands:
 *   **Parsing:** `dune exec bin/main.exe -- parse <path_to_nova_file>`
 *   **Code Generation:** `dune exec bin/main.exe -- codegen <path_to_nova_file>`
 *   **Compilation:** `dune exec bin/main.exe -- compile <path_to_nova_file>`
-*   **Run:** `dune exec bin/main.exe -- run <path_to_nova_file>`
+*   **Run:** `dune exec bin/main.exe -- run <path_to_nova_files>`
+
+The compiler supports multiple input files. Symbols are automatically mangled with the filename as a prefix (e.g., `file_func`) to avoid conflicts, unless the `#[no_mangle]` tag is used.
 
 Example:
+```bash
+dune exec bin/main.exe -- run file1.nova file2.nova
+```
 
 ```bash
 dune exec bin/main.exe -- compile examples/basic-functions.nova
