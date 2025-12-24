@@ -10,9 +10,9 @@ let%expect_test "parser" =
   [%expect {|
     File: basic_functions
     found: (Ast.Statement
-       (Ast.Decl_stmt
-          Ast.Import_decl {name = "printf"; calling_conf = "c";
-            link_name = "printf"}))
+       (Ast.Open_stmt
+          { Ast.mods = ["Std"];
+            elements = [{ Ast.path = ["C"; "printf"]; alias = None }] }))
     found: (Ast.Statement
        (Ast.Decl_stmt
           Ast.Decl {tags = []; name = "add";

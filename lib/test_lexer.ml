@@ -8,14 +8,14 @@ let%expect_test "lexer" =
   List.iter test_lexer Nova_tests.all;
   [%expect {|
     File: basic_functions
-    found: Token.Let
+    found: Token.Open
+    found: (Token.Ident "Std")
+    found: Token.With
+    found: Token.Open_brack
+    found: (Token.Ident "C")
+    found: Token.Dot
     found: (Token.Ident "printf")
-    found: Token.Double_colon
-    found: Token.Import
-    found: Token.Back_arrow
-    found: (Token.String "c")
-    found: Token.Comma
-    found: (Token.String "printf")
+    found: Token.Close_brack
     found: Token.Let
     found: (Token.Ident "add")
     found: Token.Double_colon

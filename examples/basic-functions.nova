@@ -1,4 +1,4 @@
-let printf :: import <- "c", "printf"
+open Std with { C.printf }
 
 let add :: a: i32, b: i32 = a + b
 let sub :: a, b -> i32 = a - b

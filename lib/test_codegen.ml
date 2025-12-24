@@ -5,8 +5,9 @@ let test_codegen (name, content) =
   let nodes = Parser.parse (Parser.create tokens) in
   List.iter Codegen.codegen nodes;
   Codegen.finish_module ();
-  Llvm.dump_module Codegen.the_module
+  Llvm.dump_module !Codegen.the_module
 ;;
+
 [@@@ocamlformat "disable"]
 let%expect_test "codegen" = 
   List.iter test_codegen Nova_tests.all;
@@ -16,12 +17,12 @@ let%expect_test "codegen" =
      This is strongly discouraged as backtraces are fragile.
      Please change this test to not include a backtrace. *)
   ("Novac.Codegen.Error(\"Declaration type not implemented\")")
-  Raised at Novac__Codegen.codegen_decl in file "lib/codegen.ml", line 910, characters 9-57
-  Called from Novac__Codegen.codegen_stmt in file "lib/codegen.ml", line 930, characters 31-50
+  Raised at Novac__Codegen.codegen_decl in file "lib/codegen.ml", line 964, characters 9-57
+  Called from Novac__Codegen.codegen_stmt in file "lib/codegen.ml", line 984, characters 31-50
   Called from Stdlib__List.iter in file "list.ml", line 114, characters 12-15
   Called from Novac__Test_codegen.test_codegen in file "lib/test_codegen.ml", line 6, characters 2-33
   Called from Stdlib__List.iter in file "list.ml", line 114, characters 12-15
-  Called from Novac__Test_codegen.(fun) in file "lib/test_codegen.ml", line 12, characters 2-39
+  Called from Novac__Test_codegen.(fun) in file "lib/test_codegen.ml", line 13, characters 2-39
   Called from Ppx_expect_runtime__Test_block.Configured.dump_backtrace in file "runtime/test_block.ml", line 142, characters 10-28
 
   Trailing output
@@ -32,8 +33,6 @@ let%expect_test "codegen" =
   @str = private unnamed_addr constant [16 x i8] c"add(6, 7) = %d\0A\00", align 1
   @str.1 = private unnamed_addr constant [16 x i8] c"mul(1, 1) = %d\0A\00", align 1
   @str.2 = private unnamed_addr constant [26 x i8] c"my_complex_fn(2, 1) = %d\0A\00", align 1
-
-  declare i32 @printf(...)
 
   define i32 @add(i32 %a, i32 %b) {
   entry:
@@ -66,14 +65,16 @@ let%expect_test "codegen" =
   define i32 @main() {
   entry:
     %0 = call i32 @add(i32 6, i32 7)
-    %1 = call i32 (...) @printf(ptr @str, i32 %0)
+    %1 = call i32 @Std_C_printf(ptr @str, i32 %0)
     %2 = call i32 @mul(i32 1, i32 1)
-    %3 = call i32 (...) @printf(ptr @str.1, i32 %2)
+    %3 = call i32 @Std_C_printf(ptr @str.1, i32 %2)
     %4 = call i32 @my_complex_fn(i32 2, i32 1, i32 0)
-    %5 = call i32 (...) @printf(ptr @str.2, i32 %4)
+    %5 = call i32 @Std_C_printf(ptr @str.2, i32 %4)
     ret i32 0
     ret i32 0
   }
+
+  declare i32 @Std_C_printf(ptr %0, i32 %1)
   ; ModuleID = 'Nova'
   source_filename = "Nova"
 
@@ -83,12 +84,12 @@ let%expect_test "codegen" =
   %some_struct.0 = type {}
 
   @str = private unnamed_addr constant [11 x i8] c"programmer\00", align 1
-  @str.3 = private unnamed_addr constant [10 x i8] c"sales rep\00", align 1
+  @str.1 = private unnamed_addr constant [10 x i8] c"sales rep\00", align 1
   @fmt = private unnamed_addr constant [36 x i8] c"Hello, my name is %s and I am a %s\0A\00", align 1
-  @str.4 = private unnamed_addr constant [7 x i8] c"Ashton\00", align 1
-  @str.5 = private unnamed_addr constant [5 x i8] c"nova\00", align 1
-  @fmt.6 = private unnamed_addr constant [17 x i8] c"Hourly rate: %d\0A\00", align 1
-  @str.7 = private unnamed_addr constant [10 x i8] c"Joe Shmoe\00", align 1
+  @str.2 = private unnamed_addr constant [7 x i8] c"Ashton\00", align 1
+  @str.3 = private unnamed_addr constant [5 x i8] c"nova\00", align 1
+  @fmt.4 = private unnamed_addr constant [17 x i8] c"Hourly rate: %d\0A\00", align 1
+  @str.5 = private unnamed_addr constant [10 x i8] c"Joe Shmoe\00", align 1
 
   define ptr @Job_programmer(i32 %0, i32 %1) {
   entry:
@@ -178,7 +179,7 @@ let%expect_test "codegen" =
     br i1 %tag_eq3, label %arm_2, label %next_2
 
   arm_2:                                            ; preds = %next_1
-    store ptr @str.3, ptr %match_res, align 8
+    store ptr @str.1, ptr %match_res, align 8
     br label %match_end
 
   next_2:                                           ; preds = %next_1
@@ -238,15 +239,15 @@ let%expect_test "codegen" =
 
   define i32 @main() {
   entry:
-    %0 = call ptr @Job_programmer(i32 1000, i32 ptrtoint (ptr @str.5 to i32))
-    %1 = call ptr @Person(ptr @str.4, i8 19, ptr %0)
+    %0 = call ptr @Job_programmer(i32 1000, i32 ptrtoint (ptr @str.3 to i32))
+    %1 = call ptr @Person(ptr @str.2, i8 19, ptr %0)
     %2 = call ptr @Person_introduce(ptr %1)
     %ptr = getelementptr inbounds %Person, ptr %1, i32 0, i32 2
     %val = load ptr, ptr %ptr, align 8
     %3 = call i32 @Job_hourly(ptr %val, i32 40)
-    %calltmp = call i32 (ptr, ...) @printf(ptr @fmt.6, i32 %3)
+    %calltmp = call i32 (ptr, ...) @printf(ptr @fmt.4, i32 %3)
     %4 = call ptr @Job_sales_rep(i32 0, i32 0)
-    %5 = call ptr @Person(ptr @str.7, i8 37, ptr %4)
+    %5 = call ptr @Person(ptr @str.5, i8 37, ptr %4)
     %6 = call ptr @Person_introduce(ptr %5)
     ret i32 0
     ret i32 0
@@ -255,4 +256,3 @@ let%expect_test "codegen" =
   File: complex_types
   File: currying_functions
   |}]
-;;

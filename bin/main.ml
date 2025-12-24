@@ -34,15 +34,21 @@ let get_files_for_frontend stdlib_flag files =
 
 let get_files_for_backend stdlib_flag provided_files =
   let std_lib_files = get_stdlib_files () in
-  if stdlib_flag then
-    (std_lib_files, []) (* If --stdlib is passed, only process stdlib files, no app files *)
-  else
+  if stdlib_flag
+  then
+    std_lib_files, [] (* If --stdlib is passed, only process stdlib files, no app files *)
+  else (
     match provided_files with
-    | [] -> (* No user files provided *)
-        (std_lib_files, []) (* Process only stdlib files *)
-    | _ -> (* User files provided *)
-        (std_lib_files, provided_files) (* Process stdlib files PLUS user files *)
+    | [] ->
+      (* No user files provided *)
+      std_lib_files, []
+      (* Process only stdlib files *)
+    | _ ->
+      (* User files provided *)
+      std_lib_files, provided_files)
 ;;
+
+(* Process stdlib files PLUS user files *)
 
 let process_lex stdlib_flag files =
   let files_to_process = get_files_for_frontend stdlib_flag files in
@@ -70,10 +76,9 @@ let process_codegen stdlib_flag files =
   let process_file file is_stdlib =
     Codegen.reset_module ();
     let module_name =
-      if is_stdlib then
-        Utils.module_name_from_path file stdlib_dir
-      else
-        Filename.remove_extension (Filename.basename file)
+      if is_stdlib
+      then Utils.module_name_from_path file stdlib_dir
+      else Filename.remove_extension (Filename.basename file)
     in
     Codegen.set_module_name module_name;
     let tokens = Lexer.lex_from_file file in
@@ -89,12 +94,11 @@ let process_codegen stdlib_flag files =
 
 let compile_to_exe stdlib_flag files exe_file =
   let std_files, app_files = get_files_for_backend stdlib_flag files in
-  
   let compile_single_file file is_stdlib =
     Codegen.reset_module ();
     let module_name =
-      if is_stdlib then
-        Utils.module_name_from_path file stdlib_dir
+      if is_stdlib
+      then Utils.module_name_from_path file stdlib_dir
       else (* For application files, use just the basename as the module name *)
         Filename.remove_extension (Filename.basename file)
     in
@@ -110,10 +114,8 @@ let compile_to_exe stdlib_flag files exe_file =
     close_out oc;
     ll_file
   in
-
   let std_ll_files = List.map (fun file -> compile_single_file file true) std_files in
   let app_ll_files = List.map (fun file -> compile_single_file file false) app_files in
-  
   let all_ll_files = std_ll_files @ app_ll_files in
   let ll_files_str = String.concat " " all_ll_files in
   let cmd = Printf.sprintf "clang %s -o %s -Wno-override-module" ll_files_str exe_file in

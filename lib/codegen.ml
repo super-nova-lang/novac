@@ -321,10 +321,14 @@ and codegen_call = function
             match L.lookup_function actual_llvm_name !the_module with
             | Some f -> f
             | None ->
-                (* If it's not found in the current module, declare it as external.
+              (* If it's not found in the current module, declare it as external.
                    We have its type from function_protos. *)
-                let ft, _ = Hashtbl.find function_protos name in (* Get ft from Nova-mangled name *)
-                L.declare_function actual_llvm_name ft !the_module (* Declare with LLVM name *)
+              let ft, _ = Hashtbl.find function_protos name in
+              (* Get ft from Nova-mangled name *)
+              L.declare_function
+                actual_llvm_name
+                ft
+                !the_module (* Declare with LLVM name *)
           in
           let call_res =
             L.build_call ft func_val (Array.of_list actual_args) "" !builder
@@ -943,7 +947,6 @@ and codegen_decl = function
         in_function := false;
         raise e)
   | A.Import_decl { name; calling_conf = _; link_name } ->
-    Logger.code#debug "Processing Import_decl: Nova name=%s, Link name=%s" name link_name;
     let param_types = [||] in
     let ft = L.var_arg_function_type i32_type param_types in
     let the_function =
@@ -952,8 +955,7 @@ and codegen_decl = function
       | Some f -> f
     in
     let nova_qualified_name =
-      if !current_module_name = "" then name
-      else !current_module_name ^ "_" ^ name
+      if !current_module_name = "" then name else !current_module_name ^ "_" ^ name
     in
     Hashtbl.add local_imports name nova_qualified_name;
     Hashtbl.add external_link_names nova_qualified_name link_name;
@@ -1016,8 +1018,10 @@ let reset_module () =
   in_function := false;
   current_type_context := None;
   current_module_name := "";
-
-  L.dispose_module !the_module; (* Dispose the old module *)
-  the_module := L.create_module context "Nova"; (* Create a new module *)
-  builder := L.builder context; (* Create a new builder for the new module *)
-
+  L.dispose_module !the_module;
+  (* Dispose the old module *)
+  the_module := L.create_module context "Nova";
+  (* Create a new module *)
+  builder := L.builder context
+;;
+(* Create a new builder for the new module *)
