@@ -1,26 +1,27 @@
-# Nova (`novac`)
+# Nova - Your Goto Functional Language
 
-Nova is a programming language designed to bridge the gap between functional programming and C-like systems languages. 
+### What Is Nova?
 
-## Vision
+Nova is a new programming language written in OCaml that aims to bridge the gap between traditional C-syntax based languages and functional languages like OCaml, Haskell, and Lisp.
 
-Nova aims to make Functional Programming (FP) more accessible to developers familiar with C-like syntax (Rust, Zig, C, C++, etc.). By combining the power of languages like OCaml and Haskell with the familiar structure of imperative languages, Nova provides a low-friction path to adopting functional paradigms.
+Nova is a garbage-collected with an opt in allocator system akin to [Odin's context](https://www.gingerbill.org/article/2025/12/15/odins-most-misunderstood-feature-context/).
 
-## Key Features
+### Key Features
 
-- **Friendly Syntax:** Inspired by Rust, Zig, and C-family languages to ensure a shallow learning curve for most developers.
-- **Functional Roots:** Deeply influenced by OCaml, bringing robust type systems and functional patterns to the forefront.
-- **Memory Management:** A garbage-collected language that also provides optional explicit control over allocations, similar to Zig's manual allocation patterns.
-- **Modern Tooling:** Built with OCaml and the Dune build system for high-performance compilation and developer productivity.
+ - **Friendly Syntax:** Functional programming with a familiar feel
+ - **Garbage-collected:** Garbage-collected with an opt-in allocator system
+ - **Modern Tooling:** Build on Dune's amazing ecosystem
+ - **Modern C Interop:** Built with [libffi](https://github.com/libffi/libffi) first in mind
 
-## Getting Started
+### The Project
 
-To explore the language, check out the `examples/` directory:
+ - **Lexer & Parser**: Full implementation for Nova source files.
 
-- `basic-functions.nova`
-- `complex-types.nova`
-- `currying-functions.nova`
+### Get Involved
 
-For technical instructions on how to build, run, and test the compiler, please refer to [GEMINI.md](./GEMINI.md).
+Explore the source code, check out our vision, follow the socials, and contribute to the compiler:
 
-[Link to Discord](https://discord.gg/TvKx9uxneY)
+**[Nova on GitHub](https://github.com/super-nova-lang/novac)**
+**[Nova on Twitter (X)](https://x.com/SuperNovaLang)**
+**[Nova's Wiki](https://wiki.nova.nerdcult.net/index.php/Main_Page)**
+**[Contact Nova](mailto:super.nova.compiler@gmail.com)**
