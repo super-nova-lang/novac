@@ -20,7 +20,7 @@ let process_codegen file =
   Llvm.dump_module Codegen.the_module
 ;;
 
-let process_compile file =
+let compile_to_exe file exe_file =
   let tokens = Lexer.lex_from_file file in
   let nodes = Parser.parse (Parser.create tokens) in
   List.iter Codegen.codegen nodes;
@@ -30,11 +30,31 @@ let process_compile file =
   let oc = open_out ll_file in
   output_string oc ll_code;
   close_out oc;
-  let exe_file = "main" in
   let cmd = Printf.sprintf "clang %s -o %s -Wno-override-module" ll_file exe_file in
   let exit_code = Sys.command cmd in
   Sys.remove ll_file;
+  exit_code
+;;
+
+let process_compile file =
+  let exe_file = "main" in
+  let exit_code = compile_to_exe file exe_file in
   if exit_code <> 0 then exit exit_code
+;;
+
+let process_run file =
+  let exe_file = Filename.temp_file "nova_run" ".exe" in
+  let exit_code = compile_to_exe file exe_file in
+  if exit_code <> 0
+  then (
+    Sys.remove exe_file;
+    exit exit_code);
+  let run_cmd =
+    if Filename.is_relative exe_file then Printf.sprintf "./%s" exe_file else exe_file
+  in
+  let run_exit_code = Sys.command run_cmd in
+  Sys.remove exe_file;
+  if run_exit_code <> 0 then exit run_exit_code
 ;;
 
 let file =
@@ -66,10 +86,16 @@ let compile_cmd =
   Cmd.v info Term.(const process_compile $ file)
 ;;
 
+let run_cmd =
+  let doc = "Compile and run the input file." in
+  let info = Cmd.info "run" ~doc in
+  Cmd.v info Term.(const process_run $ file)
+;;
+
 let main_cmd =
   let doc = "Supernova compiler." in
   let info = Cmd.info "novac" ~doc in
-  Cmd.group info [ lex_cmd; parse_cmd; codegen_cmd; compile_cmd ]
+  Cmd.group info [ lex_cmd; parse_cmd; codegen_cmd; compile_cmd; run_cmd ]
 ;;
 
 let () = exit (Cmd.eval main_cmd)

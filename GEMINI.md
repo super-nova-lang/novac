@@ -47,6 +47,7 @@ The compiler provides several commands:
 *   **Parsing:** `dune exec bin/main.exe -- parse <path_to_nova_file>`
 *   **Code Generation:** `dune exec bin/main.exe -- codegen <path_to_nova_file>`
 *   **Compilation:** `dune exec bin/main.exe -- compile <path_to_nova_file>`
+*   **Run:** `dune exec bin/main.exe -- run <path_to_nova_file>`
 
 Example:
 
