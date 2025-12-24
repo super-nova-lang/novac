@@ -40,7 +40,7 @@ let mangle tags name =
   let no_mangle =
     List.exists (function A.Tag_name "no_mangle" -> true | _ -> false) tags
   in
-  if no_mangle || name = "main" || name = "printf" || name = "malloc"
+  if no_mangle || name = "main" || name = "malloc"
   then name
   else if !current_module_name = ""
   then name
@@ -904,8 +904,9 @@ and codegen_decl = function
       | None -> L.declare_function link_name ft the_module
       | Some f -> f
     in
-    Hashtbl.add global_values name the_function;
-    Hashtbl.add function_protos name (ft, A.User "i32");
+    let mangled_name = mangle [] name in
+    Hashtbl.add global_values mangled_name the_function;
+    Hashtbl.add function_protos mangled_name (ft, A.User "i32");
     the_function
   | _ -> raise (Error "Declaration type not implemented")
 

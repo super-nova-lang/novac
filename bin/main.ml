@@ -17,18 +17,29 @@ let get_stdlib_files () =
   |> List.map (fun f -> Filename.concat stdlib_dir f)
 ;;
 
-let get_files_to_process stdlib_flag files =
-  if stdlib_flag
-  then get_stdlib_files ()
-  else if files = []
-  then (
+let get_files_for_frontend stdlib_flag files =
+  if stdlib_flag then
+    get_stdlib_files ()
+  else if files = [] then (
     Printf.eprintf "Error: No input files provided.\n";
     exit 1)
   else files
 ;;
 
+let get_files_for_backend stdlib_flag provided_files =
+  let std_lib_files = get_stdlib_files () in
+  if stdlib_flag then
+    std_lib_files (* If --stdlib is passed, only process stdlib files *)
+  else (* --stdlib is NOT passed *)
+    match provided_files with
+    | [] -> (* No user files provided *)
+        std_lib_files (* Process only stdlib files *)
+    | _ -> (* User files provided *)
+        std_lib_files @ provided_files (* Process stdlib files PLUS user files *)
+;;
+
 let process_lex stdlib_flag files =
-  let files_to_process = get_files_to_process stdlib_flag files in
+  let files_to_process = get_files_for_frontend stdlib_flag files in
   List.iter
     (fun file ->
        Printf.printf "File: %s\n" file;
@@ -38,7 +49,7 @@ let process_lex stdlib_flag files =
 ;;
 
 let process_parse stdlib_flag files =
-  let files_to_process = get_files_to_process stdlib_flag files in
+  let files_to_process = get_files_for_frontend stdlib_flag files in
   List.iter
     (fun file ->
        Printf.printf "File: %s\n" file;
@@ -49,10 +60,14 @@ let process_parse stdlib_flag files =
 ;;
 
 let process_codegen stdlib_flag files =
-  let files_to_process = get_files_to_process stdlib_flag files in
+  let files_to_process = get_files_for_backend stdlib_flag files in
   List.iter
     (fun file ->
-       let module_name = Filename.remove_extension (Filename.basename file) in
+       let module_name =
+         if file = (Filename.concat stdlib_dir "std.nova")
+         then "Std"
+         else Filename.remove_extension (Filename.basename file)
+       in
        Codegen.set_module_name module_name;
        let tokens = Lexer.lex_from_file file in
        let nodes = Parser.parse (Parser.create tokens) in
@@ -63,10 +78,14 @@ let process_codegen stdlib_flag files =
 ;;
 
 let compile_to_exe stdlib_flag files exe_file =
-  let files_to_process = get_files_to_process stdlib_flag files in
+  let files_to_process = get_files_for_backend stdlib_flag files in
   List.iter
     (fun file ->
-       let module_name = Filename.remove_extension (Filename.basename file) in
+       let module_name =
+         if file = (Filename.concat stdlib_dir "std.nova")
+         then "Std"
+         else Filename.remove_extension (Filename.basename file)
+       in
        Codegen.set_module_name module_name;
        let tokens = Lexer.lex_from_file file in
        let nodes = Parser.parse (Parser.create tokens) in
