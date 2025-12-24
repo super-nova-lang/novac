@@ -11,7 +11,7 @@
 
 (maintainers "Ashton Sickler <ashton.sickler06@gmail.com>")
 
-(license LICENSE)
+(license MIT)
 
 (package
  (name novac)
