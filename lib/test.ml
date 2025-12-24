@@ -8,7 +8,7 @@ let test_parser (name, content) =
   Format.printf "File: %s\n" name;
   let tokens = Lexer.lex "test.nova" content in
   let nodes = Parser.parse (Parser.create tokens) in
-  List.iter (fun x -> Format.printf "found: %s\n" (Node.show x)) nodes
+  List.iter (fun x -> Format.printf "found: %s\n" (Ast.show x)) nodes
 ;;
 
 [@@@ocamlformat "disable"]
@@ -406,302 +406,302 @@ let%expect_test "parser" =
   List.iter test_parser Nova_tests.all;
   [%expect {|
     File: basic_functions
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Decl {tags = []; name = "add";
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "add";
             params =
-            [(Node.Typed ("a", (Node.User "i32")));
-              (Node.Typed ("b", (Node.User "i32")))];
+            [(Ast.Typed ("a", (Ast.User "i32")));
+              (Ast.Typed ("b", (Ast.User "i32")))];
             explicit_ret = None;
             body =
             ([],
-             (Some (Node.Relational_expr
-                      (Node.Relational_val
-                         (Node.Add (
-                            (Node.Additive_val
-                               (Node.Multiplicative_val
-                                  (Node.Unary_val (Node.Ident "a")))),
-                            (Node.Multiplicative_val
-                               (Node.Unary_val (Node.Ident "b")))
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Add (
+                            (Ast.Additive_val
+                               (Ast.Multiplicative_val
+                                  (Ast.Unary_val (Ast.Ident "a")))),
+                            (Ast.Multiplicative_val
+                               (Ast.Unary_val (Ast.Ident "b")))
                             ))))))}))
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Decl {tags = []; name = "sub";
-            params = [(Node.Untyped "a"); (Node.Untyped "b")];
-            explicit_ret = (Some (Node.User "i32"));
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "sub";
+            params = [(Ast.Untyped "a"); (Ast.Untyped "b")];
+            explicit_ret = (Some (Ast.User "i32"));
             body =
             ([],
-             (Some (Node.Relational_expr
-                      (Node.Relational_val
-                         (Node.Sub (
-                            (Node.Additive_val
-                               (Node.Multiplicative_val
-                                  (Node.Unary_val (Node.Ident "a")))),
-                            (Node.Multiplicative_val
-                               (Node.Unary_val (Node.Ident "b")))
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Sub (
+                            (Ast.Additive_val
+                               (Ast.Multiplicative_val
+                                  (Ast.Unary_val (Ast.Ident "a")))),
+                            (Ast.Multiplicative_val
+                               (Ast.Unary_val (Ast.Ident "b")))
                             ))))))}))
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Decl {tags = []; name = "mul";
-            params = [(Node.Untyped "a"); (Node.Untyped "b")];
-            explicit_ret = (Some (Node.User "i32"));
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "mul";
+            params = [(Ast.Untyped "a"); (Ast.Untyped "b")];
+            explicit_ret = (Some (Ast.User "i32"));
             body =
             ([],
-             (Some (Node.Relational_expr
-                      (Node.Relational_val
-                         (Node.Additive_val
-                            (Node.Mul (
-                               (Node.Multiplicative_val
-                                  (Node.Unary_val (Node.Ident "a"))),
-                               (Node.Unary_val (Node.Ident "b")))))))))}))
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Decl {tags = []; name = "my_complex_fn";
-            params = [(Node.Untyped "a"); (Node.Untyped "b"); (Node.Untyped "c")];
-            explicit_ret = (Some (Node.User "i32"));
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Mul (
+                               (Ast.Multiplicative_val
+                                  (Ast.Unary_val (Ast.Ident "a"))),
+                               (Ast.Unary_val (Ast.Ident "b")))))))))}))
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "my_complex_fn";
+            params = [(Ast.Untyped "a"); (Ast.Untyped "b"); (Ast.Untyped "c")];
+            explicit_ret = (Some (Ast.User "i32"));
             body =
-            ([(Node.Decl_stmt
-                 Node.Decl {tags = []; name = "res1"; params = [];
+            ([(Ast.Decl_stmt
+                 Ast.Decl {tags = []; name = "res1"; params = [];
                    explicit_ret = None;
                    body =
                    ([],
-                    (Some (Node.Relational_expr
-                             (Node.Relational_val
-                                (Node.Add (
-                                   (Node.Additive_val
-                                      (Node.Multiplicative_val
-                                         (Node.Unary_val (Node.Ident "a")))),
-                                   (Node.Mul (
-                                      (Node.Multiplicative_val
-                                         (Node.Unary_val (Node.Ident "b"))),
-                                      (Node.Unary_val (Node.Int 2))))
+                    (Some (Ast.Relational_expr
+                             (Ast.Relational_val
+                                (Ast.Add (
+                                   (Ast.Additive_val
+                                      (Ast.Multiplicative_val
+                                         (Ast.Unary_val (Ast.Ident "a")))),
+                                   (Ast.Mul (
+                                      (Ast.Multiplicative_val
+                                         (Ast.Unary_val (Ast.Ident "b"))),
+                                      (Ast.Unary_val (Ast.Int 2))))
                                    ))))))});
-               (Node.Decl_stmt
-                  Node.Decl {tags = []; name = "res2"; params = [];
+               (Ast.Decl_stmt
+                  Ast.Decl {tags = []; name = "res2"; params = [];
                     explicit_ret = None;
                     body =
                     ([],
-                     (Some (Node.Relational_expr
-                              (Node.Relational_val
-                                 (Node.Additive_val
-                                    (Node.Div (
-                                       (Node.Multiplicative_val
-                                          (Node.Unary_val (Node.Ident "b"))),
-                                       (Node.Unary_val (Node.Ident "res1")))))))))});
-               (Node.Decl_stmt
-                  Node.Decl {tags = []; name = "res3"; params = [];
+                     (Some (Ast.Relational_expr
+                              (Ast.Relational_val
+                                 (Ast.Additive_val
+                                    (Ast.Div (
+                                       (Ast.Multiplicative_val
+                                          (Ast.Unary_val (Ast.Ident "b"))),
+                                       (Ast.Unary_val (Ast.Ident "res1")))))))))});
+               (Ast.Decl_stmt
+                  Ast.Decl {tags = []; name = "res3"; params = [];
                     explicit_ret = None;
                     body =
                     ([],
-                     (Some (Node.Relational_expr
-                              (Node.Relational_val
-                                 (Node.Additive_val
-                                    (Node.Pow (
-                                       (Node.Multiplicative_val
-                                          (Node.Unary_val (Node.Ident "c"))),
-                                       (Node.Unary_val
-                                          (Node.Grouping
-                                             (Node.Relational_expr
-                                                (Node.Relational_val
-                                                   (Node.Sub (
-                                                      (Node.Additive_val
-                                                         (Node.Multiplicative_val
-                                                            (Node.Unary_val
-                                                               (Node.Ident "res1")))),
-                                                      (Node.Multiplicative_val
-                                                         (Node.Unary_val
-                                                            (Node.Int 55)))
+                     (Some (Ast.Relational_expr
+                              (Ast.Relational_val
+                                 (Ast.Additive_val
+                                    (Ast.Pow (
+                                       (Ast.Multiplicative_val
+                                          (Ast.Unary_val (Ast.Ident "c"))),
+                                       (Ast.Unary_val
+                                          (Ast.Grouping
+                                             (Ast.Relational_expr
+                                                (Ast.Relational_val
+                                                   (Ast.Sub (
+                                                      (Ast.Additive_val
+                                                         (Ast.Multiplicative_val
+                                                            (Ast.Unary_val
+                                                               (Ast.Ident "res1")))),
+                                                      (Ast.Multiplicative_val
+                                                         (Ast.Unary_val
+                                                            (Ast.Int 55)))
                                                       ))))))
                                        )))))))})
                ],
-             (Some (Node.Relational_expr
-                      (Node.Relational_val
-                         (Node.Additive_val
-                            (Node.Multiplicative_val
-                               (Node.Unary_val (Node.Ident "res3"))))))))}))
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val
+                               (Ast.Unary_val (Ast.Ident "res3"))))))))}))
     File: complex_types
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Decl {
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {
             tags =
-            [(Node.Tag_call
-                (Node.Decl_call (
-                   (Node.Relational_expr
-                      (Node.Relational_val
-                         (Node.Additive_val
-                            (Node.Multiplicative_val
-                               (Node.Unary_val (Node.Ident "derive")))))),
-                   [(Node.Positional
-                       (Node.Relational_expr
-                          (Node.Relational_val
-                             (Node.Additive_val
-                                (Node.Multiplicative_val
-                                   (Node.Unary_val (Node.Ident "Show")))))));
-                     (Node.Positional
-                        (Node.Relational_expr
-                           (Node.Relational_val
-                              (Node.Additive_val
-                                 (Node.Multiplicative_val
-                                    (Node.Unary_val (Node.Ident "PrettyPrint")))))))
+            [(Ast.Tag_call
+                (Ast.Decl_call (
+                   (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val
+                               (Ast.Unary_val (Ast.Ident "derive")))))),
+                   [(Ast.Positional
+                       (Ast.Relational_expr
+                          (Ast.Relational_val
+                             (Ast.Additive_val
+                                (Ast.Multiplicative_val
+                                   (Ast.Unary_val (Ast.Ident "Show")))))));
+                     (Ast.Positional
+                        (Ast.Relational_expr
+                           (Ast.Relational_val
+                              (Ast.Additive_val
+                                 (Ast.Multiplicative_val
+                                    (Ast.Unary_val (Ast.Ident "PrettyPrint")))))))
                      ]
                    )))
               ];
             name = "Job";
             params =
-            [(Node.Untyped "salary");
-              (Node.OptionalUntyped ("language",
-                 (Node.Relational_expr
-                    (Node.Relational_val
-                       (Node.Additive_val
-                          (Node.Multiplicative_val
-                             (Node.Unary_val (Node.String "c++"))))))
+            [(Ast.Untyped "salary");
+              (Ast.OptionalUntyped ("language",
+                 (Ast.Relational_expr
+                    (Ast.Relational_val
+                       (Ast.Additive_val
+                          (Ast.Multiplicative_val
+                             (Ast.Unary_val (Ast.String "c++"))))))
                  ))
               ];
             explicit_ret = None;
             body =
             ([],
-             (Some (Node.Enum_expr (
+             (Some (Ast.Enum_expr (
                       [("programmer",
-                        (Some (Node.Struct_body
-                                 [("language", (Node.User "string"), None)])));
-                        ("other", (Some (Node.Type_body (Node.User "string"))));
+                        (Some (Ast.Struct_body
+                                 [("language", (Ast.User "string"), None)])));
+                        ("other", (Some (Ast.Type_body (Ast.User "string"))));
                         ("sales_rep", None)],
-                      (Some [(Node.Statement
-                                (Node.Decl_stmt
-                                   Node.Decl {tags = []; name = "salary";
+                      (Some [(Ast.Statement
+                                (Ast.Decl_stmt
+                                   Ast.Decl {tags = []; name = "salary";
                                      params = [];
-                                     explicit_ret = (Some (Node.User "i32"));
+                                     explicit_ret = (Some (Ast.User "i32"));
                                      body = ([], None)}));
-                              (Node.Statement
-                                 (Node.Decl_stmt
-                                    Node.Decl {tags = []; name = "hourly";
+                              (Ast.Statement
+                                 (Ast.Decl_stmt
+                                    Ast.Decl {tags = []; name = "hourly";
                                       params =
-                                      [(Node.Untyped "self");
-                                        (Node.Untyped "hours")];
+                                      [(Ast.Untyped "self");
+                                        (Ast.Untyped "hours")];
                                       explicit_ret = None;
                                       body =
                                       ([],
-                                       (Some (Node.Relational_expr
-                                                (Node.Relational_val
-                                                   (Node.Additive_val
-                                                      (Node.Div (
-                                                         (Node.Multiplicative_val
-                                                            (Node.Unary_member (
-                                                               (Node.Unary_val
-                                                                  (Node.Ident
+                                       (Some (Ast.Relational_expr
+                                                (Ast.Relational_val
+                                                   (Ast.Additive_val
+                                                      (Ast.Div (
+                                                         (Ast.Multiplicative_val
+                                                            (Ast.Unary_member (
+                                                               (Ast.Unary_val
+                                                                  (Ast.Ident
                                                                      "self")),
                                                                "salary"))),
-                                                         (Node.Unary_val
-                                                            (Node.Ident "hours"))
+                                                         (Ast.Unary_val
+                                                            (Ast.Ident "hours"))
                                                          )))))))}))
                               ])
                       ))))}))
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Decl {
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {
             tags =
-            [(Node.Tag_call
-                (Node.Decl_call (
-                   (Node.Relational_expr
-                      (Node.Relational_val
-                         (Node.Additive_val
-                            (Node.Multiplicative_val
-                               (Node.Unary_val (Node.Ident "derive")))))),
-                   [(Node.Positional
-                       (Node.Relational_expr
-                          (Node.Relational_val
-                             (Node.Additive_val
-                                (Node.Multiplicative_val
-                                   (Node.Unary_val (Node.Ident "Show")))))));
-                     (Node.Positional
-                        (Node.Relational_expr
-                           (Node.Relational_val
-                              (Node.Additive_val
-                                 (Node.Multiplicative_val
-                                    (Node.Unary_val (Node.Ident "PrettyPrint")))))))
+            [(Ast.Tag_call
+                (Ast.Decl_call (
+                   (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val
+                               (Ast.Unary_val (Ast.Ident "derive")))))),
+                   [(Ast.Positional
+                       (Ast.Relational_expr
+                          (Ast.Relational_val
+                             (Ast.Additive_val
+                                (Ast.Multiplicative_val
+                                   (Ast.Unary_val (Ast.Ident "Show")))))));
+                     (Ast.Positional
+                        (Ast.Relational_expr
+                           (Ast.Relational_val
+                              (Ast.Additive_val
+                                 (Ast.Multiplicative_val
+                                    (Ast.Unary_val (Ast.Ident "PrettyPrint")))))))
                      ]
                    )))
               ];
             name = "Person";
             params =
-            [(Node.Untyped "name"); (Node.Untyped "age"); (Node.Untyped "job")];
+            [(Ast.Untyped "name"); (Ast.Untyped "age"); (Ast.Untyped "job")];
             explicit_ret = None;
             body =
             ([],
-             (Some (Node.Struct_expr (
-                      [("name", (Node.User "string"),
-                        (Some (Node.Relational_expr
-                                 (Node.Relational_val
-                                    (Node.Additive_val
-                                       (Node.Multiplicative_val
-                                          (Node.Unary_val (Node.Ident "name"))))))));
-                        ("age", (Node.User "u8"),
-                         (Some (Node.Relational_expr
-                                  (Node.Relational_val
-                                     (Node.Additive_val
-                                        (Node.Multiplicative_val
-                                           (Node.Unary_val (Node.Ident "age"))))))));
-                        ("job", (Node.User "job"),
-                         (Some (Node.Relational_expr
-                                  (Node.Relational_val
-                                     (Node.Additive_val
-                                        (Node.Multiplicative_val
-                                           (Node.Unary_val (Node.Ident "job"))))))))
+             (Some (Ast.Struct_expr (
+                      [("name", (Ast.User "string"),
+                        (Some (Ast.Relational_expr
+                                 (Ast.Relational_val
+                                    (Ast.Additive_val
+                                       (Ast.Multiplicative_val
+                                          (Ast.Unary_val (Ast.Ident "name"))))))));
+                        ("age", (Ast.User "u8"),
+                         (Some (Ast.Relational_expr
+                                  (Ast.Relational_val
+                                     (Ast.Additive_val
+                                        (Ast.Multiplicative_val
+                                           (Ast.Unary_val (Ast.Ident "age"))))))));
+                        ("job", (Ast.User "job"),
+                         (Some (Ast.Relational_expr
+                                  (Ast.Relational_val
+                                     (Ast.Additive_val
+                                        (Ast.Multiplicative_val
+                                           (Ast.Unary_val (Ast.Ident "job"))))))))
                         ],
-                      (Some [(Node.Statement
-                                (Node.Decl_stmt
-                                   Node.Decl {tags = []; name = "introduce";
-                                     params = [(Node.Untyped "self")];
+                      (Some [(Ast.Statement
+                                (Ast.Decl_stmt
+                                   Ast.Decl {tags = []; name = "introduce";
+                                     params = [(Ast.Untyped "self")];
                                      explicit_ret = None;
                                      body =
                                      ([],
-                                      (Some (Node.Relational_expr
-                                               (Node.Relational_val
-                                                  (Node.Additive_val
-                                                     (Node.Multiplicative_val
-                                                        (Node.Unary_call
-                                                           (Node.Macro_call (
-                                                              (Node.Relational_expr
-                                                                 (Node.Relational_val
-                                                                    (Node.Additive_val
-                                                                       (Node.Multiplicative_val
-                                                                        (Node.Unary_val
-                                                                        (Node.Ident
+                                      (Some (Ast.Relational_expr
+                                               (Ast.Relational_val
+                                                  (Ast.Additive_val
+                                                     (Ast.Multiplicative_val
+                                                        (Ast.Unary_call
+                                                           (Ast.Macro_call (
+                                                              (Ast.Relational_expr
+                                                                 (Ast.Relational_val
+                                                                    (Ast.Additive_val
+                                                                       (Ast.Multiplicative_val
+                                                                        (Ast.Unary_val
+                                                                        (Ast.Ident
                                                                         "println")))))),
-                                                              [(Node.Positional
-                                                                  (Node.Relational_expr
-                                                                     (Node.Relational_val
+                                                              [(Ast.Positional
+                                                                  (Ast.Relational_expr
+                                                                     (Ast.Relational_val
                                                                         (
-                                                                        Node.Additive_val
-                                                                        (Node.Multiplicative_val
-                                                                        (Node.Unary_val
-                                                                        (Node.String
+                                                                        Ast.Additive_val
+                                                                        (Ast.Multiplicative_val
+                                                                        (Ast.Unary_val
+                                                                        (Ast.String
                                                                         "Hello, my name is {} and I am a {}")))))));
-                                                                (Node.Positional
-                                                                   (Node.Relational_expr
-                                                                      (Node.Relational_val
-                                                                        (Node.Additive_val
-                                                                        (Node.Multiplicative_val
-                                                                        (Node.Unary_member (
-                                                                        (Node.Unary_val
-                                                                        (Node.Ident
+                                                                (Ast.Positional
+                                                                   (Ast.Relational_expr
+                                                                      (Ast.Relational_val
+                                                                        (Ast.Additive_val
+                                                                        (Ast.Multiplicative_val
+                                                                        (Ast.Unary_member (
+                                                                        (Ast.Unary_val
+                                                                        (Ast.Ident
                                                                         "self")),
                                                                         "name")))))));
-                                                                (Node.Positional
-                                                                   (Node.Relational_expr
-                                                                      (Node.Relational_val
-                                                                        (Node.Additive_val
-                                                                        (Node.Multiplicative_val
-                                                                        (Node.Unary_call
-                                                                        (Node.Decl_call (
-                                                                        (Node.Relational_expr
-                                                                        (Node.Relational_val
-                                                                        (Node.Additive_val
-                                                                        (Node.Multiplicative_val
-                                                                        (Node.Unary_member (
-                                                                        (Node.Unary_member (
-                                                                        (Node.Unary_val
-                                                                        (Node.Ident
+                                                                (Ast.Positional
+                                                                   (Ast.Relational_expr
+                                                                      (Ast.Relational_val
+                                                                        (Ast.Additive_val
+                                                                        (Ast.Multiplicative_val
+                                                                        (Ast.Unary_call
+                                                                        (Ast.Decl_call (
+                                                                        (Ast.Relational_expr
+                                                                        (Ast.Relational_val
+                                                                        (Ast.Additive_val
+                                                                        (Ast.Multiplicative_val
+                                                                        (Ast.Unary_member (
+                                                                        (Ast.Unary_member (
+                                                                        (Ast.Unary_val
+                                                                        (Ast.Ident
                                                                         "self")),
                                                                         "job")),
                                                                         "show")))))),
@@ -710,333 +710,329 @@ let%expect_test "parser" =
                                                               )))))))))}))
                               ])
                       ))))}))
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Decl {tags = []; name = "based_dev"; params = [];
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "based_dev"; params = [];
             explicit_ret = None;
             body =
             ([],
-             (Some (Node.Relational_expr
-                      (Node.Relational_val
-                         (Node.Additive_val
-                            (Node.Multiplicative_val
-                               (Node.Unary_call
-                                  (Node.Decl_call (
-                                     (Node.Relational_expr
-                                        (Node.Relational_val
-                                           (Node.Additive_val
-                                              (Node.Multiplicative_val
-                                                 (Node.Unary_val
-                                                    (Node.Ident "Person")))))),
-                                     [(Node.Positional
-                                         (Node.Relational_expr
-                                            (Node.Relational_val
-                                               (Node.Additive_val
-                                                  (Node.Multiplicative_val
-                                                     (Node.Unary_val
-                                                        (Node.String "Ashton")))))));
-                                       (Node.Positional
-                                          (Node.Relational_expr
-                                             (Node.Relational_val
-                                                (Node.Additive_val
-                                                   (Node.Multiplicative_val
-                                                      (Node.Unary_val
-                                                         (Node.Int 19)))))));
-                                       (Node.Positional
-                                          (Node.Relational_expr
-                                             (Node.Relational_val
-                                                (Node.Additive_val
-                                                   (Node.Multiplicative_val
-                                                      (Node.Unary_call
-                                                         (Node.Decl_call (
-                                                            (Node.Relational_expr
-                                                               (Node.Relational_val
-                                                                  (Node.Additive_val
-                                                                     (Node.Multiplicative_val
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val
+                               (Ast.Unary_call
+                                  (Ast.Decl_call (
+                                     (Ast.Relational_expr
+                                        (Ast.Relational_val
+                                           (Ast.Additive_val
+                                              (Ast.Multiplicative_val
+                                                 (Ast.Unary_val
+                                                    (Ast.Ident "Person")))))),
+                                     [(Ast.Positional
+                                         (Ast.Relational_expr
+                                            (Ast.Relational_val
+                                               (Ast.Additive_val
+                                                  (Ast.Multiplicative_val
+                                                     (Ast.Unary_val
+                                                        (Ast.String "Ashton")))))));
+                                       (Ast.Positional
+                                          (Ast.Relational_expr
+                                             (Ast.Relational_val
+                                                (Ast.Additive_val
+                                                   (Ast.Multiplicative_val
+                                                      (Ast.Unary_val (Ast.Int 19)))))));
+                                       (Ast.Positional
+                                          (Ast.Relational_expr
+                                             (Ast.Relational_val
+                                                (Ast.Additive_val
+                                                   (Ast.Multiplicative_val
+                                                      (Ast.Unary_call
+                                                         (Ast.Decl_call (
+                                                            (Ast.Relational_expr
+                                                               (Ast.Relational_val
+                                                                  (Ast.Additive_val
+                                                                     (Ast.Multiplicative_val
                                                                         (
-                                                                        Node.Unary_member (
-                                                                        (Node.Unary_val
-                                                                        (Node.Ident
+                                                                        Ast.Unary_member (
+                                                                        (Ast.Unary_val
+                                                                        (Ast.Ident
                                                                         "Job")),
                                                                         "programmer"
                                                                         )))))),
-                                                            [(Node.Positional
-                                                                (Node.Relational_expr
-                                                                   (Node.Relational_val
-                                                                      (Node.Additive_val
-                                                                        (Node.Multiplicative_val
-                                                                        (Node.Unary_val
-                                                                        (Node.Int
+                                                            [(Ast.Positional
+                                                                (Ast.Relational_expr
+                                                                   (Ast.Relational_val
+                                                                      (Ast.Additive_val
+                                                                        (Ast.Multiplicative_val
+                                                                        (Ast.Unary_val
+                                                                        (Ast.Int
                                                                         1000)))))));
-                                                              (Node.Positional
-                                                                 (Node.Relational_expr
-                                                                    (Node.Relational_val
-                                                                       (Node.Additive_val
-                                                                        (Node.Multiplicative_val
-                                                                        (Node.Unary_val
-                                                                        (Node.String
+                                                              (Ast.Positional
+                                                                 (Ast.Relational_expr
+                                                                    (Ast.Relational_val
+                                                                       (Ast.Additive_val
+                                                                        (Ast.Multiplicative_val
+                                                                        (Ast.Unary_val
+                                                                        (Ast.String
                                                                         "nova")))))))
                                                               ]
                                                             ))))))))
                                        ]
                                      )))))))))}))
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Decl {tags = []; name = "prob_some_creep"; params = [];
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "prob_some_creep"; params = [];
             explicit_ret = None;
             body =
             ([],
-             (Some (Node.Relational_expr
-                      (Node.Relational_val
-                         (Node.Additive_val
-                            (Node.Multiplicative_val
-                               (Node.Unary_call
-                                  (Node.Decl_call (
-                                     (Node.Relational_expr
-                                        (Node.Relational_val
-                                           (Node.Additive_val
-                                              (Node.Multiplicative_val
-                                                 (Node.Unary_val
-                                                    (Node.Ident "Person")))))),
-                                     [(Node.Positional
-                                         (Node.Relational_expr
-                                            (Node.Relational_val
-                                               (Node.Additive_val
-                                                  (Node.Multiplicative_val
-                                                     (Node.Unary_val
-                                                        (Node.String "Joe Shmoe")))))));
-                                       (Node.Positional
-                                          (Node.Relational_expr
-                                             (Node.Relational_val
-                                                (Node.Additive_val
-                                                   (Node.Multiplicative_val
-                                                      (Node.Unary_val
-                                                         (Node.Int 37)))))));
-                                       (Node.Positional
-                                          (Node.Relational_expr
-                                             (Node.Relational_val
-                                                (Node.Additive_val
-                                                   (Node.Multiplicative_val
-                                                      (Node.Unary_call
-                                                         (Node.Decl_call (
-                                                            (Node.Relational_expr
-                                                               (Node.Relational_val
-                                                                  (Node.Additive_val
-                                                                     (Node.Multiplicative_val
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val
+                               (Ast.Unary_call
+                                  (Ast.Decl_call (
+                                     (Ast.Relational_expr
+                                        (Ast.Relational_val
+                                           (Ast.Additive_val
+                                              (Ast.Multiplicative_val
+                                                 (Ast.Unary_val
+                                                    (Ast.Ident "Person")))))),
+                                     [(Ast.Positional
+                                         (Ast.Relational_expr
+                                            (Ast.Relational_val
+                                               (Ast.Additive_val
+                                                  (Ast.Multiplicative_val
+                                                     (Ast.Unary_val
+                                                        (Ast.String "Joe Shmoe")))))));
+                                       (Ast.Positional
+                                          (Ast.Relational_expr
+                                             (Ast.Relational_val
+                                                (Ast.Additive_val
+                                                   (Ast.Multiplicative_val
+                                                      (Ast.Unary_val (Ast.Int 37)))))));
+                                       (Ast.Positional
+                                          (Ast.Relational_expr
+                                             (Ast.Relational_val
+                                                (Ast.Additive_val
+                                                   (Ast.Multiplicative_val
+                                                      (Ast.Unary_call
+                                                         (Ast.Decl_call (
+                                                            (Ast.Relational_expr
+                                                               (Ast.Relational_val
+                                                                  (Ast.Additive_val
+                                                                     (Ast.Multiplicative_val
                                                                         (
-                                                                        Node.Unary_val
-                                                                        (Node.Implicit_member
+                                                                        Ast.Unary_val
+                                                                        (Ast.Implicit_member
                                                                         "sales_rep")))))),
                                                             []))))))))
                                        ]
                                      )))))))))}))
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Decl {tags = []; name = "my_printf";
-            params = [(Node.Untyped "fmt"); (Node.Variadic "args")];
-            explicit_ret = None; body = ([], (Some (Node.Macro_expr [])))}))
-    found: (Node.Statement
-       (Node.Expression_stmt
-          (Node.Relational_expr
-             (Node.Relational_val
-                (Node.Additive_val
-                   (Node.Multiplicative_val
-                      (Node.Unary_call
-                         (Node.Macro_call (
-                            (Node.Relational_expr
-                               (Node.Relational_val
-                                  (Node.Additive_val
-                                     (Node.Multiplicative_val
-                                        (Node.Unary_val (Node.Ident "my_printf")))))),
-                            [(Node.Positional
-                                (Node.Relational_expr
-                                   (Node.Relational_val
-                                      (Node.Additive_val
-                                         (Node.Multiplicative_val
-                                            (Node.Unary_val
-                                               (Node.String "Hello world!")))))))
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "my_printf";
+            params = [(Ast.Untyped "fmt"); (Ast.Variadic "args")];
+            explicit_ret = None; body = ([], (Some (Ast.Macro_expr [])))}))
+    found: (Ast.Statement
+       (Ast.Expression_stmt
+          (Ast.Relational_expr
+             (Ast.Relational_val
+                (Ast.Additive_val
+                   (Ast.Multiplicative_val
+                      (Ast.Unary_call
+                         (Ast.Macro_call (
+                            (Ast.Relational_expr
+                               (Ast.Relational_val
+                                  (Ast.Additive_val
+                                     (Ast.Multiplicative_val
+                                        (Ast.Unary_val (Ast.Ident "my_printf")))))),
+                            [(Ast.Positional
+                                (Ast.Relational_expr
+                                   (Ast.Relational_val
+                                      (Ast.Additive_val
+                                         (Ast.Multiplicative_val
+                                            (Ast.Unary_val
+                                               (Ast.String "Hello world!")))))))
                               ]
                             )))))))))
-    found: (Node.Statement
-       (Node.Expression_stmt
-          (Node.Relational_expr
-             (Node.Relational_val
-                (Node.Additive_val
-                   (Node.Multiplicative_val
-                      (Node.Unary_call
-                         (Node.Macro_call (
-                            (Node.Relational_expr
-                               (Node.Relational_val
-                                  (Node.Additive_val
-                                     (Node.Multiplicative_val
-                                        (Node.Unary_val (Node.Ident "my_printf")))))),
-                            [(Node.Positional
-                                (Node.Relational_expr
-                                   (Node.Relational_val
-                                      (Node.Additive_val
-                                         (Node.Multiplicative_val
-                                            (Node.Unary_val
-                                               (Node.String "This is {}")))))));
-                              (Node.Positional
-                                 (Node.Relational_expr
-                                    (Node.Relational_val
-                                       (Node.Additive_val
-                                          (Node.Multiplicative_val
-                                             (Node.Unary_val (Node.String "nova")))))))
+    found: (Ast.Statement
+       (Ast.Expression_stmt
+          (Ast.Relational_expr
+             (Ast.Relational_val
+                (Ast.Additive_val
+                   (Ast.Multiplicative_val
+                      (Ast.Unary_call
+                         (Ast.Macro_call (
+                            (Ast.Relational_expr
+                               (Ast.Relational_val
+                                  (Ast.Additive_val
+                                     (Ast.Multiplicative_val
+                                        (Ast.Unary_val (Ast.Ident "my_printf")))))),
+                            [(Ast.Positional
+                                (Ast.Relational_expr
+                                   (Ast.Relational_val
+                                      (Ast.Additive_val
+                                         (Ast.Multiplicative_val
+                                            (Ast.Unary_val
+                                               (Ast.String "This is {}")))))));
+                              (Ast.Positional
+                                 (Ast.Relational_expr
+                                    (Ast.Relational_val
+                                       (Ast.Additive_val
+                                          (Ast.Multiplicative_val
+                                             (Ast.Unary_val (Ast.String "nova")))))))
                               ]
                             )))))))))
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Decl {tags = []; name = "my_derive";
-            params = [(Node.Untyped "tt")]; explicit_ret = None;
-            body = ([], (Some (Node.Derive_expr [])))}))
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Decl {
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "my_derive"; params = [(Ast.Untyped "tt")];
+            explicit_ret = None; body = ([], (Some (Ast.Derive_expr [])))}))
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {
             tags =
-            [(Node.Tag_call
-                (Node.Decl_call (
-                   (Node.Relational_expr
-                      (Node.Relational_val
-                         (Node.Additive_val
-                            (Node.Multiplicative_val
-                               (Node.Unary_val (Node.Ident "derive")))))),
-                   [(Node.Positional
-                       (Node.Relational_expr
-                          (Node.Relational_val
-                             (Node.Additive_val
-                                (Node.Multiplicative_val
-                                   (Node.Unary_val (Node.Ident "my_derive")))))))
+            [(Ast.Tag_call
+                (Ast.Decl_call (
+                   (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val
+                               (Ast.Unary_val (Ast.Ident "derive")))))),
+                   [(Ast.Positional
+                       (Ast.Relational_expr
+                          (Ast.Relational_val
+                             (Ast.Additive_val
+                                (Ast.Multiplicative_val
+                                   (Ast.Unary_val (Ast.Ident "my_derive")))))))
                      ]
                    )))
               ];
             name = "some_struct"; params = []; explicit_ret = None;
-            body = ([], (Some (Node.Struct_expr ([], None))))}))
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Decl {tags = []; name = "my_derive_with_params";
-            params =
-            [(Node.Untyped "tt"); (Node.Untyped "a"); (Node.Untyped "b")];
-            explicit_ret = None; body = ([], (Some (Node.Derive_expr [])))}))
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Decl {
+            body = ([], (Some (Ast.Struct_expr ([], None))))}))
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "my_derive_with_params";
+            params = [(Ast.Untyped "tt"); (Ast.Untyped "a"); (Ast.Untyped "b")];
+            explicit_ret = None; body = ([], (Some (Ast.Derive_expr [])))}))
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {
             tags =
-            [(Node.Tag_call
-                (Node.Decl_call (
-                   (Node.Relational_expr
-                      (Node.Relational_val
-                         (Node.Additive_val
-                            (Node.Multiplicative_val
-                               (Node.Unary_val (Node.Ident "derive")))))),
-                   [(Node.Positional
-                       (Node.Relational_expr
-                          (Node.Relational_val
-                             (Node.Additive_val
-                                (Node.Multiplicative_val
-                                   (Node.Unary_call
-                                      (Node.Decl_call (
-                                         (Node.Relational_expr
-                                            (Node.Relational_val
-                                               (Node.Additive_val
-                                                  (Node.Multiplicative_val
-                                                     (Node.Unary_val
-                                                        (Node.Ident
+            [(Ast.Tag_call
+                (Ast.Decl_call (
+                   (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val
+                               (Ast.Unary_val (Ast.Ident "derive")))))),
+                   [(Ast.Positional
+                       (Ast.Relational_expr
+                          (Ast.Relational_val
+                             (Ast.Additive_val
+                                (Ast.Multiplicative_val
+                                   (Ast.Unary_call
+                                      (Ast.Decl_call (
+                                         (Ast.Relational_expr
+                                            (Ast.Relational_val
+                                               (Ast.Additive_val
+                                                  (Ast.Multiplicative_val
+                                                     (Ast.Unary_val
+                                                        (Ast.Ident
                                                            "my_derive_with_params")))))),
-                                         [(Node.Positional
-                                             (Node.Relational_expr
-                                                (Node.Relational_val
-                                                   (Node.Additive_val
-                                                      (Node.Multiplicative_val
-                                                         (Node.Unary_val
-                                                            (Node.String "a")))))));
-                                           (Node.Positional
-                                              (Node.Relational_expr
-                                                 (Node.Relational_val
-                                                    (Node.Additive_val
-                                                       (Node.Multiplicative_val
-                                                          (Node.Unary_val
-                                                             (Node.String "b")))))))
+                                         [(Ast.Positional
+                                             (Ast.Relational_expr
+                                                (Ast.Relational_val
+                                                   (Ast.Additive_val
+                                                      (Ast.Multiplicative_val
+                                                         (Ast.Unary_val
+                                                            (Ast.String "a")))))));
+                                           (Ast.Positional
+                                              (Ast.Relational_expr
+                                                 (Ast.Relational_val
+                                                    (Ast.Additive_val
+                                                       (Ast.Multiplicative_val
+                                                          (Ast.Unary_val
+                                                             (Ast.String "b")))))))
                                            ]
                                          ))))))))
                      ]
                    )))
               ];
             name = "some_struct"; params = []; explicit_ret = None;
-            body = ([], (Some (Node.Struct_expr ([], None))))}))
+            body = ([], (Some (Ast.Struct_expr ([], None))))}))
     File: currying_functions
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Curry_decl {tags = []; name = "mul_5"; curried = "mul";
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Curry_decl {tags = []; name = "mul_5"; curried = "mul";
             input =
-            [(Node.Relational_expr
-                (Node.Relational_val
-                   (Node.Additive_val
-                      (Node.Multiplicative_val (Node.Unary_val (Node.Int 5))))))
+            [(Ast.Relational_expr
+                (Ast.Relational_val
+                   (Ast.Additive_val
+                      (Ast.Multiplicative_val (Ast.Unary_val (Ast.Int 5))))))
               ]}))
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Curry_decl {tags = []; name = "just_15"; curried = "mul";
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Curry_decl {tags = []; name = "just_15"; curried = "mul";
             input =
-            [(Node.Relational_expr
-                (Node.Relational_val
-                   (Node.Additive_val
-                      (Node.Multiplicative_val (Node.Unary_val (Node.Int 5))))));
-              (Node.Relational_expr
-                 (Node.Relational_val
-                    (Node.Additive_val
-                       (Node.Multiplicative_val (Node.Unary_val (Node.Int 3))))))
+            [(Ast.Relational_expr
+                (Ast.Relational_val
+                   (Ast.Additive_val
+                      (Ast.Multiplicative_val (Ast.Unary_val (Ast.Int 5))))));
+              (Ast.Relational_expr
+                 (Ast.Relational_val
+                    (Ast.Additive_val
+                       (Ast.Multiplicative_val (Ast.Unary_val (Ast.Int 3))))))
               ]}))
     File: open_statements
-    found: (Node.Statement (Node.Open_stmt { Node.mods = ["MyModule"]; elements = [] }))
-    found: (Node.Statement
-       (Node.Open_stmt { Node.mods = ["MyModule"; "SomeMod"]; elements = [] }))
-    found: (Node.Statement
-       (Node.Open_stmt
-          { Node.mods = ["Panic"];
-            elements = [{ Node.path = ["panic"]; alias = None }] }))
-    found: (Node.Statement
-       (Node.Open_stmt
-          { Node.mods = ["Assert"];
+    found: (Ast.Statement (Ast.Open_stmt { Ast.mods = ["MyModule"]; elements = [] }))
+    found: (Ast.Statement
+       (Ast.Open_stmt { Ast.mods = ["MyModule"; "SomeMod"]; elements = [] }))
+    found: (Ast.Statement
+       (Ast.Open_stmt
+          { Ast.mods = ["Panic"];
+            elements = [{ Ast.path = ["panic"]; alias = None }] }))
+    found: (Ast.Statement
+       (Ast.Open_stmt
+          { Ast.mods = ["Assert"];
             elements =
-            [{ Node.path = ["assert"]; alias = None };
-              { Node.path = ["Static"; "assert_static"]; alias = None };
-              { Node.path = ["assert_eq"]; alias = (Some "is_eq") }]
+            [{ Ast.path = ["assert"]; alias = None };
+              { Ast.path = ["Static"; "assert_static"]; alias = None };
+              { Ast.path = ["assert_eq"]; alias = (Some "is_eq") }]
             }))
     File: tags_and_macros
-    found: (Node.Statement
-       (Node.Decl_stmt
-          Node.Decl {
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {
             tags =
-            [(Node.Tag_name "recusive");
-              (Node.Tag_call
-                 (Node.Decl_call (
-                    (Node.Relational_expr
-                       (Node.Relational_val
-                          (Node.Additive_val
-                             (Node.Multiplicative_val
-                                (Node.Unary_val (Node.Ident "derive")))))),
-                    [(Node.Positional
-                        (Node.Relational_expr
-                           (Node.Relational_val
-                              (Node.Additive_val
-                                 (Node.Multiplicative_val
-                                    (Node.Unary_val (Node.Ident "Show")))))));
-                      (Node.Positional
-                         (Node.Relational_expr
-                            (Node.Relational_val
-                               (Node.Additive_val
-                                  (Node.Multiplicative_val
-                                     (Node.Unary_val (Node.Ident "PrettyPrint")))))))
+            [(Ast.Tag_name "recusive");
+              (Ast.Tag_call
+                 (Ast.Decl_call (
+                    (Ast.Relational_expr
+                       (Ast.Relational_val
+                          (Ast.Additive_val
+                             (Ast.Multiplicative_val
+                                (Ast.Unary_val (Ast.Ident "derive")))))),
+                    [(Ast.Positional
+                        (Ast.Relational_expr
+                           (Ast.Relational_val
+                              (Ast.Additive_val
+                                 (Ast.Multiplicative_val
+                                    (Ast.Unary_val (Ast.Ident "Show")))))));
+                      (Ast.Positional
+                         (Ast.Relational_expr
+                            (Ast.Relational_val
+                               (Ast.Additive_val
+                                  (Ast.Multiplicative_val
+                                     (Ast.Unary_val (Ast.Ident "PrettyPrint")))))))
                       ]
                     )))
               ];
             name = "my_type"; params = []; explicit_ret = None;
             body =
             ([],
-             (Some (Node.Relational_expr
-                      (Node.Relational_val
-                         (Node.Additive_val
-                            (Node.Multiplicative_val
-                               (Node.Unary_val (Node.String "ahhh"))))))))}))
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val
+                               (Ast.Unary_val (Ast.String "ahhh"))))))))}))
     |}]

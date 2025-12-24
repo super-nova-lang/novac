@@ -26,4 +26,4 @@
    (pps
      ppx_deriving.show
      ppx_expect))
- (libraries easy_logging spectrum))
+ (libraries easy_logging spectrum llvm))
