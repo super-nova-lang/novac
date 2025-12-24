@@ -110,8 +110,8 @@ and decl_param =
   #[ident(call_param, ...)]
 *)
 and tag =
-  | Name of ident
-  | Call of call_expr
+  | Tag_name of ident
+  | Tag_call of call_expr
 
 (* EXPRESSION *)
 and expression =
@@ -129,24 +129,25 @@ and relational_expr =
   | Gt of additive_expr * additive_expr
   | Leq of additive_expr * additive_expr
   | Geq of additive_expr * additive_expr
-  | Val of additive_expr
+  | Relational_val of additive_expr
 
 and additive_expr =
   | Add of additive_expr * multiplicative_expr
   | Sub of additive_expr * multiplicative_expr
-  | Val of multiplicative_expr
+  | Additive_val of multiplicative_expr
 
 and multiplicative_expr =
   | Mul of multiplicative_expr * unary_expr
   | Div of multiplicative_expr * unary_expr
   | Mod of multiplicative_expr * unary_expr
-  | Val of unary_expr
+  | Pow of multiplicative_expr * unary_expr
+  | Multiplicative_val of unary_expr
 
 and unary_expr =
   | Neg of unary_expr
   | Not of unary_expr
-  | Call of call_expr
-  | Val of atom
+  | Unary_call of call_expr
+  | Unary_val of atom
 
 (**
   ident(call_param, ...)
@@ -201,7 +202,7 @@ and atom =
   | Int of int
   | Ident of ident
   | Grouping of expression
-  | Unit
+  | Unit_val
 
 (* PRIMITIVES *)
 and ident = string
@@ -209,5 +210,5 @@ and ident = string
 and typ =
   | User of ident
   | Builtin of ident
-  | Unit
+  | Unit_typ
 [@@deriving show]

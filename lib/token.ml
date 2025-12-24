@@ -28,6 +28,7 @@ type t =
   | Lesser_eql
   | Greater_eql
   | UnitToken (* () *)
+  | Walrus (* := *)
   (* - Single*)
   | Tilde
   | Back_tick
@@ -73,6 +74,8 @@ type loc =
   ; row : int
   ; col : int
   }
+
+let show_loc { file; row; col } = Printf.sprintf "%s:%d:%d" file row col
 
 let from_string = function
   | "let" -> Let
