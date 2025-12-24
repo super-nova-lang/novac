@@ -1,0 +1,2 @@
+let add :: a : i32, b: i32 = a + b
+let main :: () = add(5, 3)

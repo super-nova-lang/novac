@@ -1,0 +1,5 @@
+let printf :: import <- "c", "printf"
+
+let main :: () = {
+  printf("Hello world! %d\n", 32)
+}

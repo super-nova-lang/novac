@@ -72,6 +72,9 @@ and else_stmt =
 
   Curry:
     let ident :: ident <- expression
+
+  Import:
+    let ident :: import <- string, string
 *)
 and decl_stmt =
   | Decl of
@@ -86,6 +89,11 @@ and decl_stmt =
       ; name : ident
       ; curried : ident
       ; input : expression list
+      }
+  | Import_decl of
+      { name : ident
+      ; calling_conf : string
+      ; link_name : string
       }
 
 (**
@@ -125,9 +133,7 @@ and expression =
   | Derive_expr of t list
 
 and with_block = t list
-
 and struct_field = ident * typ * expression option
-
 and enum_variant = ident * variant_body option
 
 and variant_body =

@@ -2,6 +2,7 @@ type t =
   (* Keywords *)
   | Let
   | Open
+  | Import
   | Match
   | With
   | As
@@ -83,6 +84,7 @@ let show_loc { file; row; col } = Printf.sprintf "%s:%d:%d" file row col
 let from_string = function
   | "let" -> Let
   | "open" -> Open
+  | "import" -> Import
   | "match" -> Match
   | "as" -> As
   | "with" -> With

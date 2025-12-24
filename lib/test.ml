@@ -11,6 +11,14 @@ let test_parser (name, content) =
   List.iter (fun x -> Format.printf "found: %s\n" (Ast.show x)) nodes
 ;;
 
+let test_codegen (name, content) =
+  Format.printf "File: %s\n" name;
+  let tokens = Lexer.lex "test.nova" content in
+  let nodes = Parser.parse (Parser.create tokens) in
+  List.iter Codegen.codegen nodes;
+  Llvm.dump_module Codegen.the_module
+;;
+
 [@@@ocamlformat "disable"]
 let%expect_test "lexer" =
   List.iter test_lexer Nova_tests.all;
@@ -95,6 +103,34 @@ let%expect_test "lexer" =
     found: Token.Semi_colon
     found: (Token.Ident "res3")
     found: Token.Close_brack
+    found: Token.Eof
+    File: codegen_test
+    found: Token.Let
+    found: (Token.Ident "add")
+    found: Token.Double_colon
+    found: (Token.Ident "a")
+    found: Token.Colon
+    found: (Token.Ident "i32")
+    found: Token.Comma
+    found: (Token.Ident "b")
+    found: Token.Colon
+    found: (Token.Ident "i32")
+    found: Token.Eql
+    found: (Token.Ident "a")
+    found: Token.Plus
+    found: (Token.Ident "b")
+    found: Token.Let
+    found: (Token.Ident "main")
+    found: Token.Double_colon
+    found: Token.Open_paren
+    found: Token.Close_paren
+    found: Token.Eql
+    found: (Token.Ident "add")
+    found: Token.Open_paren
+    found: (Token.Number 5)
+    found: Token.Comma
+    found: (Token.Number 3)
+    found: Token.Close_paren
     found: Token.Eof
     File: complex_types
     found: Token.Hash
@@ -347,6 +383,28 @@ let%expect_test "lexer" =
     found: Token.Comma
     found: (Token.Number 3)
     found: Token.Eof
+    File: ffi_example
+    found: Token.Let
+    found: (Token.Ident "printf")
+    found: Token.Double_colon
+    found: Token.Import
+    found: Token.Back_arrow
+    found: (Token.String "c")
+    found: Token.Comma
+    found: (Token.String "printf")
+    found: Token.Let
+    found: (Token.Ident "main")
+    found: Token.Double_colon
+    found: Token.Open_paren
+    found: Token.Close_paren
+    found: Token.Eql
+    found: Token.Open_brack
+    found: (Token.Ident "printf")
+    found: Token.Open_paren
+    found: (Token.String "Hello world!\n")
+    found: Token.Close_paren
+    found: Token.Close_brack
+    found: Token.Eof
     File: open_statements
     found: Token.Open
     found: (Token.Ident "MyModule")
@@ -519,6 +577,55 @@ let%expect_test "parser" =
                          (Ast.Additive_val
                             (Ast.Multiplicative_val
                                (Ast.Unary_val (Ast.Ident "res3"))))))))}))
+    File: codegen_test
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "add";
+            params =
+            [(Ast.Typed ("a", (Ast.User "i32")));
+              (Ast.Typed ("b", (Ast.User "i32")))];
+            explicit_ret = None;
+            body =
+            ([],
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Add (
+                            (Ast.Additive_val
+                               (Ast.Multiplicative_val
+                                  (Ast.Unary_val (Ast.Ident "a")))),
+                            (Ast.Multiplicative_val
+                               (Ast.Unary_val (Ast.Ident "b")))
+                            ))))))}))
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "main"; params = []; explicit_ret = None;
+            body =
+            ([],
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val
+                               (Ast.Unary_call
+                                  (Ast.Decl_call (
+                                     (Ast.Relational_expr
+                                        (Ast.Relational_val
+                                           (Ast.Additive_val
+                                              (Ast.Multiplicative_val
+                                                 (Ast.Unary_val (Ast.Ident "add")))))),
+                                     [(Ast.Positional
+                                         (Ast.Relational_expr
+                                            (Ast.Relational_val
+                                               (Ast.Additive_val
+                                                  (Ast.Multiplicative_val
+                                                     (Ast.Unary_val (Ast.Int 5)))))));
+                                       (Ast.Positional
+                                          (Ast.Relational_expr
+                                             (Ast.Relational_val
+                                                (Ast.Additive_val
+                                                   (Ast.Multiplicative_val
+                                                      (Ast.Unary_val (Ast.Int 3)))))))
+                                       ]
+                                     )))))))))}))
     File: complex_types
     found: (Ast.Statement
        (Ast.Decl_stmt
@@ -983,6 +1090,38 @@ let%expect_test "parser" =
                     (Ast.Additive_val
                        (Ast.Multiplicative_val (Ast.Unary_val (Ast.Int 3))))))
               ]}))
+    File: ffi_example
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Import_decl {name = "printf"; calling_conf = "c";
+            link_name = "printf"}))
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "main"; params = []; explicit_ret = None;
+            body =
+            ([],
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val
+                               (Ast.Unary_call
+                                  (Ast.Decl_call (
+                                     (Ast.Relational_expr
+                                        (Ast.Relational_val
+                                           (Ast.Additive_val
+                                              (Ast.Multiplicative_val
+                                                 (Ast.Unary_val
+                                                    (Ast.Ident "printf")))))),
+                                     [(Ast.Positional
+                                         (Ast.Relational_expr
+                                            (Ast.Relational_val
+                                               (Ast.Additive_val
+                                                  (Ast.Multiplicative_val
+                                                     (Ast.Unary_val
+                                                        (Ast.String
+                                                           "Hello world!\n")))))))
+                                       ]
+                                     )))))))))}))
     File: open_statements
     found: (Ast.Statement (Ast.Open_stmt { Ast.mods = ["MyModule"]; elements = [] }))
     found: (Ast.Statement
@@ -1036,3 +1175,9 @@ let%expect_test "parser" =
                             (Ast.Multiplicative_val
                                (Ast.Unary_val (Ast.String "ahhh"))))))))}))
     |}]
+;;
+
+[@@@ocamlformat "disable"]
+let%expect_test "codegen" =
+  List.iter test_codegen Nova_tests.all;
+  [%expect]

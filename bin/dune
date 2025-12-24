@@ -1,4 +1,4 @@
 (executable
  (public_name novac)
  (name main)
- (libraries novac))
+ (libraries novac cmdliner))

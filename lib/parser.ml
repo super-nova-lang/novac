@@ -35,8 +35,7 @@ let get_ok_or_fail = function
 ;;
 
 let wrap_unary (u : Ast.unary_expr) : Ast.expression =
-  Ast.Relational_expr
-    (Ast.Relational_val (Ast.Additive_val (Ast.Multiplicative_val u)))
+  Ast.Relational_expr (Ast.Relational_val (Ast.Additive_val (Ast.Multiplicative_val u)))
 ;;
 
 let rec parse p =
@@ -192,54 +191,71 @@ and parse_decl_stmt p tags =
   in
   match peek p with
   | Token.Double_colon ->
-    (* Declaration or Currying *)
+    (* Declaration or Currying or Import *)
     advance p;
-    let current_pos = p.pos in
-    let is_curry =
-      match consume p with
-      | Token.Ident _ -> peek p = Token.Back_arrow
-      | _ -> false
-    in
-    p.pos <- current_pos;
-    if is_curry
+    if peek p = Token.Import
     then (
-      let curried =
-        match consume p with
-        | Token.Ident s -> s
-        | _ -> assert false
-      in
+      advance p;
       expect p Token.Back_arrow |> ignore;
-      let input =
-        parse_list p [ Token.Semi_colon; Token.Eof; Token.Let ] (fun p ->
-          parse_expression p |> get_ok_or_fail)
+      let calling_conf =
+        match consume p with
+        | Token.String s -> s
+        | t -> failwith ("Expected calling convention string, got " ^ Token.show t)
       in
-      Ok (Ast.Decl_stmt (Ast.Curry_decl { tags; name; curried; input })))
+      expect p Token.Comma |> ignore;
+      let link_name =
+        match consume p with
+        | Token.String s -> s
+        | t -> failwith ("Expected link name string, got " ^ Token.show t)
+      in
+      Ok (Ast.Decl_stmt (Ast.Import_decl { name; calling_conf; link_name })))
     else (
-      let params =
-        if peek p = Token.Eql || peek p = Token.Skinny_arrow
-        then []
-        else if peek p = Token.Open_paren
-        then (
-          advance p;
-          expect p Token.Close_paren |> ignore;
-          [])
-        else parse_list p [ Token.Eql; Token.Skinny_arrow ] parse_decl_param
+      let current_pos = p.pos in
+      let is_curry =
+        match consume p with
+        | Token.Ident _ -> peek p = Token.Back_arrow
+        | _ -> false
       in
-      let explicit_ret =
-        if peek p = Token.Skinny_arrow
-        then (
-          advance p;
-          Some (parse_type p))
-        else None
-      in
-      let body =
-        if peek p = Token.Eql || peek p = Token.Walrus
-        then (
-          advance p;
-          parse_body p)
-        else [], None
-      in
-      Ok (Ast.Decl_stmt (Ast.Decl { tags; name; params; explicit_ret; body })))
+      p.pos <- current_pos;
+      if is_curry
+      then (
+        let curried =
+          match consume p with
+          | Token.Ident s -> s
+          | _ -> assert false
+        in
+        expect p Token.Back_arrow |> ignore;
+        let input =
+          parse_list p [ Token.Semi_colon; Token.Eof; Token.Let ] (fun p ->
+            parse_expression p |> get_ok_or_fail)
+        in
+        Ok (Ast.Decl_stmt (Ast.Curry_decl { tags; name; curried; input })))
+      else (
+        let params =
+          if peek p = Token.Eql || peek p = Token.Skinny_arrow
+          then []
+          else if peek p = Token.Open_paren
+          then (
+            advance p;
+            expect p Token.Close_paren |> ignore;
+            [])
+          else parse_list p [ Token.Eql; Token.Skinny_arrow ] parse_decl_param
+        in
+        let explicit_ret =
+          if peek p = Token.Skinny_arrow
+          then (
+            advance p;
+            Some (parse_type p))
+          else None
+        in
+        let body =
+          if peek p = Token.Eql || peek p = Token.Walrus
+          then (
+            advance p;
+            parse_body p)
+          else [], None
+        in
+        Ok (Ast.Decl_stmt (Ast.Decl { tags; name; params; explicit_ret; body }))))
   | Token.Back_arrow ->
     advance p;
     let curried =
