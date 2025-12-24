@@ -1,0 +1,3 @@
+#[recusive]
+#[derive(Show, PrettyPrint)]
+let my_type :: () = "ahhh"

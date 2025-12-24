@@ -1,22 +1,23 @@
 (rule
- (target spec_test.ml)
- (deps ../examples/spec.nova)
- (action
-  (with-stdout-to spec_test.ml
-   (progn
-    (echo "let content = {s|")
-    (run cat ../examples/spec.nova)
-    (echo "|s}")))))
+  (target nova_tests.ml)
+  (deps (glob_files ../examples/*))
+  (action
+    (with-stdout-to %{target}
+      (bash "for file in ../examples/*; do
+               filename=$(basename \"$file\")
+               name=$(echo \"${filename%.*}\" | tr '-' '_')
+               echo \"let content_$name = {s|\"
+               cat \"$file\"
+               echo \"|s}\"
+             done
 
-(rule
- (target person_test.ml)
- (deps ../examples/person.nova)
- (action
-  (with-stdout-to person_test.ml
-   (progn
-    (echo "let content = {s|")
-    (run cat ../examples/person.nova)
-    (echo "|s}")))))
+             echo -n 'let all = ['
+             for file in ../examples/*; do
+               filename=$(basename \"$file\")
+               name=$(echo \"${filename%.*}\" | tr '-' '_')
+               echo -n \"(\\\"$name\\\", content_$name); \"
+             done
+             echo ']'"))))
 
 (library
  (name novac)

@@ -1,0 +1,8 @@
+open MyModule
+open MyModule.SomeMod
+open Panic with { panic }
+open Assert with {
+  assert,
+  Static.assert_static,
+  assert_eq as is_eq,
+}

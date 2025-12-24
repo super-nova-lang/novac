@@ -1,0 +1,2 @@
+let mul_5 :: mul <- 5
+let just_15 :: mul <- 5, 3
