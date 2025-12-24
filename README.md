@@ -21,7 +21,7 @@ Nova is a garbage-collected with an opt in allocator system akin to [Odin's cont
 
 Explore the source code, check out our vision, follow the socials, and contribute to the compiler:
 
-**[Nova on GitHub](https://github.com/super-nova-lang/novac)**
-**[Nova on Twitter (X)](https://x.com/SuperNovaLang)**
-**[Nova's Wiki](https://wiki.nova.nerdcult.net/index.php/Main_Page)**
-**[Contact Nova](mailto:super.nova.compiler@gmail.com)**
+- **[Nova on GitHub](https://github.com/super-nova-lang/novac)**
+- **[Nova on Twitter (X)](https://x.com/SuperNovaLang)**
+- **[Nova's Wiki](https://wiki.nova.nerdcult.net/index.php/Main_Page)**
+- **[Contact Nova](mailto:super.nova.compiler@gmail.com)**
