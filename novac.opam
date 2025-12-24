@@ -4,7 +4,7 @@ synopsis: "Supernova Compiler"
 description: "Supernova Compiler"
 maintainer: ["Ashton Sickler <ashton.sickler06@gmail.com>"]
 authors: ["Ashton Sickler <ashton.sickler06@gmail.com>"]
-license: "LICENSE"
+license: "MIT"
 tags: ["compiler" "supernova" "novac"]
 homepage: "https://github.com/super-nova-lang/novac"
 bug-reports: "https://github.com/super-nova-lang/novac/issues"

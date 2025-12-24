@@ -35,7 +35,8 @@ let get_ok_or_fail = function
 ;;
 
 let wrap_unary (u : Node.unary_expr) : Node.expression =
-  Node.Relational_expr (Node.Relational_val (Node.Additive_val (Node.Multiplicative_val u)))
+  Node.Relational_expr
+    (Node.Relational_val (Node.Additive_val (Node.Multiplicative_val u)))
 ;;
 
 let rec parse p =
@@ -182,7 +183,12 @@ and parse_decl_stmt p tags =
   let name =
     match consume p with
     | Token.Ident s -> s
-    | t -> failwith (Printf.sprintf "Expected identifier for declaration, got %s at %s" (Token.show t) (Token.show_loc (loc p)))
+    | t ->
+      failwith
+        (Printf.sprintf
+           "Expected identifier for declaration, got %s at %s"
+           (Token.show t)
+           (Token.show_loc (loc p)))
   in
   match peek p with
   | Token.Double_colon ->
@@ -231,7 +237,7 @@ and parse_decl_stmt p tags =
         then (
           advance p;
           parse_body p)
-        else ([], None)
+        else [], None
       in
       Ok (Node.Decl_stmt (Node.Decl { tags; name; params; explicit_ret; body })))
   | Token.Back_arrow ->
@@ -255,7 +261,7 @@ and parse_decl_stmt p tags =
       then (
         advance p;
         parse_body p)
-      else ([], None)
+      else [], None
     in
     Ok (Node.Decl_stmt (Node.Decl { tags; name; params = []; explicit_ret; body }))
   | Token.Eql | Token.Walrus ->
@@ -271,13 +277,14 @@ and parse_decl_param p =
   let name =
     match consume p with
     | Token.Ident s -> s
-    | t -> failwith (Printf.sprintf "Expected identifier for parameter, got %s" (Token.show t))
+    | t ->
+      failwith (Printf.sprintf "Expected identifier for parameter, got %s" (Token.show t))
   in
   if peek p = Token.Ellipsis
   then (
     advance p;
     Node.Variadic name)
-  else
+  else (
     let param_type, default_value =
       if peek p = Token.Colon
       then (
@@ -306,7 +313,7 @@ and parse_decl_param p =
     | false, None, None -> Node.Untyped name
     | true, Some t, Some e -> Node.OptionalTyped (name, t, e)
     | true, None, Some e -> Node.OptionalUntyped (name, e)
-    | _ -> failwith "Invalid parameter declaration"
+    | _ -> failwith "Invalid parameter declaration")
 
 and parse_type p =
   match consume p with
@@ -389,7 +396,7 @@ and parse_body_as_t_list p =
     while peek p <> Token.Close_brack do
       if peek p = Token.Eof then failwith "Unclosed block";
       match parse_statement p with
-      | Ok stmt -> stmts := (Node.Statement stmt) :: !stmts
+      | Ok stmt -> stmts := Node.Statement stmt :: !stmts
       | Error err -> failwith err
     done;
     expect p Token.Close_brack |> ignore;
@@ -627,7 +634,9 @@ and parse_call_expr_with_name name p =
   let params = parse_list p [ Token.Close_paren ] parse_call_param in
   expect p Token.Close_paren |> ignore;
   let target = Node.Unary_val (Node.Ident name) in
-  if is_macro then Node.Macro_call (wrap_unary target, params) else Node.Decl_call (wrap_unary target, params)
+  if is_macro
+  then Node.Macro_call (wrap_unary target, params)
+  else Node.Decl_call (wrap_unary target, params)
 
 and parse_call_param p =
   if peek p = Token.Tilde
