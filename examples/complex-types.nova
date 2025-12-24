@@ -1,4 +1,4 @@
-#[derive(Show, PrettyPrint)]
+#[derive(PrettyPrint)]
 let Job ::
   salary,
   ?language = "c++", (* #eww *)
@@ -10,8 +10,11 @@ let Job ::
   sales_rep,
 } with {
   salary : i32
-
   hourly :: self, hours = self.salary / hours
+  show :: self = match self with
+    | .programmer -> "programmer"
+    | .other s -> s
+    | .sales_rep -> "sales rep"
 }
 
 #[derive(Show, PrettyPrint)]
@@ -23,27 +26,16 @@ let Person ::
   job  : job    = job,
 } with {
   let introduce :: self =
-    println!("Hello, my name is {} and I am a {}", self.name, self.job.show())
+    println!("Hello, my name is %s and I am a %s", self.name, self.job.show())
 }
 
-let based_dev := Person(
-  "Ashton", 19,
-  Job.programmer(1_000, "nova")
-)
 
-let prob_some_creep := Person(
-  "Joe Shmoe", 37,
-  .sales_rep(),
-)
 
 let my_printf ::
   fmt, args...
 = macro {
   (* Macro stuff here... *)
 }
-
-my_printf!("Hello world!")
-my_printf!("This is {}", "nova")
 
 let my_derive :: tt
 = derive {
@@ -60,3 +52,20 @@ let my_derive_with_params :: tt, a, b
 
 #[derive(my_derive_with_params("a", "b"))]
 let some_struct :: () = struct {}
+
+let main :: () = {
+  let based_dev := Person(
+    "Ashton", 19,
+    Job.programmer(1_000, "nova")
+  )
+
+  based_dev.introduce();
+  println!("Hourly rate: %d", based_dev.job.hourly(40));
+
+  let prob_some_creep := Person(
+    "Joe Shmoe", 37,
+    .sales_rep(),
+  )
+
+  prob_some_creep.introduce();
+}

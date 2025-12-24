@@ -16,6 +16,7 @@ let process_codegen file =
   let tokens = Lexer.lex_from_file file in
   let nodes = Parser.parse (Parser.create tokens) in
   List.iter Codegen.codegen nodes;
+  Codegen.finish_module ();
   Llvm.dump_module Codegen.the_module
 ;;
 
@@ -23,6 +24,7 @@ let process_compile file =
   let tokens = Lexer.lex_from_file file in
   let nodes = Parser.parse (Parser.create tokens) in
   List.iter Codegen.codegen nodes;
+  Codegen.finish_module ();
   let ll_code = Llvm.string_of_llmodule Codegen.the_module in
   let ll_file = Filename.temp_file "output" ".ll" in
   let oc = open_out ll_file in

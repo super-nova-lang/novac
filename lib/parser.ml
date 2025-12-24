@@ -435,8 +435,53 @@ and parse_expression p =
   | Token.Enum -> parse_enum_expr p
   | Token.Macro -> parse_macro_expr p
   | Token.Derive -> parse_derive_expr p
-  | Token.Match -> Error "Match expressions not implemented"
+  | Token.Match -> parse_match_expr p
   | _ -> parse_relational_expr p
+
+and parse_match_expr p =
+  expect p Token.Match |> ignore;
+  let target = parse_expression p |> get_ok_or_fail in
+  expect p Token.With |> ignore;
+  let arms = ref [] in
+  while peek p = Token.Bar do
+    advance p;
+    let param = parse_match_param p in
+    let if_opt =
+      if peek p = Token.If
+      then (
+        advance p;
+        Some (parse_expression p |> get_ok_or_fail))
+      else None
+    in
+    expect p Token.Skinny_arrow |> ignore;
+    let body = parse_match_arm_body p in
+    arms := (param, if_opt, body) :: !arms
+  done;
+  Ok (Ast.Match_expr (target, List.rev !arms))
+
+and parse_match_param p =
+  (* Try to parse a pattern. For now, we'll reuse primary expression parsing. *)
+  let e = parse_primary p |> get_ok_or_fail in
+  match e with
+  | Ast.Unary_val (Ast.Implicit_member _) ->
+    (match peek p with
+     | Token.Ident _ ->
+       let var = parse_primary p |> get_ok_or_fail in
+       Ast.Single
+         (wrap_unary
+            (Ast.Unary_call (Ast.Decl_call (wrap_unary e, [ Ast.Positional (wrap_unary var) ]))))
+     | _ -> Ast.Single (wrap_unary e))
+  | Ast.Unary_call (Ast.Decl_call (target, params)) ->
+    (* Check if it's .Variant(x) *)
+    Ast.Single (wrap_unary (Ast.Unary_call (Ast.Decl_call (target, params))))
+  | _ -> Ast.Single (wrap_unary e)
+
+and parse_match_arm_body p =
+  if peek p = Token.Open_brack
+  then parse_body p
+  else (
+    let e = parse_expression p |> get_ok_or_fail in
+    [], Some e)
 
 and parse_with_block p =
   if peek p = Token.With
