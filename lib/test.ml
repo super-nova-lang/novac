@@ -11,10 +11,10 @@ let test_parser (name, content) =
   List.iter (fun x -> Format.printf "found: %s\n" (Node.show x)) nodes
 ;;
 
+[@@@ocamlformat "disable"]
 let%expect_test "lexer" =
   List.iter test_lexer Nova_tests.all;
-  [%expect
-    {|
+  [%expect {|
     File: basic_functions
     found: Token.Let
     found: (Token.Ident "add")
@@ -401,6 +401,7 @@ let%expect_test "lexer" =
     |}]
 ;;
 
+[@@@ocamlformat "disable"]
 let%expect_test "parser" =
   List.iter test_parser Nova_tests.all;
   [%expect {|
@@ -1039,4 +1040,3 @@ let%expect_test "parser" =
                             (Node.Multiplicative_val
                                (Node.Unary_val (Node.String "ahhh"))))))))}))
     |}]
-;;
