@@ -22,3 +22,5 @@ To explore the language, check out the `examples/` directory:
 - `currying-functions.nova`
 
 For technical instructions on how to build, run, and test the compiler, please refer to [GEMINI.md](./GEMINI.md).
+
+[Link to Discord](https://discord.gg/TvKx9uxneY)
