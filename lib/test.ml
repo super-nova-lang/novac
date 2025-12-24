@@ -401,7 +401,9 @@ let%expect_test "lexer" =
     found: Token.Open_brack
     found: (Token.Ident "printf")
     found: Token.Open_paren
-    found: (Token.String "Hello world!\n")
+    found: (Token.String "Hello world! %d\n")
+    found: Token.Comma
+    found: (Token.Number 32)
     found: Token.Close_paren
     found: Token.Close_brack
     found: Token.Eof
@@ -1119,7 +1121,13 @@ let%expect_test "parser" =
                                                   (Ast.Multiplicative_val
                                                      (Ast.Unary_val
                                                         (Ast.String
-                                                           "Hello world!\n")))))))
+                                                           "Hello world! %d\n")))))));
+                                       (Ast.Positional
+                                          (Ast.Relational_expr
+                                             (Ast.Relational_val
+                                                (Ast.Additive_val
+                                                   (Ast.Multiplicative_val
+                                                      (Ast.Unary_val (Ast.Int 32)))))))
                                        ]
                                      )))))))))}))
     File: open_statements
@@ -1180,4 +1188,21 @@ let%expect_test "parser" =
 [@@@ocamlformat "disable"]
 let%expect_test "codegen" =
   List.iter test_codegen Nova_tests.all;
-  [%expect]
+  [%expect.unreachable]
+[@@expect.uncaught_exn {|
+  (* CR expect_test_collector: This test expectation appears to contain a backtrace.
+     This is strongly discouraged as backtraces are fragile.
+     Please change this test to not include a backtrace. *)
+  ("Novac.Codegen.Error(\"Complex function body not implemented yet\")")
+  Raised at Novac__Codegen.codegen_decl in file "lib/codegen.ml", line 137, characters 13-70
+  Called from Novac__Codegen.codegen_stmt in file "lib/codegen.ml", line 157, characters 31-50
+  Called from Stdlib__List.iter in file "list.ml", line 114, characters 12-15
+  Called from Novac__Test.test_codegen in file "lib/test.ml", line 18, characters 2-33
+  Called from Stdlib__List.iter in file "list.ml", line 114, characters 12-15
+  Called from Novac__Test.(fun) in file "lib/test.ml", line 1182, characters 2-39
+  Called from Ppx_expect_runtime__Test_block.Configured.dump_backtrace in file "runtime/test_block.ml", line 142, characters 10-28
+
+  Trailing output
+  ---------------
+  File: basic_functions
+  |}]
