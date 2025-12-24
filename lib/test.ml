@@ -25,6 +25,14 @@ let%expect_test "lexer" =
   [%expect {|
     File: basic_functions
     found: Token.Let
+    found: (Token.Ident "printf")
+    found: Token.Double_colon
+    found: Token.Import
+    found: Token.Back_arrow
+    found: (Token.String "c")
+    found: Token.Comma
+    found: (Token.String "printf")
+    found: Token.Let
     found: (Token.Ident "add")
     found: Token.Double_colon
     found: (Token.Ident "a")
@@ -102,6 +110,36 @@ let%expect_test "lexer" =
     found: Token.Close_paren
     found: Token.Semi_colon
     found: (Token.Ident "res3")
+    found: Token.Close_brack
+    found: Token.Let
+    found: (Token.Ident "main")
+    found: Token.Double_colon
+    found: Token.Open_paren
+    found: Token.Close_paren
+    found: Token.Eql
+    found: Token.Open_brack
+    found: (Token.Ident "printf")
+    found: Token.Open_paren
+    found: (Token.String "add(6, 7) = %d\n")
+    found: Token.Comma
+    found: (Token.Ident "add")
+    found: Token.Open_paren
+    found: (Token.Number 6)
+    found: Token.Comma
+    found: (Token.Number 7)
+    found: Token.Close_paren
+    found: Token.Close_paren
+    found: (Token.Ident "printf")
+    found: Token.Open_paren
+    found: (Token.String "mul(1, 1) = %d")
+    found: Token.Comma
+    found: (Token.Ident "mul")
+    found: Token.Open_paren
+    found: (Token.Number 1)
+    found: Token.Comma
+    found: (Token.Number 1)
+    found: Token.Close_paren
+    found: Token.Close_paren
     found: Token.Close_brack
     found: Token.Eof
     File: codegen_test
@@ -468,6 +506,10 @@ let%expect_test "parser" =
     File: basic_functions
     found: (Ast.Statement
        (Ast.Decl_stmt
+          Ast.Import_decl {name = "printf"; calling_conf = "c";
+            link_name = "printf"}))
+    found: (Ast.Statement
+       (Ast.Decl_stmt
           Ast.Decl {tags = []; name = "add";
             params =
             [(Ast.Typed ("a", (Ast.User "i32")));
@@ -579,6 +621,122 @@ let%expect_test "parser" =
                          (Ast.Additive_val
                             (Ast.Multiplicative_val
                                (Ast.Unary_val (Ast.Ident "res3"))))))))}))
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "main"; params = []; explicit_ret = None;
+            body =
+            ([(Ast.Expression_stmt
+                 (Ast.Relational_expr
+                    (Ast.Relational_val
+                       (Ast.Additive_val
+                          (Ast.Multiplicative_val
+                             (Ast.Unary_call
+                                (Ast.Decl_call (
+                                   (Ast.Relational_expr
+                                      (Ast.Relational_val
+                                         (Ast.Additive_val
+                                            (Ast.Multiplicative_val
+                                               (Ast.Unary_val
+                                                  (Ast.Ident "printf")))))),
+                                   [(Ast.Positional
+                                       (Ast.Relational_expr
+                                          (Ast.Relational_val
+                                             (Ast.Additive_val
+                                                (Ast.Multiplicative_val
+                                                   (Ast.Unary_val
+                                                      (Ast.String
+                                                         "add(6, 7) = %d\n")))))));
+                                     (Ast.Positional
+                                        (Ast.Relational_expr
+                                           (Ast.Relational_val
+                                              (Ast.Additive_val
+                                                 (Ast.Multiplicative_val
+                                                    (Ast.Unary_call
+                                                       (Ast.Decl_call (
+                                                          (Ast.Relational_expr
+                                                             (Ast.Relational_val
+                                                                (Ast.Additive_val
+                                                                   (Ast.Multiplicative_val
+                                                                      (Ast.Unary_val
+                                                                        (Ast.Ident
+                                                                        "add")))))),
+                                                          [(Ast.Positional
+                                                              (Ast.Relational_expr
+                                                                 (Ast.Relational_val
+                                                                    (Ast.Additive_val
+                                                                       (Ast.Multiplicative_val
+                                                                        (Ast.Unary_val
+                                                                        (Ast.Int
+                                                                        6)))))));
+                                                            (Ast.Positional
+                                                               (Ast.Relational_expr
+                                                                  (Ast.Relational_val
+                                                                     (Ast.Additive_val
+                                                                        (
+                                                                        Ast.Multiplicative_val
+                                                                        (Ast.Unary_val
+                                                                        (Ast.Int
+                                                                        7)))))))
+                                                            ]
+                                                          ))))))))
+                                     ]
+                                   ))))))))
+               ],
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val
+                               (Ast.Unary_call
+                                  (Ast.Decl_call (
+                                     (Ast.Relational_expr
+                                        (Ast.Relational_val
+                                           (Ast.Additive_val
+                                              (Ast.Multiplicative_val
+                                                 (Ast.Unary_val
+                                                    (Ast.Ident "printf")))))),
+                                     [(Ast.Positional
+                                         (Ast.Relational_expr
+                                            (Ast.Relational_val
+                                               (Ast.Additive_val
+                                                  (Ast.Multiplicative_val
+                                                     (Ast.Unary_val
+                                                        (Ast.String
+                                                           "mul(1, 1) = %d")))))));
+                                       (Ast.Positional
+                                          (Ast.Relational_expr
+                                             (Ast.Relational_val
+                                                (Ast.Additive_val
+                                                   (Ast.Multiplicative_val
+                                                      (Ast.Unary_call
+                                                         (Ast.Decl_call (
+                                                            (Ast.Relational_expr
+                                                               (Ast.Relational_val
+                                                                  (Ast.Additive_val
+                                                                     (Ast.Multiplicative_val
+                                                                        (
+                                                                        Ast.Unary_val
+                                                                        (Ast.Ident
+                                                                        "mul")))))),
+                                                            [(Ast.Positional
+                                                                (Ast.Relational_expr
+                                                                   (Ast.Relational_val
+                                                                      (Ast.Additive_val
+                                                                        (Ast.Multiplicative_val
+                                                                        (Ast.Unary_val
+                                                                        (Ast.Int
+                                                                        1)))))));
+                                                              (Ast.Positional
+                                                                 (Ast.Relational_expr
+                                                                    (Ast.Relational_val
+                                                                       (Ast.Additive_val
+                                                                        (Ast.Multiplicative_val
+                                                                        (Ast.Unary_val
+                                                                        (Ast.Int
+                                                                        1)))))))
+                                                              ]
+                                                            ))))))))
+                                       ]
+                                     )))))))))}))
     File: codegen_test
     found: (Ast.Statement
        (Ast.Decl_stmt
@@ -1193,16 +1351,62 @@ let%expect_test "codegen" =
   (* CR expect_test_collector: This test expectation appears to contain a backtrace.
      This is strongly discouraged as backtraces are fragile.
      Please change this test to not include a backtrace. *)
-  ("Novac.Codegen.Error(\"Complex function body not implemented yet\")")
-  Raised at Novac__Codegen.codegen_decl in file "lib/codegen.ml", line 137, characters 13-70
-  Called from Novac__Codegen.codegen_stmt in file "lib/codegen.ml", line 157, characters 31-50
+  ("Novac.Codegen.Error(\"Function already defined: add\")")
+  Raised at Novac__Codegen.codegen_decl in file "lib/codegen.ml", line 144, characters 22-73
+  Re-raised at Novac__Codegen.codegen_decl in file "lib/codegen.ml", line 166, characters 8-15
+  Called from Novac__Codegen.codegen_stmt in file "lib/codegen.ml", line 182, characters 31-50
   Called from Stdlib__List.iter in file "list.ml", line 114, characters 12-15
   Called from Novac__Test.test_codegen in file "lib/test.ml", line 18, characters 2-33
   Called from Stdlib__List.iter in file "list.ml", line 114, characters 12-15
-  Called from Novac__Test.(fun) in file "lib/test.ml", line 1182, characters 2-39
+  Called from Novac__Test.(fun) in file "lib/test.ml", line 1190, characters 2-39
   Called from Ppx_expect_runtime__Test_block.Configured.dump_backtrace in file "runtime/test_block.ml", line 142, characters 10-28
 
   Trailing output
   ---------------
+  ; ModuleID = 'Nova'
+  source_filename = "Nova"
+
+  @str = private unnamed_addr constant [16 x i8] c"add(6, 7) = %d\0A\00", align 1
+  @str.1 = private unnamed_addr constant [15 x i8] c"mul(1, 1) = %d\00", align 1
+
+  declare i32 @printf(...)
+
+  define i32 @add(i32 %a, i32 %b) {
+  entry:
+    %addtmp = add i32 %a, %b
+    ret i32 %addtmp
+  }
+
+  define i32 @sub(i32 %a, i32 %b) {
+  entry:
+    %subtmp = sub i32 %a, %b
+    ret i32 %subtmp
+  }
+
+  define i32 @mul(i32 %a, i32 %b) {
+  entry:
+    %multmp = mul i32 %a, %b
+    ret i32 %multmp
+  }
+
+  define i32 @my_complex_fn(i32 %a, i32 %b, i32 %c) {
+  entry:
+    %multmp = mul i32 %b, 2
+    %addtmp = add i32 %a, %multmp
+    %divtmp = sdiv i32 %b, %addtmp
+    %subtmp = sub i32 %addtmp, 55
+    %xortmp = xor i32 %c, %subtmp
+    ret i32 %xortmp
+  }
+
+  define i32 @main() {
+  entry:
+    %calltmp = call i32 @add(i32 6, i32 7)
+    %calltmp1 = call i32 (...) @printf(ptr @str, i32 %calltmp)
+    %calltmp2 = call i32 @mul(i32 1, i32 1)
+    %calltmp3 = call i32 (...) @printf(ptr @str.1, i32 %calltmp2)
+    ret i32 %calltmp3
+  }
   File: basic_functions
+  File: codegen_test
   |}]
