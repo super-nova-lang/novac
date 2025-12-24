@@ -34,6 +34,10 @@ let get_ok_or_fail = function
   | Error err -> failwith err
 ;;
 
+let wrap_unary (u : Node.unary_expr) : Node.expression =
+  Node.Relational_expr (Node.Relational_val (Node.Additive_val (Node.Multiplicative_val u)))
+;;
+
 let rec parse p =
   let stmts = ref [] in
   while not (is_at_end p) do
@@ -64,6 +68,24 @@ and parse_toplevel p =
     (match parse_decl_stmt p tags with
      | Ok stmt -> Ok (Node.Statement stmt)
      | Error err -> Error err)
+  | Token.Ident _ ->
+    let current_pos = p.pos in
+    advance p;
+    let is_decl =
+      match peek p with
+      | Token.Colon | Token.Double_colon -> true
+      | _ -> false
+    in
+    p.pos <- current_pos;
+    if is_decl
+    then (
+      match parse_decl_stmt p tags with
+      | Ok stmt -> Ok (Node.Statement stmt)
+      | Error err -> Error err)
+    else (
+      match parse_statement p with
+      | Ok stmt -> Ok (Node.Statement stmt)
+      | Error err -> Error err)
   | _ ->
     (match parse_statement p with
      | Ok stmt -> Ok (Node.Statement stmt)
@@ -143,17 +165,24 @@ and parse_tag p =
         let call = parse_call_expr_with_name name p in
         Node.Tag_call call)
       else Node.Tag_name name
+    | Token.Derive ->
+      advance p;
+      if peek p = Token.Open_paren
+      then (
+        let call = parse_call_expr_with_name "derive" p in
+        Node.Tag_call call)
+      else Node.Tag_name "derive"
     | _ -> failwith "Expected identifier in tag"
   in
   expect p Token.Close_square |> ignore;
   tag
 
 and parse_decl_stmt p tags =
-  expect p Token.Let |> ignore;
+  if peek p = Token.Let then advance p;
   let name =
     match consume p with
     | Token.Ident s -> s
-    | t -> failwith (Printf.sprintf "Expected identifier after let, got %s" (Token.show t))
+    | t -> failwith (Printf.sprintf "Expected identifier for declaration, got %s at %s" (Token.show t) (Token.show_loc (loc p)))
   in
   match peek p with
   | Token.Double_colon ->
@@ -183,9 +212,10 @@ and parse_decl_stmt p tags =
       let params =
         if peek p = Token.Eql || peek p = Token.Skinny_arrow
         then []
-        else if peek p = Token.UnitToken
+        else if peek p = Token.Open_paren
         then (
           advance p;
+          expect p Token.Close_paren |> ignore;
           [])
         else parse_list p [ Token.Eql; Token.Skinny_arrow ] parse_decl_param
       in
@@ -196,11 +226,15 @@ and parse_decl_stmt p tags =
           Some (parse_type p))
         else None
       in
-      expect p Token.Eql |> ignore;
-      let body = parse_body p in
+      let body =
+        if peek p = Token.Eql || peek p = Token.Walrus
+        then (
+          advance p;
+          parse_body p)
+        else ([], None)
+      in
       Ok (Node.Decl_stmt (Node.Decl { tags; name; params; explicit_ret; body })))
   | Token.Back_arrow ->
-    (* Currying (without ::) - wait, is this allowed? The comment said ident :: ident <- expression *)
     advance p;
     let curried =
       match consume p with
@@ -216,10 +250,15 @@ and parse_decl_stmt p tags =
     (* Variable with type, e.g. let x : i32 = 5 *)
     advance p;
     let explicit_ret = Some (parse_type p) in
-    expect p Token.Eql |> ignore;
-    let body = parse_body p in
+    let body =
+      if peek p = Token.Eql || peek p = Token.Walrus
+      then (
+        advance p;
+        parse_body p)
+      else ([], None)
+    in
     Ok (Node.Decl_stmt (Node.Decl { tags; name; params = []; explicit_ret; body }))
-  | Token.Eql ->
+  | Token.Eql | Token.Walrus ->
     (* Inferred variable, e.g. let x = 5 *)
     advance p;
     let body = parse_body p in
@@ -234,40 +273,47 @@ and parse_decl_param p =
     | Token.Ident s -> s
     | t -> failwith (Printf.sprintf "Expected identifier for parameter, got %s" (Token.show t))
   in
-  let param_type, default_value =
-    if peek p = Token.Colon
-    then (
-      advance p;
-      let t = parse_type p in
-      let default =
-        if is_optional && peek p = Token.Eql
-        then (
-          advance p;
-          Some (parse_expression p |> get_ok_or_fail))
-        else None
-      in
-      Some t, default)
-    else (
-      let default =
-        if is_optional && peek p = Token.Eql
-        then (
-          advance p;
-          Some (parse_expression p |> get_ok_or_fail))
-        else None
-      in
-      None, default)
-  in
-  match is_optional, param_type, default_value with
-  | false, Some t, None -> Node.Typed (name, t)
-  | false, None, None -> Node.Untyped name
-  | true, Some t, Some e -> Node.OptionalTyped (name, t, e)
-  | true, None, Some e -> Node.OptionalUntyped (name, e)
-  | _ -> failwith "Invalid parameter declaration"
+  if peek p = Token.Ellipsis
+  then (
+    advance p;
+    Node.Variadic name)
+  else
+    let param_type, default_value =
+      if peek p = Token.Colon
+      then (
+        advance p;
+        let t = parse_type p in
+        let default =
+          if is_optional && peek p = Token.Eql
+          then (
+            advance p;
+            Some (parse_expression p |> get_ok_or_fail))
+          else None
+        in
+        Some t, default)
+      else (
+        let default =
+          if is_optional && peek p = Token.Eql
+          then (
+            advance p;
+            Some (parse_expression p |> get_ok_or_fail))
+          else None
+        in
+        None, default)
+    in
+    match is_optional, param_type, default_value with
+    | false, Some t, None -> Node.Typed (name, t)
+    | false, None, None -> Node.Untyped name
+    | true, Some t, Some e -> Node.OptionalTyped (name, t, e)
+    | true, None, Some e -> Node.OptionalUntyped (name, e)
+    | _ -> failwith "Invalid parameter declaration"
 
 and parse_type p =
   match consume p with
   | Token.Ident s -> Node.User s
-  | Token.UnitToken -> Node.Unit_typ
+  | Token.Open_paren ->
+    expect p Token.Close_paren |> ignore;
+    Node.Unit_typ
   | _ -> failwith "Invalid type"
 
 and parse_body p =
@@ -363,15 +409,36 @@ and parse_expression_stmt p =
 and parse_expression p =
   match peek p with
   | Token.Struct -> parse_struct_expr p
+  | Token.Enum -> parse_enum_expr p
+  | Token.Macro -> parse_macro_expr p
+  | Token.Derive -> parse_derive_expr p
   | Token.Match -> Error "Match expressions not implemented"
   | _ -> parse_relational_expr p
+
+and parse_with_block p =
+  if peek p = Token.With
+  then (
+    advance p;
+    expect p Token.Open_brack |> ignore;
+    let stmts = ref [] in
+    while peek p <> Token.Close_brack && not (is_at_end p) do
+      match parse_toplevel p with
+      | Ok stmt ->
+        stmts := stmt :: !stmts;
+        if peek p = Token.Semi_colon then advance p
+      | Error err -> failwith err
+    done;
+    expect p Token.Close_brack |> ignore;
+    Some (List.rev !stmts))
+  else None
 
 and parse_struct_expr p =
   expect p Token.Struct |> ignore;
   expect p Token.Open_brack |> ignore;
   let fields = parse_list p [ Token.Close_brack ] parse_struct_field in
   expect p Token.Close_brack |> ignore;
-  Ok (Node.Struct_expr fields)
+  let with_blk = parse_with_block p in
+  Ok (Node.Struct_expr (fields, with_blk))
 
 and parse_struct_field p =
   let name =
@@ -381,9 +448,72 @@ and parse_struct_field p =
   in
   expect p Token.Colon |> ignore;
   let typ = parse_type p in
-  expect p Token.Eql |> ignore;
-  let expr = parse_expression p |> get_ok_or_fail in
+  let expr =
+    if peek p = Token.Eql
+    then (
+      advance p;
+      Some (parse_expression p |> get_ok_or_fail))
+    else None
+  in
   name, typ, expr
+
+and parse_enum_expr p =
+  expect p Token.Enum |> ignore;
+  expect p Token.Open_brack |> ignore;
+  let variants = parse_list p [ Token.Close_brack ] parse_enum_variant in
+  expect p Token.Close_brack |> ignore;
+  let with_blk = parse_with_block p in
+  Ok (Node.Enum_expr (variants, with_blk))
+
+and parse_enum_variant p =
+  let name =
+    match consume p with
+    | Token.Ident s -> s
+    | _ -> failwith "expected ident"
+  in
+  let body =
+    if peek p = Token.Skinny_arrow
+    then (
+      advance p;
+      if peek p = Token.Struct
+      then (
+        advance p;
+        expect p Token.Open_brack |> ignore;
+        let fields = parse_list p [ Token.Close_brack ] parse_struct_field in
+        expect p Token.Close_brack |> ignore;
+        Some (Node.Struct_body fields))
+      else Some (Node.Type_body (parse_type p)))
+    else None
+  in
+  name, body
+
+and parse_macro_expr p =
+  expect p Token.Macro |> ignore;
+  expect p Token.Open_brack |> ignore;
+  let stmts = ref [] in
+  while peek p <> Token.Close_brack && not (is_at_end p) do
+    match parse_toplevel p with
+    | Ok stmt ->
+      stmts := stmt :: !stmts;
+      if peek p = Token.Semi_colon then advance p
+    | Error err -> failwith err
+  done;
+  expect p Token.Close_brack |> ignore;
+  Ok (Node.Macro_expr (List.rev !stmts))
+
+and parse_derive_expr p =
+  expect p Token.Derive |> ignore;
+  expect p Token.Open_brack |> ignore;
+  let stmts = ref [] in
+  while peek p <> Token.Close_brack && not (is_at_end p) do
+    match parse_toplevel p with
+    | Ok stmt ->
+      stmts := stmt :: !stmts;
+      if peek p = Token.Semi_colon then advance p
+    | Error err -> failwith err
+  done;
+  expect p Token.Close_brack |> ignore;
+  Ok (Node.Derive_expr (List.rev !stmts))
 
 and parse_relational_expr p =
   let left = parse_additive_expr p |> get_ok_or_fail in
@@ -448,15 +578,47 @@ and parse_unary_expr p =
   | _ -> parse_primary p
 
 and parse_primary p =
-  match peek p with
-  | Token.Ident name ->
-    advance p;
-    if peek p = Token.Open_paren || peek p = Token.Bang
-    then (
-      let call = parse_call_expr_with_name name p in
-      Ok (Node.Unary_call call))
-    else Ok (Node.Unary_val (Node.Ident name))
-  | _ -> parse_atom p |> Result.map (fun atom -> Node.Unary_val atom)
+  let rec aux left =
+    match peek p with
+    | Token.Dot ->
+      advance p;
+      (match consume p with
+       | Token.Ident member -> aux (Node.Unary_member (left, member))
+       | _ -> failwith "Expected identifier after .")
+    | Token.Bang ->
+      advance p;
+      if peek p = Token.Open_paren
+      then (
+        advance p;
+        let params = parse_list p [ Token.Close_paren ] parse_call_param in
+        expect p Token.Close_paren |> ignore;
+        let call = Node.Macro_call (wrap_unary left, params) in
+        aux (Node.Unary_call call))
+      else Node.Not (aux left) (* This is a bit weird but Bang can be Not or Macro *)
+    | Token.Open_paren ->
+      advance p;
+      let params = parse_list p [ Token.Close_paren ] parse_call_param in
+      expect p Token.Close_paren |> ignore;
+      let call = Node.Decl_call (wrap_unary left, params) in
+      aux (Node.Unary_call call)
+    | _ -> left
+  in
+  let res =
+    match peek p with
+    | Token.Ident name ->
+      advance p;
+      Node.Unary_val (Node.Ident name)
+    | Token.Dot ->
+      advance p;
+      (match consume p with
+       | Token.Ident name -> Node.Unary_val (Node.Implicit_member name)
+       | _ -> failwith "Expected identifier after .")
+    | _ ->
+      (match parse_atom p with
+       | Ok atom -> Node.Unary_val atom
+       | Error err -> failwith err)
+  in
+  Ok (aux res)
 
 and parse_call_expr_with_name name p =
   let is_macro = peek p = Token.Bang in
@@ -464,7 +626,8 @@ and parse_call_expr_with_name name p =
   expect p Token.Open_paren |> ignore;
   let params = parse_list p [ Token.Close_paren ] parse_call_param in
   expect p Token.Close_paren |> ignore;
-  if is_macro then Node.Macro_call (name, params) else Node.Decl_call (name, params)
+  let target = Node.Unary_val (Node.Ident name) in
+  if is_macro then Node.Macro_call (wrap_unary target, params) else Node.Decl_call (wrap_unary target, params)
 
 and parse_call_param p =
   if peek p = Token.Tilde
@@ -491,10 +654,14 @@ and parse_atom p =
   | Token.False -> Ok (Node.Bool false)
   | Token.Ident s -> Ok (Node.Ident s)
   | Token.Open_paren ->
-    let expr = parse_expression p |> get_ok_or_fail in
-    expect p Token.Close_paren |> ignore;
-    Ok (Node.Grouping expr)
-  | Token.UnitToken -> Ok Node.Unit_val
+    if peek p = Token.Close_paren
+    then (
+      advance p;
+      Ok Node.Unit_val)
+    else (
+      let expr = parse_expression p |> get_ok_or_fail in
+      expect p Token.Close_paren |> ignore;
+      Ok (Node.Grouping expr))
   | t ->
     Error
       (Printf.sprintf "Unexpected token %s at %s" (Token.show t) (Token.show_loc (loc p)))

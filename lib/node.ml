@@ -104,6 +104,7 @@ and decl_param =
   | Typed of ident * typ
   | OptionalTyped of ident * typ * expression
   | OptionalUntyped of ident * expression
+  | Variadic of ident
 
 (**
   #[ident]
@@ -118,9 +119,20 @@ and expression =
   | Call_expr of call_expr
   | Relational_expr of relational_expr
   | Match_expr of match_expr
-  | Struct_expr of struct_field list
+  | Struct_expr of struct_field list * with_block option
+  | Enum_expr of enum_variant list * with_block option
+  | Macro_expr of t list
+  | Derive_expr of t list
 
-and struct_field = ident * typ * expression
+and with_block = t list
+
+and struct_field = ident * typ * expression option
+
+and enum_variant = ident * variant_body option
+
+and variant_body =
+  | Struct_body of struct_field list
+  | Type_body of typ
 
 and relational_expr =
   | Eql of additive_expr * additive_expr
@@ -146,16 +158,17 @@ and multiplicative_expr =
 and unary_expr =
   | Neg of unary_expr
   | Not of unary_expr
+  | Unary_member of unary_expr * ident
   | Unary_call of call_expr
   | Unary_val of atom
 
 (**
-  ident(call_param, ...)
-  ident!(call_param, ...)
+  expression(call_param, ...)
+  expression!(call_param, ...)
 *)
 and call_expr =
-  | Decl_call of ident * call_param list
-  | Macro_call of ident * call_param list
+  | Decl_call of expression * call_param list
+  | Macro_call of expression * call_param list
 
 (**
   ~x = expression
@@ -201,6 +214,7 @@ and atom =
   | Char of char
   | Int of int
   | Ident of ident
+  | Implicit_member of ident
   | Grouping of expression
   | Unit_val
 

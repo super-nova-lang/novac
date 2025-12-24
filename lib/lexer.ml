@@ -34,7 +34,7 @@ let lex file input =
       (Token.from_string s, loc) :: loop rest row (col + String.length s)
     (* Read number *)
     | c :: cs when is_numer c ->
-      let s, rest = consume ~f:is_numer (String.make 1 c) cs in
+      let s, rest = consume ~f:(fun c -> is_numer c || c = '_') (String.make 1 c) cs in
       (Number (int_of_string s), loc) :: loop rest row (col + String.length s)
     (* Tokens *)
     (* - Double *)
@@ -51,6 +51,7 @@ let lex file input =
     | '<' :: '-' :: cs -> (Back_arrow, loc) :: loop cs row (col + 2)
     | '>' :: '=' :: cs -> (Greater_eql, loc) :: loop cs row (col + 2)
     | ':' :: '=' :: cs -> (Walrus, loc) :: loop cs row (col + 2)
+    | '.' :: '.' :: '.' :: cs -> (Ellipsis, loc) :: loop cs row (col + 3)
     (* - Single *)
     | '~' :: cs -> (Tilde, loc) :: loop cs row (col + 1)
     | '`' :: cs -> (Back_tick, loc) :: loop cs row (col + 1)
@@ -62,7 +63,6 @@ let lex file input =
     | '^' :: cs -> (Carrot, loc) :: loop cs row (col + 1)
     | '&' :: cs -> (Amper, loc) :: loop cs row (col + 1)
     | '*' :: cs -> (Star, loc) :: loop cs row (col + 1)
-    | '(' :: ')' :: cs -> (UnitToken, loc) :: loop cs row (col + 2)
     | '(' :: cs -> (Open_paren, loc) :: loop cs row (col + 1)
     | ')' :: cs -> (Close_paren, loc) :: loop cs row (col + 1)
     | '{' :: cs -> (Open_brack, loc) :: loop cs row (col + 1)

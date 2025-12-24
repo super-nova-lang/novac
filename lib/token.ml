@@ -9,6 +9,9 @@ type t =
   | If
   | Else
   | Struct
+  | Enum
+  | Macro
+  | Derive
   | Mut
   | Defer
   | True
@@ -27,7 +30,7 @@ type t =
   | Bitwise_and (* &. *)
   | Lesser_eql
   | Greater_eql
-  | UnitToken (* () *)
+  | Ellipsis (* ... *)
   | Walrus (* := *)
   (* - Single*)
   | Tilde
@@ -87,6 +90,9 @@ let from_string = function
   | "if" -> If
   | "else" -> Else
   | "struct" -> Struct
+  | "enum" -> Enum
+  | "macro" -> Macro
+  | "derive" -> Derive
   | "mut" -> Mut
   | "defer" -> Defer
   | "true" -> True
