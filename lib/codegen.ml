@@ -23,6 +23,10 @@ let variant_map : (string, string * string) Hashtbl.t =
 ;;
 
 let variant_indices : (string, (string, int) Hashtbl.t) Hashtbl.t = Hashtbl.create 10
+;;
+
+let local_imports : (string, string) Hashtbl.t = Hashtbl.create 10
+let opened_modules : (string, string) Hashtbl.t = Hashtbl.create 10
 let in_function = ref false
 let current_type_context : (string * A.typ) option ref = ref None
 let current_module_name = ref ""
@@ -44,15 +48,18 @@ let mangle tags name =
 ;;
 
 let resolve_name name =
-  if !current_module_name = ""
-  then name
-  else (
-    let mangled = !current_module_name ^ "_" ^ name in
-    if Hashtbl.mem named_values mangled
-       || Hashtbl.mem function_protos mangled
-       || Hashtbl.mem named_struct_types mangled
-    then mangled
-    else name)
+  match Hashtbl.find_opt local_imports name with
+  | Some full_name -> full_name
+  | None ->
+    if !current_module_name = ""
+    then name
+    else (
+      let mangled = !current_module_name ^ "_" ^ name in
+      if Hashtbl.mem named_values mangled
+         || Hashtbl.mem function_protos mangled
+         || Hashtbl.mem named_struct_types mangled
+      then mangled
+      else name)
 ;;
 
 let i32_type = L.i32_type context
@@ -202,21 +209,24 @@ and codegen_call = function
              (A.Additive_val
                 (A.Multiplicative_val (A.Unary_member (obj_unary, member))))) ->
         (match obj_unary with
-         | A.Unary_val (A.Ident maybe_type) ->
-           (match find_struct_type maybe_type with
+         | A.Unary_val (A.Ident maybe_mod_or_type) ->
+           (match find_struct_type maybe_mod_or_type with
             | Some (_, actual_type_name) -> Some (actual_type_name ^ "_" ^ member), None
             | None ->
-              let obj_expr =
-                A.Relational_expr
-                  (A.Relational_val (A.Additive_val (A.Multiplicative_val obj_unary)))
-              in
-              let obj_val, obj_typ = codegen_expr obj_expr in
-              (match obj_typ with
-               | A.User type_name ->
-                 (match find_struct_type type_name with
-                  | Some (_, real_tname) -> Some (real_tname ^ "_" ^ member), Some obj_val
-                  | None -> Some (type_name ^ "_" ^ member), Some obj_val)
-               | _ -> None, None))
+              (match Hashtbl.find_opt opened_modules maybe_mod_or_type with
+               | Some prefix -> Some (prefix ^ "_" ^ member), None
+               | None ->
+                 let obj_expr =
+                   A.Relational_expr
+                     (A.Relational_val (A.Additive_val (A.Multiplicative_val obj_unary)))
+                 in
+                 let obj_val, obj_typ = codegen_expr obj_expr in
+                 (match obj_typ with
+                  | A.User type_name ->
+                    (match find_struct_type type_name with
+                     | Some (_, real_tname) -> Some (real_tname ^ "_" ^ member), Some obj_val
+                     | None -> Some (type_name ^ "_" ^ member), Some obj_val)
+                  | _ -> None, None)))
          | _ ->
            let obj_expr =
              A.Relational_expr
@@ -900,6 +910,23 @@ and codegen_decl = function
   | _ -> raise (Error "Declaration type not implemented")
 
 and codegen_stmt = function
+  | A.Open_stmt { mods; elements } ->
+    let prefix = String.concat "_" mods in
+    if elements = []
+    then (
+      let local_name = List.rev mods |> List.hd in
+      Hashtbl.add opened_modules local_name prefix)
+    else
+      List.iter
+        (fun elem ->
+           let full_path = prefix ^ "_" ^ String.concat "_" elem.Ast.path in
+           let local_name =
+             match elem.Ast.alias with
+             | Some a -> a
+             | None -> List.rev elem.Ast.path |> List.hd
+           in
+           Hashtbl.add local_imports local_name full_path)
+        elements
   | A.Decl_stmt decl -> ignore (codegen_decl decl)
   | A.Expression_stmt expr ->
     ignore (ensure_main ());
@@ -941,6 +968,8 @@ let reset_module () =
   Hashtbl.clear struct_field_types;
   Hashtbl.clear variant_map;
   Hashtbl.clear variant_indices;
+  Hashtbl.clear local_imports;
+  Hashtbl.clear opened_modules;
   in_function := false;
   current_type_context := None;
   current_module_name := "";

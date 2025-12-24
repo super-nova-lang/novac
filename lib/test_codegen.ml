@@ -16,8 +16,8 @@ let%expect_test "codegen" =
      This is strongly discouraged as backtraces are fragile.
      Please change this test to not include a backtrace. *)
   ("Novac.Codegen.Error(\"Declaration type not implemented\")")
-  Raised at Novac__Codegen.codegen_decl in file "lib/codegen.ml", line 900, characters 9-57
-  Called from Novac__Codegen.codegen_stmt in file "lib/codegen.ml", line 903, characters 31-50
+  Raised at Novac__Codegen.codegen_decl in file "lib/codegen.ml", line 910, characters 9-57
+  Called from Novac__Codegen.codegen_stmt in file "lib/codegen.ml", line 930, characters 31-50
   Called from Stdlib__List.iter in file "list.ml", line 114, characters 12-15
   Called from Novac__Test_codegen.test_codegen in file "lib/test_codegen.ml", line 6, characters 2-33
   Called from Stdlib__List.iter in file "list.ml", line 114, characters 12-15
