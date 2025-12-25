@@ -17,6 +17,17 @@ Nova is a garbage-collected with an opt in allocator system akin to [Odin's cont
 
  - **Lexer & Parser**: Full implementation for Nova source files.
 
+#### Installing
+
+Make sure you have llvm-19 on your system
+
+```bash
+$ export LLVM_CONFIG=/usr/lib/llvm19/bin/llvm-config
+$ opam install . --deps-only
+```
+```
+```
+
 ### Get Involved
 
 Explore the source code, check out our vision, follow the socials, and contribute to the compiler:
