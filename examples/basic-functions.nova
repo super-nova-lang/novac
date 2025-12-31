@@ -6,7 +6,7 @@ let mul :: a, b -> i32 = a * b
 let my_complex_fn :: a, b, c -> i32 = {
     let res1 = a + b * 2;
     let res2 = b / res1;
-    let res3 = c ^ (res1 - 55);
+    let res3 = c ^ (res1 - 55) - res2;
     res3
 }
 

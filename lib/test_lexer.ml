@@ -93,6 +93,8 @@ let%expect_test "lexer" =
     found: Token.Dash
     found: (Token.Number 55)
     found: Token.Close_paren
+    found: Token.Dash
+    found: (Token.Ident "res2")
     found: Token.Semi_colon
     found: (Token.Ident "res3")
     found: Token.Close_brack

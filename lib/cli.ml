@@ -82,10 +82,39 @@ let process_codegen stdlib_flag files =
     Codegen.set_module_name module_name;
     let tokens = Lexer.lex_from_file file in
     let nodes = Parser.parse (Parser.create tokens) in
-    List.iter Codegen.codegen nodes;
-    Codegen.finish_module ();
-    Printf.printf "Module for %s:\n" file;
-    Llvm.dump_module !Codegen.the_module
+    (* Run analysis to get type information *)
+    let errors, warnings = Analysis.analyze nodes in
+    (* Report analysis results *)
+    if errors <> [] then (
+      Printf.printf "Analysis errors in %s:\n" file;
+      List.iter (fun err -> Printf.printf "  %s\n" (match err with
+        | Analysis.Error (Analysis.Undefined_variable v) -> "Undefined variable: " ^ v
+        | Analysis.Error (Analysis.Type_mismatch (t1, t2)) -> 
+          Printf.sprintf "Type mismatch: expected %s, got %s" (Ast.show_typ t1) (Ast.show_typ t2)
+        | Analysis.Error (Analysis.Duplicate_declaration v) -> "Duplicate declaration: " ^ v
+        | Analysis.Error (Analysis.Invalid_operation msg) -> "Invalid operation: " ^ msg
+        | Analysis.Error (Analysis.Missing_return_type f) -> "Missing return type for function: " ^ f
+        | Analysis.Warning _ -> "Unexpected warning in error list"
+      )) errors
+    );
+    if warnings <> [] then (
+      Printf.printf "Analysis warnings in %s:\n" file;
+      List.iter (fun warn -> Printf.printf "  %s\n" (match warn with
+        | Analysis.Warning (Analysis.Unused_variable v) -> "Unused variable: " ^ v
+        | Analysis.Warning (Analysis.Shadowed_variable v) -> "Shadowed variable: " ^ v
+        | Analysis.Error _ -> "Unexpected error in warning list"
+      )) warnings
+    );
+    (* Only proceed with codegen if no errors *)
+    if errors = [] then (
+      (* Set analysis context for codegen *)
+      Codegen.set_analysis_nodes nodes;
+      List.iter Codegen.codegen nodes;
+      Codegen.finish_module ();
+      Printf.printf "Module for %s:\n" file;
+      Llvm.dump_module !Codegen.the_module
+    ) else
+      Printf.printf "Skipping codegen for %s due to analysis errors\n" file
   in
   List.iter (fun file -> process_file file true) std_files;
   List.iter (fun file -> process_file file false) app_files
@@ -144,6 +173,39 @@ let process_run stdlib_flag files =
   if run_exit_code <> 0 then exit run_exit_code
 ;;
 
+let process_analyze stdlib_flag files =
+  let files_to_process = get_files_for_frontend stdlib_flag files in
+  List.iter
+    (fun file ->
+       Printf.printf "Analyzing: %s\n" file;
+       let tokens = Lexer.lex_from_file file in
+       let nodes = Parser.parse (Parser.create tokens) in
+       let errors, warnings = Analysis.analyze nodes in
+       if errors <> [] then (
+         Printf.printf "Errors:\n";
+         List.iter (fun err -> Printf.printf "  %s\n" (match err with
+           | Analysis.Error (Analysis.Undefined_variable v) -> "Undefined variable: " ^ v
+           | Analysis.Error (Analysis.Type_mismatch (t1, t2)) -> 
+             Printf.sprintf "Type mismatch: expected %s, got %s" (Ast.show_typ t1) (Ast.show_typ t2)
+           | Analysis.Error (Analysis.Duplicate_declaration v) -> "Duplicate declaration: " ^ v
+           | Analysis.Error (Analysis.Invalid_operation msg) -> "Invalid operation: " ^ msg
+           | Analysis.Error (Analysis.Missing_return_type f) -> "Missing return type for function: " ^ f
+           | Analysis.Warning _ -> "Unexpected warning in error list"
+         )) errors
+       );
+       if warnings <> [] then (
+         Printf.printf "Warnings:\n";
+         List.iter (fun warn -> Printf.printf "  %s\n" (match warn with
+           | Analysis.Warning (Analysis.Unused_variable v) -> "Unused variable: " ^ v
+           | Analysis.Warning (Analysis.Shadowed_variable v) -> "Shadowed variable: " ^ v
+           | Analysis.Error _ -> "Unexpected error in warning list"
+         )) warnings
+       );
+       if errors = [] && warnings = [] then
+         Printf.printf "  No issues found.\n")
+    files_to_process
+;;
+
 let lex_cmd =
   let doc = "Lex the input files." in
   let info = Cmd.info "lex" ~doc in
@@ -174,8 +236,14 @@ let run_cmd =
   Cmd.v info Term.(const process_run $ stdlib_flag $ files_arg)
 ;;
 
+let analyze_cmd =
+  let doc = "Perform static analysis on the input files." in
+  let info = Cmd.info "analyze" ~doc in
+  Cmd.v info Term.(const process_analyze $ stdlib_flag $ files_arg)
+;;
+
 let main_cmd =
   let doc = "Supernova compiler." in
   let info = Cmd.info "novac" ~doc in
-  Cmd.group info [ lex_cmd; parse_cmd; codegen_cmd; compile_cmd; run_cmd ]
+  Cmd.group info [ lex_cmd; parse_cmd; analyze_cmd; codegen_cmd; compile_cmd; run_cmd ]
 ;;

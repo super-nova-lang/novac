@@ -30,9 +30,24 @@ let in_function = ref false
 let current_type_context : (string * A.typ) option ref = ref None
 let current_module_name = ref ""
 
+(* Analysis results *)
+let analysis_context : Analysis.context option ref = ref None
+let analysis_nodes : A.t list ref = ref []
+
+let set_analysis_nodes nodes =
+  analysis_nodes := nodes;
+  let ctx = Analysis.create_context () in
+  List.iter (Analysis.analyze_ast ctx) nodes;
+  analysis_context := Some ctx
+;;
+
 let set_module_name name =
   let sanitized = String.map (fun c -> if c = '-' then '_' else c) name in
   current_module_name := sanitized
+;;
+
+let set_analysis_context ctx =
+  analysis_context := Some ctx
 ;;
 
 let mangle tags name =
@@ -174,15 +189,30 @@ let rec codegen_atom = function
     (try
        let resolved = resolve_name name in
        let v = Hashtbl.find named_values resolved in
-       let t = Hashtbl.find named_value_types resolved in
+       let t =
+         match !analysis_context with
+         | Some ctx ->
+           (match Analysis.lookup_symbol ctx resolved with
+            | Some info -> Analysis.get_symbol_type info
+            | None -> Hashtbl.find named_value_types resolved)
+         | None -> Hashtbl.find named_value_types resolved
+       in
        v, t
      with
      | Not_found ->
        (try
           let v = Hashtbl.find global_values name in
           let t =
-            try snd (Hashtbl.find function_protos name) with
-            | Not_found -> A.User "i32"
+            match !analysis_context with
+            | Some ctx ->
+              (match Analysis.lookup_symbol ctx name with
+               | Some info -> Analysis.get_symbol_type info
+               | None ->
+                 try snd (Hashtbl.find function_protos name) with
+                 | Not_found -> A.User "i32")
+            | None ->
+              try snd (Hashtbl.find function_protos name) with
+              | Not_found -> A.User "i32"
           in
           v, t
         with
@@ -196,8 +226,16 @@ let rec codegen_atom = function
           (match L.lookup_function actual_llvm_name !the_module with
            | Some f ->
              let t =
-               try snd (Hashtbl.find function_protos actual_llvm_name) with
-               | Not_found -> A.Unit_typ
+               match !analysis_context with
+               | Some ctx ->
+                 (match Analysis.lookup_symbol ctx resolved with
+                  | Some info -> Analysis.get_symbol_type info
+                  | None ->
+                    try snd (Hashtbl.find function_protos actual_llvm_name) with
+                    | Not_found -> A.Unit_typ)
+               | None ->
+                 try snd (Hashtbl.find function_protos actual_llvm_name) with
+                 | Not_found -> A.Unit_typ
              in
              f, t
            | None -> raise (Error ("Unknown variable or function: " ^ name)))))
@@ -1018,6 +1056,8 @@ let reset_module () =
   in_function := false;
   current_type_context := None;
   current_module_name := "";
+  analysis_context := None;
+  analysis_nodes := [];
   L.dispose_module !the_module;
   (* Dispose the old module *)
   the_module := L.create_module context "Nova";
