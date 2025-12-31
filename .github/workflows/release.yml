@@ -1,0 +1,140 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 0.1.0)'
+        required: true
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get git hash
+        id: git
+        run: |
+          GIT_HASH=$(git rev-parse --short HEAD)
+          echo "hash=$GIT_HASH" >> $GITHUB_OUTPUT
+          echo "Git hash: $GIT_HASH"
+
+      - name: Set version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION=${{ github.event.inputs.version }}
+          fi
+          RELEASE_VERSION="${VERSION}-${{ steps.git.outputs.hash }}"
+          echo "version=$RELEASE_VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $RELEASE_VERSION"
+
+      - name: Setup OCaml
+        uses: ocaml/setup-ocaml@v2
+        with:
+          ocaml-compiler: 5.1.x
+          opam-repositories: |
+            default: https://opam.ocaml.org
+
+      - name: Install dependencies
+        run: |
+          opam install -y llvm easy_logging spectrum cmdliner ppx_deriving ppx_expect ppx_inline_test
+          opam install -y dune odoc
+
+      - name: Build project
+        run: |
+          eval $(opam env)
+          dune build
+
+      - name: Create binary archive
+        id: archive
+        run: |
+          eval $(opam env)
+          dune install --prefix=_install
+          mkdir -p novac-${{ steps.version.outputs.version }}-${{ matrix.os }}/bin
+          cp _install/default/bin/main.exe novac-${{ steps.version.outputs.version }}-${{ matrix.os }}/bin/novac || \
+          cp _install/default/bin/novac novac-${{ steps.version.outputs.version }}-${{ matrix.os }}/bin/novac
+          tar czf novac-${{ steps.version.outputs.version }}-${{ matrix.os }}.tar.gz novac-${{ steps.version.outputs.version }}-${{ matrix.os }}/
+          echo "archive=novac-${{ steps.version.outputs.version }}-${{ matrix.os }}.tar.gz" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: novac-${{ steps.version.outputs.version }}-${{ matrix.os }}
+          path: ${{ steps.archive.outputs.archive }}
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get git hash
+        id: git
+        run: |
+          GIT_HASH=$(git rev-parse --short HEAD)
+          echo "hash=$GIT_HASH" >> $GITHUB_OUTPUT
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          RELEASE_VERSION="${VERSION}-${{ steps.git.outputs.hash }}"
+          echo "version=$RELEASE_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: novac-${{ steps.version.outputs.version }}-*
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p releases
+          find artifacts -name "*.tar.gz" -exec mv {} releases/ \;
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: releases/*.tar.gz
+          body: |
+            # Supernova Compiler Release ${{ steps.version.outputs.version }}
+            
+            This release includes pre-built binaries for multiple platforms.
+            
+            ## Installation
+            
+            Extract the appropriate archive for your platform and add the `bin` directory to your `PATH`.
+            
+            ### macOS and Linux
+            ```bash
+            tar xzf novac-${{ steps.version.outputs.version }}-<platform>.tar.gz
+            export PATH="$(pwd)/novac-${{ steps.version.outputs.version }}-<platform>/bin:$PATH"
+            ```
+            
+            ## Building from Source
+            
+            See [README.md](https://github.com/super-nova-lang/novac/blob/main/README.md) for build instructions.
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
