@@ -11,8 +11,12 @@ module Math {
   }
 }
 
+open c
+
 let main :: () = {
   let x = Math.add(10, 5);
   let y = Math.sub(10, 5);
+  c.printf("%d\n", x);
+  c.printf("%d\n", y);
   x + y
 }

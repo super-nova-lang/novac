@@ -298,9 +298,11 @@ and analyze_statement ctx stmt =
   | A.If_stmt if_stmt -> analyze_if ctx if_stmt
   | A.Expression_stmt expr -> analyze_expression ctx expr
 
-and analyze_open _ctx { A.mods = _mods; elements = _elements } =
-  (* For now, just check if modules exist - this would need module system *)
-  ()
+and analyze_open ctx { A.mods; elements = _elements } =
+  (* Mark the opened module as used *)
+  (match mods with
+   | [] -> ()
+   | mod_name :: _ -> mark_used ctx mod_name)
 
 and analyze_decl ctx = function
   | A.Decl { tags = _tags; name; params; explicit_ret; body = stmts, expr_opt } ->

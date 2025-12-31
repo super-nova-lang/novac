@@ -1032,13 +1032,18 @@ and codegen_stmt = function
            Hashtbl.add local_imports local_name full_path)
         elements
   | A.Decl_stmt decl -> ignore (codegen_decl decl)
+  | A.Return_stmt ret ->
+    (match ret with
+     | A.With_expr expr -> ignore (L.build_ret (codegen_expr expr |> fst) !builder)
+     | A.Naked -> ignore (L.build_ret_void !builder))
+  | A.If_stmt _ -> 
+    raise (Error "If statements at top level not yet implemented")
   | A.Expression_stmt expr ->
     ignore (ensure_main ());
     let f = ensure_main () in
     let bb = L.entry_block f in
     L.position_at_end bb !builder;
     ignore (codegen_expr expr)
-  | _ -> raise (Error "Statement not implemented")
 ;;
 
 let codegen (ast : A.t) =
