@@ -469,7 +469,8 @@ and parse_match_param p =
        let var = parse_primary p |> get_ok_or_fail in
        Ast.Single
          (wrap_unary
-            (Ast.Unary_call (Ast.Decl_call (wrap_unary e, [ Ast.Positional (wrap_unary var) ]))))
+            (Ast.Unary_call
+               (Ast.Decl_call (wrap_unary e, [ Ast.Positional (wrap_unary var) ]))))
      | _ -> Ast.Single (wrap_unary e))
   | Ast.Unary_call (Ast.Decl_call (target, params)) ->
     (* Check if it's .Variant(x) *)

@@ -1,12 +1,13 @@
-let test_lexer (name, content) = 
+let test_lexer (name, content) =
   Format.printf "File: %s\n" name;
   let tokens = Lexer.lex "test.nova" content in
   List.iter (fun (x, _) -> Format.printf "found: %s\n" (Token.show x)) tokens
 ;;
 
-let%expect_test "lexer" = 
+let%expect_test "lexer" =
   List.iter test_lexer Nova_tests.all;
-  [%expect {|
+  [%expect
+    {|
     File: basic_functions
     found: Token.Open
     found: (Token.Ident "Std")

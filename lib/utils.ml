@@ -50,32 +50,36 @@ let read_entire_file filename =
   let content = really_input_string ch (in_channel_length ch) in
   close_in ch;
   content
+;;
 
 let starts_with s prefix =
-  String.length s >= String.length prefix && String.sub s 0 (String.length prefix) = prefix
+  String.length s >= String.length prefix
+  && String.sub s 0 (String.length prefix) = prefix
+;;
 
 let capitalize_first_letter s =
-  if String.length s = 0 then
-    s
-  else
-    (String.capitalize_ascii (String.sub s 0 1)) ^ (String.sub s 1 ((String.length s) - 1))
+  if String.length s = 0
+  then s
+  else String.capitalize_ascii (String.sub s 0 1) ^ String.sub s 1 (String.length s - 1)
+;;
 
 let module_name_from_path file_path stdlib_dir =
   let open Filename in
   let stdlib_prefix = stdlib_dir ^ "/" in
-  if starts_with file_path stdlib_prefix then
-    let relative_path = String.sub file_path (String.length stdlib_prefix) ((String.length file_path) - (String.length stdlib_prefix)) in
+  if starts_with file_path stdlib_prefix
+  then (
+    let relative_path =
+      String.sub
+        file_path
+        (String.length stdlib_prefix)
+        (String.length file_path - String.length stdlib_prefix)
+    in
     let module_segments =
       relative_path
       |> remove_extension
       |> (fun s -> String.split_on_char '/' s)
       |> List.map capitalize_first_letter
     in
-    "Std_" ^ (String.concat "_" module_segments)
-  else
-    file_path
-    |> basename
-    |> remove_extension
-    |> capitalize_first_letter
-
+    "Std_" ^ String.concat "_" module_segments)
+  else file_path |> basename |> remove_extension |> capitalize_first_letter
 ;;
