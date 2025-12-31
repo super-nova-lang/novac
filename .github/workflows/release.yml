@@ -40,9 +40,12 @@ jobs:
           echo "Release version: $RELEASE_VERSION"
 
       - name: Install LLVM 19
-        uses: egor-tensin/setup-llvm@v1
-        with:
-          version: 19
+        run: |
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-19 main" | tee /etc/apt/sources.list.d/llvm.list
+          apt-get update
+          apt-get install -y llvm-19 llvm-19-dev
+        shell: bash
 
       - name: Setup OCaml
         uses: ocaml/setup-ocaml@v2
@@ -52,6 +55,7 @@ jobs:
 
       - name: Install OCaml dependencies
         run: |
+          export LLVM_CONFIG=/usr/lib/llvm-19/bin/llvm-config
           opam install -y llvm easy_logging spectrum cmdliner ppx_deriving ppx_expect ppx_inline_test dune odoc
 
       - name: Build project
