@@ -42,10 +42,13 @@ let set_analysis_nodes nodes =
 ;;
 
 let set_module_name name =
-  let sanitized = String.map (fun c -> if c = '-' then '_' else c) name in
-  current_module_name := sanitized;
-  (* Register the module so dot notation works (e.g., std_c.printf) *)
-  Hashtbl.add opened_modules sanitized sanitized
+  let canonical =
+    String.map (function '.' | '-' -> '_' | c -> c) name
+  in
+  current_module_name := canonical;
+  (* Register both the user-facing path (std.math) and the canonical prefix *)
+  Hashtbl.add opened_modules canonical canonical;
+  if name <> canonical then Hashtbl.add opened_modules name canonical
 ;;
 
 let set_analysis_context ctx =
@@ -81,6 +84,15 @@ let resolve_name name =
         || Hashtbl.mem named_struct_types mangled
       then mangled
       else name)
+;;
+
+let rec module_path_of_unary = function
+  | A.Unary_val (A.Ident name) -> Some [ name ]
+  | A.Unary_member (obj, member) ->
+    (match module_path_of_unary obj with
+     | Some parts -> Some (parts @ [ member ])
+     | None -> None)
+  | _ -> None
 ;;
 
 let i32_type = L.i32_type context
@@ -219,28 +231,68 @@ let rec codegen_atom = function
           v, t
         with
         | Not_found ->
-          let resolved = resolve_name name in
-          let actual_llvm_name =
-            match Hashtbl.find_opt external_link_names resolved with
-            | Some link -> link
-            | None -> resolved
-          in
-          (match L.lookup_function actual_llvm_name !the_module with
-           | Some f ->
-             let t =
-               match !analysis_context with
-               | Some ctx ->
-                 (match Analysis.lookup_symbol ctx resolved with
-                  | Some info -> Analysis.get_symbol_type info
+          (match !current_type_context with
+           | Some (tname, _) ->
+             (try
+                let idx, ftyp = get_field_info tname name in
+                let struct_ty = get_struct_type tname in
+                let self_ptr =
+                  match Hashtbl.find_opt named_values "self" with
+                  | Some v -> v
+                  | None -> raise Not_found
+                in
+                let field_ptr =
+                  L.build_struct_gep struct_ty self_ptr idx name !builder
+                in
+                let loaded = L.build_load (get_llvm_type ftyp) field_ptr name !builder in
+                loaded, ftyp
+              with
+              | Error _ | Not_found ->
+                let resolved = resolve_name name in
+                let actual_llvm_name =
+                  match Hashtbl.find_opt external_link_names resolved with
+                  | Some link -> link
+                  | None -> resolved
+                in
+                (match L.lookup_function actual_llvm_name !the_module with
+                 | Some f ->
+                   let t =
+                     match !analysis_context with
+                     | Some ctx ->
+                       (match Analysis.lookup_symbol ctx resolved with
+                        | Some info -> Analysis.get_symbol_type info
+                        | None ->
+                          try snd (Hashtbl.find function_protos actual_llvm_name) with
+                          | Not_found -> A.Unit_typ)
+                     | None ->
+                       try snd (Hashtbl.find function_protos actual_llvm_name) with
+                       | Not_found -> A.Unit_typ
+                   in
+                   f, t
+                 | None -> raise (Error ("Unknown variable or function: " ^ name))))
+           | None ->
+             let resolved = resolve_name name in
+             let actual_llvm_name =
+               match Hashtbl.find_opt external_link_names resolved with
+               | Some link -> link
+               | None -> resolved
+             in
+             (match L.lookup_function actual_llvm_name !the_module with
+              | Some f ->
+                let t =
+                  match !analysis_context with
+                  | Some ctx ->
+                    (match Analysis.lookup_symbol ctx resolved with
+                     | Some info -> Analysis.get_symbol_type info
+                     | None ->
+                       try snd (Hashtbl.find function_protos actual_llvm_name) with
+                       | Not_found -> A.Unit_typ)
                   | None ->
                     try snd (Hashtbl.find function_protos actual_llvm_name) with
-                    | Not_found -> A.Unit_typ)
-               | None ->
-                 try snd (Hashtbl.find function_protos actual_llvm_name) with
-                 | Not_found -> A.Unit_typ
-             in
-             f, t
-           | None -> raise (Error ("Unknown variable or function: " ^ name)))))
+                    | Not_found -> A.Unit_typ
+                in
+                f, t
+              | None -> raise (Error ("Unknown variable or function: " ^ name))))))
   | A.Grouping expr -> codegen_expr expr
   | A.Unit_val -> L.const_int i32_type 0, A.Unit_typ
   | _ -> raise (Error "Atom not implemented")
@@ -257,38 +309,50 @@ and codegen_call = function
           (A.Relational_val
              (A.Additive_val (A.Multiplicative_val (A.Unary_member (obj_unary, member)))))
         ->
-        (match obj_unary with
-         | A.Unary_val (A.Ident maybe_mod_or_type) ->
-           (match find_struct_type maybe_mod_or_type with
-            | Some (_, actual_type_name) -> Some (actual_type_name ^ "_" ^ member), None
-            | None ->
-              (match Hashtbl.find_opt opened_modules maybe_mod_or_type with
-               | Some prefix -> Some (prefix ^ "_" ^ member), None
+        let module_from_path =
+          match module_path_of_unary obj_unary with
+          | Some parts ->
+            let key = String.concat "." parts in
+            (match Hashtbl.find_opt opened_modules key with
+             | Some prefix -> Some prefix
+             | None -> None)
+          | None -> None
+        in
+        (match module_from_path with
+         | Some prefix -> Some (prefix ^ "_" ^ member), None
+         | None ->
+           (match obj_unary with
+            | A.Unary_val (A.Ident maybe_mod_or_type) ->
+              (match find_struct_type maybe_mod_or_type with
+               | Some (_, actual_type_name) -> Some (actual_type_name ^ "_" ^ member), None
                | None ->
-                 let obj_expr =
-                   A.Relational_expr
-                     (A.Relational_val (A.Additive_val (A.Multiplicative_val obj_unary)))
-                 in
-                 let obj_val, obj_typ = codegen_expr obj_expr in
-                 (match obj_typ with
-                  | A.User type_name ->
-                    (match find_struct_type type_name with
-                     | Some (_, real_tname) ->
-                       Some (real_tname ^ "_" ^ member), Some obj_val
-                     | None -> Some (type_name ^ "_" ^ member), Some obj_val)
-                  | _ -> None, None)))
-         | _ ->
-           let obj_expr =
-             A.Relational_expr
-               (A.Relational_val (A.Additive_val (A.Multiplicative_val obj_unary)))
-           in
-           let obj_val, obj_typ = codegen_expr obj_expr in
-           (match obj_typ with
-            | A.User type_name ->
-              (match find_struct_type type_name with
-               | Some (_, real_tname) -> Some (real_tname ^ "_" ^ member), Some obj_val
-               | None -> Some (type_name ^ "_" ^ member), Some obj_val)
-            | _ -> None, None))
+                 (match Hashtbl.find_opt opened_modules maybe_mod_or_type with
+                  | Some prefix -> Some (prefix ^ "_" ^ member), None
+                  | None ->
+                    let obj_expr =
+                      A.Relational_expr
+                        (A.Relational_val (A.Additive_val (A.Multiplicative_val obj_unary)))
+                    in
+                    let obj_val, obj_typ = codegen_expr obj_expr in
+                    (match obj_typ with
+                     | A.User type_name ->
+                       (match find_struct_type type_name with
+                        | Some (_, real_tname) ->
+                          Some (real_tname ^ "_" ^ member), Some obj_val
+                        | None -> Some (type_name ^ "_" ^ member), Some obj_val)
+                     | _ -> None, None)))
+            | _ ->
+              let obj_expr =
+                A.Relational_expr
+                  (A.Relational_val (A.Additive_val (A.Multiplicative_val obj_unary)))
+              in
+              let obj_val, obj_typ = codegen_expr obj_expr in
+              (match obj_typ with
+               | A.User type_name ->
+                 (match find_struct_type type_name with
+                  | Some (_, real_tname) -> Some (real_tname ^ "_" ^ member), Some obj_val
+                  | None -> Some (type_name ^ "_" ^ member), Some obj_val)
+               | _ -> None, None)))
       | A.Relational_expr
           (A.Relational_val
              (A.Additive_val (A.Multiplicative_val (A.Unary_val (A.Implicit_member m)))))
@@ -737,6 +801,14 @@ and codegen_decl = function
       ; tags
       } ->
     let enum_name = mangle tags name in
+    let infer_param_type name default_ast =
+      match !analysis_context with
+      | Some ctx -> (
+          match Analysis.lookup_symbol ctx name with
+          | Some info -> Analysis.get_symbol_type info
+          | None -> default_ast)
+      | None -> default_ast
+    in
     let lenum = L.named_struct_type context enum_name in
     Hashtbl.add named_struct_types enum_name lenum;
     let field_map = Hashtbl.create 10 in
@@ -775,6 +847,7 @@ and codegen_decl = function
          let variant_payload_fields =
            match vbody with
            | Some (A.Struct_body fields) -> List.map (fun (n, t, _) -> n, t) fields
+           | Some (A.Type_body A.Unit_typ) -> []
            | Some (A.Type_body t) -> [ "data", t ]
            | None -> []
          in
@@ -783,9 +856,9 @@ and codegen_decl = function
            List.map
              (function
                | A.Typed (n, t) -> n, t
-               | A.Untyped n -> n, A.User "i32"
+               | A.Untyped n -> n, infer_param_type n (A.User "i32")
                | A.OptionalTyped (n, t, _) -> n, t
-               | A.OptionalUntyped (n, _) -> n, A.User "i32"
+               | A.OptionalUntyped (n, _) -> n, infer_param_type n (A.User "i32")
                | A.Variadic n -> n, A.User "i32")
              enum_params
          in
@@ -803,23 +876,12 @@ and codegen_decl = function
          Hashtbl.add function_protos variant_func_name (ft, A.User enum_name);
          let bb = L.append_block context "entry" v_func in
          L.position_at_end bb !builder;
-         let enum_size = L.size_of lenum in
-         let enum_size_i64 = L.build_intcast enum_size i64_type "size64" !builder in
-         let enum_alloc =
-           L.build_call
-             (L.function_type (L.pointer_type context) [| i64_type |])
-             (match L.lookup_function "malloc" !the_module with
-              | Some f -> f
-              | None ->
-                L.declare_function
-                  "malloc"
-                  (L.function_type (L.pointer_type context) [| i64_type |])
-                  !the_module)
-             [| enum_size_i64 |]
-             "enum"
-             !builder
+         let enum_alloc = L.build_malloc lenum "enum" !builder in
+         let enum_ptr = enum_alloc in
+         let enum_raw =
+           L.build_pointercast enum_alloc (L.pointer_type context) "enum_raw" !builder
          in
-         let tag_ptr = L.build_struct_gep lenum enum_alloc 0 "tag" !builder in
+         let tag_ptr = L.build_struct_gep lenum enum_ptr 0 "tag" !builder in
          ignore (L.build_store (L.const_int i32_type i) tag_ptr !builder);
          let args = L.params v_func in
          let arg_map = Hashtbl.create 10 in
@@ -827,55 +889,47 @@ and codegen_decl = function
            (fun arg_i name -> Hashtbl.add arg_map name (Array.get args arg_i))
            param_names;
          List.iteri
-           (fun f_i (fname, _) ->
-              let ptr = L.build_struct_gep lenum enum_alloc (f_i + 2) fname !builder in
+           (fun f_i (fname, ftyp) ->
+              let ptr = L.build_struct_gep lenum enum_ptr (f_i + 2) fname !builder in
               let arg_val =
                 try Hashtbl.find arg_map fname with
-                | Not_found -> L.const_null (get_llvm_type (A.User "i32"))
+                | Not_found -> L.const_null (get_llvm_type ftyp)
               in
               ignore (L.build_store arg_val ptr !builder))
            common_fields;
          if variant_payload_fields <> []
          then (
-           let v_field_types =
-             List.map (fun (_, t) -> get_llvm_type t) variant_payload_fields
+           let v_field_types = List.map (fun (_, t) -> get_llvm_type t) variant_payload_fields
            in
            let data_struct_type = L.struct_type context (Array.of_list v_field_types) in
-           let data_size = L.size_of data_struct_type in
-           let data_size_i64 = L.build_intcast data_size i64_type "size64" !builder in
-           let data_alloc =
-             L.build_call
-               (L.function_type (L.pointer_type context) [| i64_type |])
-               (L.lookup_function "malloc" !the_module |> Option.get)
-               [| data_size_i64 |]
-               "data"
-               !builder
+           let data_alloc = L.build_malloc data_struct_type "data" !builder in
+           let data_raw =
+             L.build_pointercast data_alloc (L.pointer_type context) "data_raw" !builder
            in
+           let data_ptr = data_alloc in
            List.iteri
-             (fun f_i (fname, _ftyp) ->
-                let ptr =
-                  L.build_struct_gep data_struct_type data_alloc f_i fname !builder
-                in
+             (fun f_i (fname, ftyp) ->
+                let ptr = L.build_struct_gep data_struct_type data_ptr f_i fname !builder in
                 let arg_val =
                   try Hashtbl.find arg_map fname with
-                  | Not_found -> L.const_null (get_llvm_type (A.User "i32"))
+                  | Not_found -> L.const_null (get_llvm_type ftyp)
                 in
                 ignore (L.build_store arg_val ptr !builder))
              variant_payload_fields;
            let data_field_ptr =
-             L.build_struct_gep lenum enum_alloc 1 "data_ptr" !builder
+             L.build_struct_gep lenum enum_ptr 1 "data_ptr" !builder
            in
-           ignore (L.build_store data_alloc data_field_ptr !builder))
+           ignore (L.build_store data_raw data_field_ptr !builder))
          else (
            let data_field_ptr =
-             L.build_struct_gep lenum enum_alloc 1 "data_ptr" !builder
+            L.build_struct_gep lenum enum_ptr 1 "data_ptr" !builder
            in
            ignore
              (L.build_store
-                (L.const_pointer_null (L.pointer_type context))
-                data_field_ptr
-                !builder));
-         ignore (L.build_ret enum_alloc !builder))
+                   (L.const_pointer_null (L.pointer_type context))
+                    data_field_ptr
+                   !builder));
+                 ignore (L.build_ret enum_raw !builder))
       variants;
     let old_ctx = !current_type_context in
     current_type_context := Some (enum_name, A.User enum_name);
@@ -1064,23 +1118,32 @@ let finish_module () =
   match L.lookup_function main_func_name !the_module with
   | Some f ->
     let bb = L.entry_block f in
-    L.position_at_end bb !builder;
-    ignore (L.build_ret (L.const_int i32_type 0) !builder)
+    if L.block_terminator bb = None
+    then (
+      L.position_at_end bb !builder;
+      ignore (L.build_ret (L.const_int i32_type 0) !builder))
   | None -> ()
 ;;
 
 let reset_module () =
   Hashtbl.clear named_values;
   Hashtbl.clear named_value_types;
+  Hashtbl.clear function_protos;
+  Hashtbl.clear global_values;
+  Hashtbl.clear named_struct_types;
+  Hashtbl.clear struct_field_indices;
+  Hashtbl.clear struct_field_types;
+  Hashtbl.clear variant_map;
+  Hashtbl.clear variant_indices;
+  Hashtbl.clear local_imports;
+  Hashtbl.clear opened_modules;
+  Hashtbl.clear external_link_names;
   in_function := false;
   current_type_context := None;
   current_module_name := "";
   analysis_context := None;
   analysis_nodes := [];
-  L.dispose_module !the_module;
-  (* Dispose the old module *)
+  (* Start a fresh module and builder for the next file *)
   the_module := L.create_module context "Nova";
-  (* Create a new module *)
   builder := L.builder context
 ;;
-(* Create a new builder for the new module *)

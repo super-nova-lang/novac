@@ -2,9 +2,9 @@ module A = Ast
 
 (** Analysis result types *)
 type analysis_error =
-  | Undefined_variable of string
+  | Undefined_variable of string * string list
   | Type_mismatch of A.typ * A.typ
-  | Duplicate_declaration of string
+  | Duplicate_declaration of string * (int * int)
   | Invalid_operation of string
   | Missing_return_type of string
 
@@ -37,6 +37,23 @@ type context = {
   warnings : analysis_result list ref;
 }
 
+let take n lst =
+  let rec aux i acc = function
+    | _ when i = 0 -> List.rev acc
+    | [] -> List.rev acc
+    | x :: xs -> aux (i - 1) (x :: acc) xs
+  in
+  aux n [] lst
+
+let suggest_names ctx name =
+  if String.length name = 0 then []
+  else
+    Hashtbl.to_seq_keys ctx.symbols
+    |> Seq.filter (fun cand -> cand <> name && String.length cand > 0 && String.get cand 0 = String.get name 0)
+    |> List.of_seq
+    |> List.sort String.compare
+    |> take 3
+
 (** Create a new analysis context *)
 let create_context () = {
   symbols = Hashtbl.create 100;
@@ -49,17 +66,16 @@ let create_context () = {
 let enter_scope ctx =
   { ctx with scope_level = ctx.scope_level + 1 }
 
-(** Exit current scope and check for unused variables *)
+(* Exit current scope and check for unused variables. Only warn for locals (scope > 0). *)
 let exit_scope ctx =
-  (* Check for unused variables in this scope before removing them *)
-  Hashtbl.iter (fun name info ->
-    if not info.used && info.scope_level = ctx.scope_level then
-      ctx.warnings := Warning (Unused_variable name) :: !(ctx.warnings)
-  ) ctx.symbols;
-  (* Remove symbols from this scope *)
-  Hashtbl.filter_map_inplace (fun _ (info : symbol_info) ->
-    if info.scope_level < ctx.scope_level then Some info else None
-  ) ctx.symbols;
+  Hashtbl.iter
+    (fun name info ->
+       if (not info.used) && info.scope_level = ctx.scope_level && ctx.scope_level > 0
+       then ctx.warnings := Warning (Unused_variable name) :: !(ctx.warnings))
+    ctx.symbols;
+  Hashtbl.filter_map_inplace
+    (fun _ (info : symbol_info) -> if info.scope_level < ctx.scope_level then Some info else None)
+    ctx.symbols;
   { ctx with scope_level = ctx.scope_level - 1 }
 
 (** Add a symbol to the current scope *)
@@ -68,7 +84,7 @@ let add_symbol ctx name typ location =
   let existing = Hashtbl.find_opt ctx.symbols name in
   match existing with
   | Some info when info.scope_level = ctx.scope_level ->
-    ctx.errors := Error (Duplicate_declaration name) :: !(ctx.errors)
+    ctx.errors := Error (Duplicate_declaration (name, location)) :: !(ctx.errors)
   | _ ->
     let info = {
       name;
@@ -165,7 +181,8 @@ and infer_atom_type ctx = function
        info.used <- true;
        get_symbol_type info
      | None ->
-       ctx.errors := Error (Undefined_variable name) :: !(ctx.errors);
+       let suggestions = suggest_names ctx name in
+       ctx.errors := Error (Undefined_variable (name, suggestions)) :: !(ctx.errors);
        A.Unit_typ)
   | A.Implicit_member name ->
     (match lookup_symbol ctx name with
@@ -173,7 +190,8 @@ and infer_atom_type ctx = function
        info.used <- true;
        get_symbol_type info
      | None ->
-       ctx.errors := Error (Undefined_variable name) :: !(ctx.errors);
+       let suggestions = suggest_names ctx name in
+       ctx.errors := Error (Undefined_variable (name, suggestions)) :: !(ctx.errors);
        A.Unit_typ)
   | A.Grouping expr -> infer_expression_type ctx expr
   | A.Unit_val -> A.Unit_typ
@@ -241,11 +259,15 @@ and analyze_atom ctx = function
   | A.Ident name ->
     (match lookup_symbol ctx name with
      | Some _ -> mark_used ctx name
-     | None -> ctx.errors := Error (Undefined_variable name) :: !(ctx.errors))
+     | None ->
+       let suggestions = suggest_names ctx name in
+       ctx.errors := Error (Undefined_variable (name, suggestions)) :: !(ctx.errors))
   | A.Implicit_member name ->
     (match lookup_symbol ctx name with
      | Some _ -> mark_used ctx name
-     | None -> ctx.errors := Error (Undefined_variable name) :: !(ctx.errors))
+     | None ->
+       let suggestions = suggest_names ctx name in
+       ctx.errors := Error (Undefined_variable (name, suggestions)) :: !(ctx.errors))
   | A.Grouping expr -> analyze_expression ctx expr
   | _ -> () (* literals don't need analysis *)
 
@@ -270,21 +292,53 @@ and analyze_match_arm_body ctx (stmts, expr_opt) =
   (match expr_opt with Some expr -> analyze_expression ctx expr | None -> ())
 
 and analyze_struct ctx fields with_block =
-  List.iter (fun (_name, _typ, expr_opt) ->
-    (match expr_opt with Some expr -> analyze_expression ctx expr | None -> ())
-  ) fields;
-  (match with_block with Some block -> List.iter (analyze_ast ctx) block | None -> ())
+  List.iter
+    (fun (_fname, ftyp, expr_opt) ->
+       match expr_opt with
+       | Some expr ->
+         analyze_expression ctx expr;
+         (match expr with
+          | A.Relational_expr
+              (A.Relational_val
+                 (A.Additive_val (A.Multiplicative_val (A.Unary_val (A.Ident id))))) ->
+            set_inferred_type ctx id ftyp
+          | _ -> ())
+       | None -> ())
+    fields;
+  (match with_block with
+   | Some block ->
+     let ctx' = enter_scope ctx in
+     List.iter (analyze_ast ctx') block;
+     ignore (exit_scope ctx')
+   | None -> ())
 
 and analyze_enum ctx variants with_block =
-  List.iter (fun (_name, body_opt) ->
-    match body_opt with
-    | Some (A.Struct_body fields) ->
-      List.iter (fun (_name, _typ, expr_opt) ->
-        (match expr_opt with Some expr -> analyze_expression ctx expr | None -> ())
-      ) fields
-    | _ -> ()
-  ) variants;
-  (match with_block with Some block -> List.iter (analyze_ast ctx) block | None -> ())
+  List.iter
+    (fun (_name, body_opt) ->
+       match body_opt with
+       | Some (A.Struct_body fields) ->
+         List.iter
+           (fun (_fname, ftyp, expr_opt) ->
+              match expr_opt with
+              | Some expr ->
+                analyze_expression ctx expr;
+                (match expr with
+                 | A.Relational_expr
+                     (A.Relational_val
+                        (A.Additive_val
+                           (A.Multiplicative_val (A.Unary_val (A.Ident id))))) ->
+                   set_inferred_type ctx id ftyp
+                 | _ -> ())
+              | None -> ())
+           fields
+       | _ -> ())
+    variants;
+  (match with_block with
+   | Some block ->
+     let ctx' = enter_scope ctx in
+     List.iter (analyze_ast ctx') block;
+     ignore (exit_scope ctx')
+   | None -> ())
 
 and analyze_macro ctx body = List.iter (analyze_ast ctx) body
 and analyze_derive ctx body = List.iter (analyze_ast ctx) body
@@ -323,10 +377,15 @@ and analyze_decl ctx = function
     ) params;
     (* Analyze body *)
     List.iter (analyze_statement ctx') stmts;
-    let body_type = match expr_opt with
+    let body_type =
+      match expr_opt with
       | Some expr ->
         analyze_expression ctx' expr;
-        infer_expression_type ctx' expr
+        let inferred = infer_expression_type ctx' expr in
+        (match expr with
+         | A.Struct_expr _ -> A.User name
+         | A.Enum_expr _ -> A.User name
+         | _ -> inferred)
       | None -> A.Unit_typ
     in
     (* Check return type consistency *)
@@ -407,9 +466,4 @@ let check_unused_variables ctx =
 let analyze ast_nodes =
   let ctx = create_context () in
   List.iter (analyze_ast ctx) ast_nodes;
-  (* Check for unused variables in global scope *)
-  Hashtbl.iter (fun name info ->
-    if not info.used && info.scope_level = 0 then
-      ctx.warnings := Warning (Unused_variable name) :: !(ctx.warnings)
-  ) ctx.symbols;
   (!(ctx.errors), !(ctx.warnings))

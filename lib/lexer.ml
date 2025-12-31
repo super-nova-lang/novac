@@ -51,6 +51,7 @@ let lex file input =
     | '<' :: '-' :: cs -> (Back_arrow, loc) :: loop cs row (col + 2)
     | '>' :: '=' :: cs -> (Greater_eql, loc) :: loop cs row (col + 2)
     | ':' :: '=' :: cs -> (Walrus, loc) :: loop cs row (col + 2)
+    | '+' :: '+' :: cs -> (Concat, loc) :: loop cs row (col + 2)
     | '.' :: '.' :: '.' :: cs -> (Ellipsis, loc) :: loop cs row (col + 3)
     (* - Single *)
     | '~' :: cs -> (Tilde, loc) :: loop cs row (col + 1)

@@ -35,6 +35,7 @@ type t =
   | Greater_eql
   | Ellipsis (* ... *)
   | Walrus (* := *)
+  | Concat (* ++ for string concatenation *)
   (* - Single*)
   | Tilde
   | Back_tick

@@ -1,0 +1,9 @@
+let Job :: = enum {
+    programmer :: string,
+    sales_man,
+    other :: string
+}
+
+let main :: () = {
+    ()
+}
