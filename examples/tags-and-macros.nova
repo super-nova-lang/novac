@@ -1,9 +1,0 @@
-#[no_mangle]
-let my_func :: () -> i32 = {
-  42
-}
-
-let main :: () = {
-  std_c.printf("Tagged function result: %d\n", my_func());
-  0
-}

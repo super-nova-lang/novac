@@ -1,5 +1,0 @@
-let main :: () = {
-  let result = std_math.square(5);
-  std_c.printf("Square of 5: %d\n", result);
-  result
-}

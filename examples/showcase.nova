@@ -1,0 +1,123 @@
+// Supernova Language Feature Showcase
+// This example demonstrates the core syntax and features of Nova
+
+// ============================================================================
+// 1. BASIC FUNCTIONS
+// ============================================================================
+
+// Simple function with explicit return type
+let add :: (a: i32, b: i32) -> i32 = [
+  a + b
+]
+
+// Function with multiple operations
+let factorial :: (n: i32) -> i32 = [
+  let result = 1;
+  result
+]
+
+// ============================================================================
+// 2. STRUCTURES AND TYPES
+// ============================================================================
+
+// Define an enum type with associated data
+let Status :: color, timestamp = Enum [
+  Running -> Struct [
+    elapsed: i32,
+  ],
+  Stopped -> Struct [
+    duration: i32,
+  ],
+  Paused,
+]
+
+// Define a struct type with methods
+#[derive(Show, PrettyPrint)]
+let Person :: name, age = Struct [
+  name: string = name,
+  age: u8 = age,
+]
+With [
+  // Method that prints person info
+  let greet :: self = [
+    std_c.printf("Hello, I'm %s and I'm %d years old\n", self.name, self.age)
+  ]
+]
+
+// ============================================================================
+// 3. MODULES AND EXPORTS
+// ============================================================================
+
+// Module with exported functions
+Module Math [
+  Export add
+  Export [ mul As multiply ]
+
+  // Function visible only within module
+  let internal_helper :: (x: i32) -> i32 = [
+    x * 2
+  ]
+
+  let add :: (a: i32, b: i32) -> i32 = [
+    a + b
+  ]
+
+  let mul :: (a: i32, b: i32) -> i32 = [
+    a * b
+  ]
+]
+
+// ============================================================================
+// 4. MACROS AND TAGS
+// ============================================================================
+
+// Function with no_mangle tag to preserve symbol name
+#[no_mangle]
+let exported_function :: () -> i32 = [
+  42
+]
+
+// Generic macro for printing
+let debug_print :: fmt, args ... = Macro [
+]
+
+// ============================================================================
+// 5. PATTERN MATCHING AND CONTROL FLOW
+// ============================================================================
+
+let describe_status :: status = [
+  Match status
+  With
+  | .Running -> "System is running"
+  | .Stopped -> "System is stopped"
+  | .Paused -> "System is paused"
+]
+
+// ============================================================================
+// 6. OPEN STATEMENTS FOR NAMESPACE ACCESS
+// ============================================================================
+
+Open std
+
+// ============================================================================
+// 7. MAIN ENTRY POINT
+// ============================================================================
+
+let main :: () = [
+  // Demonstrate basic arithmetic
+  let sum = add(10, 20);
+  let product = Math.mul(5, 3);
+
+  // Demonstrate string output
+  std_c.printf("Sum: %d\n", sum);
+  std_c.printf("Product: %d\n", product);
+
+  // Demonstrate struct creation and methods
+  let person : Person = Person("Alice", 30);
+  person.greet();
+
+  // Demonstrate FFI to C
+  std_math.square(7);
+
+  0
+]
