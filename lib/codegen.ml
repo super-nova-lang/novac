@@ -467,8 +467,73 @@ and codegen_call = function
             let call_res = L.build_call ft f (Array.of_list actual_args) "" !builder in
             call_res, ret_ast_type))
      | None ->
-       let _callee_val, _ = codegen_expr callee in
-       raise (Error "Indirect function calls not implemented fully (need type)"))
+       let callee_val, callee_typ = codegen_expr callee in
+       let callee_llty = L.type_of callee_val in
+       let is_callable =
+         match L.classify_type callee_llty with
+         | L.TypeKind.Function -> true
+         | L.TypeKind.Pointer -> L.classify_type (L.element_type callee_llty) = L.TypeKind.Function
+         | _ -> false
+       in
+       if (not is_callable) && args = []
+       then callee_val, callee_typ
+       else
+       let func_ty, func_ptr =
+         match L.classify_type callee_llty with
+         | L.TypeKind.Function -> callee_llty, callee_val
+         | L.TypeKind.Pointer ->
+           let elem = L.element_type callee_llty in
+           if L.classify_type elem = L.TypeKind.Function
+           then elem, callee_val
+           else raise (Error "Indirect call target is not a function pointer")
+         | _ -> raise (Error "Indirect call target is not callable")
+       in
+       let expected_arg_types = L.param_types func_ty in
+       let actual_args =
+         let provided_count = List.length args in
+         let expected_count = Array.length expected_arg_types in
+         let args_with_padding =
+           if provided_count < expected_count
+           then (
+             let padding = ref [] in
+             for i = provided_count to expected_count - 1 do
+               let t = Array.get expected_arg_types i in
+               padding := !padding @ [ L.const_null t ]
+             done;
+             args @ !padding)
+           else args
+         in
+         List.mapi
+           (fun i arg ->
+              if i < Array.length expected_arg_types
+              then (
+                let expected_type = Array.get expected_arg_types i in
+                if L.type_of arg <> expected_type
+                then (
+                  match
+                    L.classify_type (L.type_of arg), L.classify_type expected_type
+                  with
+                  | L.TypeKind.Pointer, L.TypeKind.Integer ->
+                    L.build_ptrtoint arg expected_type "argcast" !builder
+                  | L.TypeKind.Integer, L.TypeKind.Pointer ->
+                    L.build_inttoptr arg expected_type "argcast" !builder
+                  | L.TypeKind.Integer, L.TypeKind.Integer ->
+                    L.build_intcast arg expected_type "argcast" !builder
+                  | _ -> arg)
+                else arg)
+              else arg)
+           args_with_padding
+       in
+       let ret_ast_type =
+         let rt = L.return_type func_ty in
+         match L.classify_type rt with
+         | L.TypeKind.Void -> A.Unit_typ
+         | L.TypeKind.Integer -> A.User "i32"
+         | L.TypeKind.Pointer -> A.User "string"
+         | _ -> A.User "i32"
+       in
+       let call_res = L.build_call func_ty func_ptr (Array.of_list actual_args) "" !builder in
+        call_res, ret_ast_type)
   | A.Macro_call (callee, params) ->
     let name =
       match callee with

@@ -23,10 +23,8 @@ let Person ::
 let main :: () = {  
     let engineer = Job.programmer("Programmer", 120000, "C++")
     let p1 = Person("Ashton", 19, engineer)
-    p1.greet();
-    printf("Salary: %d\n", p1.job.salary);
-    printf("Role: %s\n", p1.job.title);
-    
-    
+    p1.greet()
+    printf("Salary: %d\n", p1.job.salary)
+    printf("Role: %s\n", p1.job.title)
     ()
 }
