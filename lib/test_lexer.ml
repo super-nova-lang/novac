@@ -460,6 +460,113 @@ let%expect_test "lexer" =
     found: Token.Close_paren
     found: Token.Close_brack
     found: Token.Eof
+    File: module_test
+    found: Token.Module
+    found: (Token.Ident "Math")
+    found: Token.Open_brack
+    found: Token.Export
+    found: (Token.Ident "add")
+    found: Token.Export
+    found: Token.Open_brack
+    found: (Token.Ident "sub")
+    found: Token.As
+    found: (Token.Ident "subtract")
+    found: Token.Close_brack
+    found: Token.Let
+    found: (Token.Ident "add")
+    found: Token.Double_colon
+    found: Token.Open_paren
+    found: (Token.Ident "a")
+    found: Token.Colon
+    found: (Token.Ident "i32")
+    found: Token.Comma
+    found: (Token.Ident "b")
+    found: Token.Colon
+    found: (Token.Ident "i32")
+    found: Token.Close_paren
+    found: Token.Skinny_arrow
+    found: (Token.Ident "i32")
+    found: Token.Eql
+    found: Token.Open_brack
+    found: (Token.Ident "a")
+    found: Token.Plus
+    found: (Token.Ident "b")
+    found: Token.Close_brack
+    found: Token.Let
+    found: (Token.Ident "sub")
+    found: Token.Double_colon
+    found: Token.Open_paren
+    found: (Token.Ident "a")
+    found: Token.Colon
+    found: (Token.Ident "i32")
+    found: Token.Comma
+    found: (Token.Ident "b")
+    found: Token.Colon
+    found: (Token.Ident "i32")
+    found: Token.Close_paren
+    found: Token.Skinny_arrow
+    found: (Token.Ident "i32")
+    found: Token.Eql
+    found: Token.Open_brack
+    found: (Token.Ident "a")
+    found: Token.Dash
+    found: (Token.Ident "b")
+    found: Token.Close_brack
+    found: Token.Close_brack
+    found: Token.Let
+    found: (Token.Ident "main")
+    found: Token.Double_colon
+    found: Token.Open_paren
+    found: Token.Close_paren
+    found: Token.Eql
+    found: Token.Open_brack
+    found: Token.Let
+    found: (Token.Ident "x")
+    found: Token.Eql
+    found: (Token.Ident "Math")
+    found: Token.Dot
+    found: (Token.Ident "add")
+    found: Token.Open_paren
+    found: (Token.Number 10)
+    found: Token.Comma
+    found: (Token.Number 5)
+    found: Token.Close_paren
+    found: Token.Semi_colon
+    found: Token.Let
+    found: (Token.Ident "y")
+    found: Token.Eql
+    found: (Token.Ident "Math")
+    found: Token.Dot
+    found: (Token.Ident "sub")
+    found: Token.Open_paren
+    found: (Token.Number 10)
+    found: Token.Comma
+    found: (Token.Number 5)
+    found: Token.Close_paren
+    found: Token.Semi_colon
+    found: (Token.Ident "std_c")
+    found: Token.Dot
+    found: (Token.Ident "printf")
+    found: Token.Open_paren
+    found: (Token.String "%d\n")
+    found: Token.Comma
+    found: (Token.Ident "x")
+    found: Token.Close_paren
+    found: Token.Semi_colon
+    found: (Token.Ident "std_c")
+    found: Token.Dot
+    found: (Token.Ident "printf")
+    found: Token.Open_paren
+    found: (Token.String "%d\n")
+    found: Token.Comma
+    found: (Token.Ident "y")
+    found: Token.Close_paren
+    found: Token.Semi_colon
+    found: (Token.Ident "x")
+    found: Token.Plus
+    found: (Token.Ident "y")
+    found: Token.Close_brack
+    found: Token.Eof
     File: open_statements
     found: Token.Open
     found: (Token.Ident "MyModule")
@@ -487,6 +594,36 @@ let%expect_test "lexer" =
     found: Token.As
     found: (Token.Ident "is_eq")
     found: Token.Comma
+    found: Token.Close_brack
+    found: Token.Eof
+    File: stdlib_test
+    found: Token.Let
+    found: (Token.Ident "main")
+    found: Token.Double_colon
+    found: Token.Open_paren
+    found: Token.Close_paren
+    found: Token.Eql
+    found: Token.Open_brack
+    found: Token.Let
+    found: (Token.Ident "result")
+    found: Token.Eql
+    found: (Token.Ident "std_math")
+    found: Token.Dot
+    found: (Token.Ident "square")
+    found: Token.Open_paren
+    found: (Token.Number 5)
+    found: Token.Close_paren
+    found: Token.Semi_colon
+    found: (Token.Ident "std_c")
+    found: Token.Dot
+    found: (Token.Ident "printf")
+    found: Token.Open_paren
+    found: (Token.String "Square of 5: %d\n")
+    found: Token.Comma
+    found: (Token.Ident "result")
+    found: Token.Close_paren
+    found: Token.Semi_colon
+    found: (Token.Ident "result")
     found: Token.Close_brack
     found: Token.Eof
     File: tags_and_macros
