@@ -29,6 +29,7 @@ let external_link_names : (string, string) Hashtbl.t = Hashtbl.create 10
 let in_function = ref false
 let current_type_context : (string * A.typ) option ref = ref None
 let current_module_name = ref ""
+let current_module_path = ref ""
 
 (* Analysis results *)
 let analysis_context : Analysis.context option ref = ref None
@@ -46,6 +47,7 @@ let set_module_name name =
     String.map (function '.' | '-' -> '_' | c -> c) name
   in
   current_module_name := canonical;
+  current_module_path := name;
   (* Register both the user-facing path (std.math) and the canonical prefix *)
   Hashtbl.add opened_modules canonical canonical;
   if name <> canonical then Hashtbl.add opened_modules name canonical
@@ -1116,6 +1118,12 @@ and codegen_decl = function
     let nova_qualified_name =
       if !current_module_name = "" then name else !current_module_name ^ "_" ^ name
     in
+    (* Expose a namespaced alias while keeping the actual link target as the C symbol *)
+    if nova_qualified_name <> link_name
+       && Option.is_none (L.lookup_global nova_qualified_name !the_module)
+    then (
+      let alias_type = L.type_of the_function in
+      ignore (L.add_alias !the_module alias_type 0 the_function nova_qualified_name));
     Hashtbl.add local_imports name nova_qualified_name;
     Hashtbl.add external_link_names nova_qualified_name link_name;
     Hashtbl.add function_protos nova_qualified_name (ft, A.User "i32");
@@ -1125,14 +1133,20 @@ and codegen_decl = function
 and codegen_stmt = function
   | A.Decl_stmt (A.Module_decl { name; exports; body }) ->
     let prev_module = !current_module_name in
-    set_module_name name;
-    (* Register this module in opened_modules so Math.add resolves to Math_add *)
-    Hashtbl.add opened_modules name name;
+    let prev_path = !current_module_path in
+    let new_path = if prev_path = "" then name else prev_path ^ "." ^ name in
+    set_module_name new_path;
+    let canonical = !current_module_name in
+    (* Register module under several keys so nested lookups resolve correctly *)
+    Hashtbl.add opened_modules new_path canonical;
+    Hashtbl.add opened_modules name canonical;
+    Hashtbl.add opened_modules canonical canonical;
     let _ = exports in (* suppress unused variable warning *)
     let stmts = List.filter_map (function A.Statement s -> Some s | _ -> None) (List.rev body) in
     List.iter codegen_stmt stmts;
     (* Optionally, handle exports: could mark exported symbols for later linking *)
-    set_module_name prev_module
+    current_module_name := prev_module;
+    current_module_path := prev_path
   | A.Decl_stmt (A.Export_stmt _) ->
     () (* Export logic is handled at module boundaries; could mark for later linking *)
   | A.Open_stmt { mods; elements } ->
@@ -1206,6 +1220,7 @@ let reset_module () =
   in_function := false;
   current_type_context := None;
   current_module_name := "";
+  current_module_path := "";
   analysis_context := None;
   analysis_nodes := [];
   (* Start a fresh module and builder for the next file *)
