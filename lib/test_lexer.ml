@@ -1,11 +1,12 @@
-let test_lexer (name, content) =
+let test_lexer_file (filename) =
+  let name, content = List.find (fun (n, _) -> n = filename) Nova_tests.all in
   Format.printf "File: %s\n" name;
-  let tokens = Lexer.lex "test.nova" content in
+  let tokens = Lexer.lex (filename ^ ".nova") content in
   List.iter (fun (x, _) -> Format.printf "found: %s\n" (Token.show x)) tokens
 ;;
 
-let%expect_test "lexer" =
-  List.iter test_lexer Nova_tests.all;
+let%expect_test "lexer_basic_functions" =
+  test_lexer_file "basic_functions";
   [%expect
     {|
     File: basic_functions

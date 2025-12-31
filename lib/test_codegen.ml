@@ -1,11 +1,12 @@
-let test_codegen (name, content) =
+let test_codegen_file (filename) =
+  let name, content = List.find (fun (n, _) -> n = filename) Nova_tests.all in
   Format.printf "File: %s\n" name;
   Codegen.reset_module ();
   (* Register stdlib modules for testing *)
   Hashtbl.add Codegen.opened_modules "std_c" "std_c";
   Hashtbl.add Codegen.opened_modules "std_math" "std_math";
   Hashtbl.add Codegen.opened_modules "std_io" "std_io";
-  let tokens = Lexer.lex "test.nova" content in
+  let tokens = Lexer.lex (filename ^ ".nova") content in
   let nodes = Parser.parse (Parser.create tokens) in
   List.iter Codegen.codegen nodes;
   Codegen.finish_module ();
@@ -13,8 +14,8 @@ let test_codegen (name, content) =
 ;;
 
 [@@@ocamlformat "disable"]
-let%expect_test "codegen" = 
-  List.iter test_codegen Nova_tests.all;
+let%expect_test "codegen_basic_functions" = 
+  test_codegen_file "basic_functions";
   [%expect {|
     ; ModuleID = 'Nova'
     source_filename = "Nova"
