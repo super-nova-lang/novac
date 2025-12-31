@@ -95,6 +95,20 @@ and decl_stmt =
       ; calling_conf : string
       ; link_name : string
       }
+  | Module_decl of
+      { name : ident
+      ; exports : export_stmt list
+      ; body : t list
+      }
+  | Export_stmt of export_stmt
+
+(**
+  export foo
+  export { foo, bar as baz }
+*)
+and export_stmt =
+  | Export_ident of ident
+  | Export_rename of ident * ident
 
 (**
   statement; statement; ...; expression

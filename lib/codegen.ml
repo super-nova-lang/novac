@@ -1002,6 +1002,18 @@ and codegen_decl = function
   | _ -> raise (Error "Declaration type not implemented")
 
 and codegen_stmt = function
+  | A.Decl_stmt (A.Module_decl { name; exports; body }) ->
+    let prev_module = !current_module_name in
+    set_module_name name;
+    (* Register this module in opened_modules so Math.add resolves to Math_add *)
+    Hashtbl.add opened_modules name name;
+    let _ = exports in (* suppress unused variable warning *)
+    let stmts = List.filter_map (function A.Statement s -> Some s | _ -> None) (List.rev body) in
+    List.iter codegen_stmt stmts;
+    (* Optionally, handle exports: could mark exported symbols for later linking *)
+    set_module_name prev_module
+  | A.Decl_stmt (A.Export_stmt _) ->
+    () (* Export logic is handled at module boundaries; could mark for later linking *)
   | A.Open_stmt { mods; elements } ->
     let prefix = String.concat "_" mods in
     if elements = []

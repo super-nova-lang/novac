@@ -3,6 +3,8 @@ type t =
   | Let
   | Open
   | Import
+  | Module
+  | Export
   | Match
   | With
   | As
@@ -85,6 +87,8 @@ let from_string = function
   | "let" -> Let
   | "open" -> Open
   | "import" -> Import
+  | "module" -> Module
+  | "export" -> Export
   | "match" -> Match
   | "as" -> As
   | "with" -> With

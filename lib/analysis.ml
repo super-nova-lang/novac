@@ -342,6 +342,26 @@ and analyze_decl ctx = function
   | A.Import_decl { name; calling_conf = _calling_conf; link_name = _link_name } ->
     (* Add imported symbol *)
     add_symbol ctx name None (0, 0)
+  | A.Module_decl { name; exports; body } ->
+    (* Add module to symbol table *)
+    add_symbol ctx name None (0, 0);
+    (* Analyze module body *)
+    List.iter (analyze_ast ctx) body;
+    (* Mark exported symbols as used *)
+    List.iter (fun export ->
+      match export with
+      | A.Export_ident ident | A.Export_rename (ident, _) ->
+        match lookup_symbol ctx ident with
+        | Some info -> info.used <- true
+        | None -> ()
+    ) exports
+  | A.Export_stmt export ->
+    (* Mark exported symbol as used *)
+    (match export with
+     | A.Export_ident ident | A.Export_rename (ident, _) ->
+       match lookup_symbol ctx ident with
+       | Some info -> info.used <- true
+       | None -> ())
 
 and analyze_return ctx = function
   | A.With_expr expr -> analyze_expression ctx expr
