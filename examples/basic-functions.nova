@@ -1,17 +1,25 @@
-open Std with { C.printf }
+let add :: (a: i32, b: i32) -> i32 = {
+  a + b
+}
 
-let add :: a: i32, b: i32 = a + b
-let sub :: a, b -> i32 = a - b
-let mul :: a, b -> i32 = a * b
-let my_complex_fn :: a, b, c -> i32 = {
-    let res1 = a + b * 2;
-    let res2 = b / res1;
-    let res3 = c ^ (res1 - 55) - res2;
-    res3
+let sub :: (a: i32, b: i32) -> i32 = {
+  a - b
+}
+
+let mul :: (a: i32, b: i32) -> i32 = {
+  a * b
+}
+
+let my_complex_fn :: (a: i32, b: i32, c: i32) -> i32 = {
+  let res1 = a + b * 2;
+  let res2 = b / res1;
+  let res3 = c ^ (res1 - 55) - res2;
+  res3
 }
 
 let main :: () = {
-    printf("add(6, 7) = %d\n", add(6, 7))
-    printf("mul(1, 1) = %d\n", mul(1, 1))
-    printf("my_complex_fn(2, 1) = %d\n", my_complex_fn(2, 1));
+  std_c.printf("add(6, 7) = %d\n", add(6, 7));
+  std_c.printf("mul(1, 1) = %d\n", mul(1, 1));
+  std_c.printf("my_complex_fn(2, 1, 5) = %d\n", my_complex_fn(2, 1, 5));
+  0
 }

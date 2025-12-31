@@ -1,8 +1,11 @@
-open MyModule
-open MyModule.SomeMod
-open Panic with { panic }
-open Assert with {
-  assert,
-  Static.assert_static,
-  assert_eq as is_eq,
+open std
+
+let my_func :: () -> i32 = {
+  123
+}
+
+let main :: () = {
+  let result = my_func();
+  std_c.printf("Result: %d\n", result);
+  0
 }

@@ -1,2 +1,14 @@
-let mul_5 :: mul <- 5
-let just_15 :: mul <- 5, 3
+let mul :: (a: i32, b: i32) -> i32 = {
+  a * b
+}
+
+let add :: (a: i32, b: i32) -> i32 = {
+  a + b
+}
+
+let main :: () = {
+  let result = mul(5, 3);
+  std_c.printf("5 * 3 = %d\n", result);
+  std_c.printf("2 + 3 = %d\n", add(2, 3));
+  0
+}
