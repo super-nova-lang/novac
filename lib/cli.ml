@@ -74,10 +74,11 @@ let process_codegen stdlib_flag files =
   let std_files, app_files = get_files_for_backend stdlib_flag files in
   let process_file file is_stdlib =
     Codegen.reset_module ();
+    let base_module_name = Filename.remove_extension (Filename.basename file) in
     let module_name =
       if is_stdlib
-      then Utils.module_name_from_path file stdlib_dir
-      else Filename.remove_extension (Filename.basename file)
+      then "std_" ^ base_module_name
+      else base_module_name
     in
     Codegen.set_module_name module_name;
     let tokens = Lexer.lex_from_file file in
@@ -124,11 +125,11 @@ let compile_to_exe stdlib_flag files exe_file =
   let std_files, app_files = get_files_for_backend stdlib_flag files in
   let compile_single_file file is_stdlib =
     Codegen.reset_module ();
+    let base_module_name = Filename.remove_extension (Filename.basename file) in
     let module_name =
       if is_stdlib
-      then Utils.module_name_from_path file stdlib_dir
-      else (* For application files, use just the basename as the module name *)
-        Filename.remove_extension (Filename.basename file)
+      then "std_" ^ base_module_name
+      else base_module_name
     in
     Codegen.set_module_name module_name;
     let tokens = Lexer.lex_from_file file in

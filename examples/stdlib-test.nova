@@ -1,8 +1,5 @@
-open c
-open math
-
 let main :: () = {
-  let result = math.square(5);
-  c.printf("Square of 5: %d\n", result);
+  let result = std_math.square(5);
+  std_c.printf("Square of 5: %d\n", result);
   result
 }

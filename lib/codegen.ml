@@ -43,7 +43,9 @@ let set_analysis_nodes nodes =
 
 let set_module_name name =
   let sanitized = String.map (fun c -> if c = '-' then '_' else c) name in
-  current_module_name := sanitized
+  current_module_name := sanitized;
+  (* Register the module so dot notation works (e.g., std_math.square) *)
+  Hashtbl.add opened_modules sanitized sanitized
 ;;
 
 let set_analysis_context ctx =

@@ -1,5 +1,3 @@
-module c {
-  export printf
+export printf
 
-  let printf :: import <- "c", "printf"
-}
+let printf :: import <- "c", "printf"
