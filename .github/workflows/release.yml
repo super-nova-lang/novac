@@ -48,7 +48,7 @@ jobs:
         uses: ocaml/setup-ocaml@v2
         with:
           ocaml-compiler: 5.1.x
-          cache: false
+          dune-cache: false
 
       - name: Install OCaml dependencies
         run: |
@@ -114,7 +114,7 @@ jobs:
         uses: ocaml/setup-ocaml@v2
         with:
           ocaml-compiler: 5.1.x
-          cache: false
+          dune-cache: false
 
       - name: Install OCaml dependencies
         run: |
@@ -183,7 +183,7 @@ jobs:
         uses: ocaml/setup-ocaml@v2
         with:
           ocaml-compiler: 5.1.x
-          cache: false
+          dune-cache: false
 
       - name: Install OCaml dependencies
         run: |
@@ -193,7 +193,8 @@ jobs:
 
       - name: Build project
         run: |
-          opam exec -- dune build
+          eval $(opam env)
+          dune build
         shell: pwsh
 
       - name: Create binary archive
@@ -249,13 +250,13 @@ jobs:
       - name: Flatten artifacts
         run: |
           mkdir -p releases
-          find artifacts -name "*.tar.gz" -type f -exec mv {} releases/ \;
+          find artifacts -name "*.tar.gz" -o -name "*.zip" | xargs -I {} mv {} releases/
           ls -lah releases/
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: releases/*.tar.gz
+          files: releases/*
           body: |
             # Supernova Compiler Release ${{ steps.version.outputs.version }}
             
