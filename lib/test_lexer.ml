@@ -9,17 +9,10 @@ let%expect_test "lexer" =
   [%expect
     {|
     File: basic_functions
-    found: Token.Open
-    found: (Token.Ident "Std")
-    found: Token.With
-    found: Token.Open_brack
-    found: (Token.Ident "C")
-    found: Token.Dot
-    found: (Token.Ident "printf")
-    found: Token.Close_brack
     found: Token.Let
     found: (Token.Ident "add")
     found: Token.Double_colon
+    found: Token.Open_paren
     found: (Token.Ident "a")
     found: Token.Colon
     found: (Token.Ident "i32")
@@ -27,42 +20,71 @@ let%expect_test "lexer" =
     found: (Token.Ident "b")
     found: Token.Colon
     found: (Token.Ident "i32")
+    found: Token.Close_paren
+    found: Token.Skinny_arrow
+    found: (Token.Ident "i32")
     found: Token.Eql
+    found: Token.Open_brack
     found: (Token.Ident "a")
     found: Token.Plus
     found: (Token.Ident "b")
+    found: Token.Close_brack
     found: Token.Let
     found: (Token.Ident "sub")
     found: Token.Double_colon
+    found: Token.Open_paren
     found: (Token.Ident "a")
+    found: Token.Colon
+    found: (Token.Ident "i32")
     found: Token.Comma
     found: (Token.Ident "b")
+    found: Token.Colon
+    found: (Token.Ident "i32")
+    found: Token.Close_paren
     found: Token.Skinny_arrow
     found: (Token.Ident "i32")
     found: Token.Eql
+    found: Token.Open_brack
     found: (Token.Ident "a")
     found: Token.Dash
     found: (Token.Ident "b")
+    found: Token.Close_brack
     found: Token.Let
     found: (Token.Ident "mul")
     found: Token.Double_colon
+    found: Token.Open_paren
     found: (Token.Ident "a")
+    found: Token.Colon
+    found: (Token.Ident "i32")
     found: Token.Comma
     found: (Token.Ident "b")
+    found: Token.Colon
+    found: (Token.Ident "i32")
+    found: Token.Close_paren
     found: Token.Skinny_arrow
     found: (Token.Ident "i32")
     found: Token.Eql
+    found: Token.Open_brack
     found: (Token.Ident "a")
     found: Token.Star
     found: (Token.Ident "b")
+    found: Token.Close_brack
     found: Token.Let
     found: (Token.Ident "my_complex_fn")
     found: Token.Double_colon
+    found: Token.Open_paren
     found: (Token.Ident "a")
+    found: Token.Colon
+    found: (Token.Ident "i32")
     found: Token.Comma
     found: (Token.Ident "b")
+    found: Token.Colon
+    found: (Token.Ident "i32")
     found: Token.Comma
     found: (Token.Ident "c")
+    found: Token.Colon
+    found: (Token.Ident "i32")
+    found: Token.Close_paren
     found: Token.Skinny_arrow
     found: (Token.Ident "i32")
     found: Token.Eql
@@ -105,6 +127,8 @@ let%expect_test "lexer" =
     found: Token.Close_paren
     found: Token.Eql
     found: Token.Open_brack
+    found: (Token.Ident "std_c")
+    found: Token.Dot
     found: (Token.Ident "printf")
     found: Token.Open_paren
     found: (Token.String "add(6, 7) = %d\n")
@@ -116,6 +140,9 @@ let%expect_test "lexer" =
     found: (Token.Number 7)
     found: Token.Close_paren
     found: Token.Close_paren
+    found: Token.Semi_colon
+    found: (Token.Ident "std_c")
+    found: Token.Dot
     found: (Token.Ident "printf")
     found: Token.Open_paren
     found: (Token.String "mul(1, 1) = %d\n")
@@ -127,18 +154,24 @@ let%expect_test "lexer" =
     found: (Token.Number 1)
     found: Token.Close_paren
     found: Token.Close_paren
+    found: Token.Semi_colon
+    found: (Token.Ident "std_c")
+    found: Token.Dot
     found: (Token.Ident "printf")
     found: Token.Open_paren
-    found: (Token.String "my_complex_fn(2, 1) = %d\n")
+    found: (Token.String "my_complex_fn(2, 1, 5) = %d\n")
     found: Token.Comma
     found: (Token.Ident "my_complex_fn")
     found: Token.Open_paren
     found: (Token.Number 2)
     found: Token.Comma
     found: (Token.Number 1)
+    found: Token.Comma
+    found: (Token.Number 5)
     found: Token.Close_paren
     found: Token.Close_paren
     found: Token.Semi_colon
+    found: (Token.Number 0)
     found: Token.Close_brack
     found: Token.Eof
     File: complex_types
@@ -422,29 +455,45 @@ let%expect_test "lexer" =
     found: Token.Eof
     File: currying_functions
     found: Token.Let
-    found: (Token.Ident "mul_5")
-    found: Token.Double_colon
     found: (Token.Ident "mul")
-    found: Token.Back_arrow
-    found: (Token.Number 5)
-    found: Token.Let
-    found: (Token.Ident "just_15")
     found: Token.Double_colon
-    found: (Token.Ident "mul")
-    found: Token.Back_arrow
-    found: (Token.Number 5)
+    found: Token.Open_paren
+    found: (Token.Ident "a")
+    found: Token.Colon
+    found: (Token.Ident "i32")
     found: Token.Comma
-    found: (Token.Number 3)
-    found: Token.Eof
-    File: ffi_example
+    found: (Token.Ident "b")
+    found: Token.Colon
+    found: (Token.Ident "i32")
+    found: Token.Close_paren
+    found: Token.Skinny_arrow
+    found: (Token.Ident "i32")
+    found: Token.Eql
+    found: Token.Open_brack
+    found: (Token.Ident "a")
+    found: Token.Star
+    found: (Token.Ident "b")
+    found: Token.Close_brack
     found: Token.Let
-    found: (Token.Ident "printf")
+    found: (Token.Ident "add")
     found: Token.Double_colon
-    found: Token.Import
-    found: Token.Back_arrow
-    found: (Token.String "c")
+    found: Token.Open_paren
+    found: (Token.Ident "a")
+    found: Token.Colon
+    found: (Token.Ident "i32")
     found: Token.Comma
-    found: (Token.String "printf")
+    found: (Token.Ident "b")
+    found: Token.Colon
+    found: (Token.Ident "i32")
+    found: Token.Close_paren
+    found: Token.Skinny_arrow
+    found: (Token.Ident "i32")
+    found: Token.Eql
+    found: Token.Open_brack
+    found: (Token.Ident "a")
+    found: Token.Plus
+    found: (Token.Ident "b")
+    found: Token.Close_brack
     found: Token.Let
     found: (Token.Ident "main")
     found: Token.Double_colon
@@ -452,12 +501,60 @@ let%expect_test "lexer" =
     found: Token.Close_paren
     found: Token.Eql
     found: Token.Open_brack
+    found: Token.Let
+    found: (Token.Ident "result")
+    found: Token.Eql
+    found: (Token.Ident "mul")
+    found: Token.Open_paren
+    found: (Token.Number 5)
+    found: Token.Comma
+    found: (Token.Number 3)
+    found: Token.Close_paren
+    found: Token.Semi_colon
+    found: (Token.Ident "std_c")
+    found: Token.Dot
+    found: (Token.Ident "printf")
+    found: Token.Open_paren
+    found: (Token.String "5 * 3 = %d\n")
+    found: Token.Comma
+    found: (Token.Ident "result")
+    found: Token.Close_paren
+    found: Token.Semi_colon
+    found: (Token.Ident "std_c")
+    found: Token.Dot
+    found: (Token.Ident "printf")
+    found: Token.Open_paren
+    found: (Token.String "2 + 3 = %d\n")
+    found: Token.Comma
+    found: (Token.Ident "add")
+    found: Token.Open_paren
+    found: (Token.Number 2)
+    found: Token.Comma
+    found: (Token.Number 3)
+    found: Token.Close_paren
+    found: Token.Close_paren
+    found: Token.Semi_colon
+    found: (Token.Number 0)
+    found: Token.Close_brack
+    found: Token.Eof
+    File: ffi_example
+    found: Token.Let
+    found: (Token.Ident "main")
+    found: Token.Double_colon
+    found: Token.Open_paren
+    found: Token.Close_paren
+    found: Token.Eql
+    found: Token.Open_brack
+    found: (Token.Ident "std_c")
+    found: Token.Dot
     found: (Token.Ident "printf")
     found: Token.Open_paren
     found: (Token.String "Hello world! %d\n")
     found: Token.Comma
     found: (Token.Number 32)
     found: Token.Close_paren
+    found: Token.Semi_colon
+    found: (Token.Number 0)
     found: Token.Close_brack
     found: Token.Eof
     File: module_test
@@ -569,31 +666,42 @@ let%expect_test "lexer" =
     found: Token.Eof
     File: open_statements
     found: Token.Open
-    found: (Token.Ident "MyModule")
-    found: Token.Open
-    found: (Token.Ident "MyModule")
-    found: Token.Dot
-    found: (Token.Ident "SomeMod")
-    found: Token.Open
-    found: (Token.Ident "Panic")
-    found: Token.With
+    found: (Token.Ident "std")
+    found: Token.Let
+    found: (Token.Ident "my_func")
+    found: Token.Double_colon
+    found: Token.Open_paren
+    found: Token.Close_paren
+    found: Token.Skinny_arrow
+    found: (Token.Ident "i32")
+    found: Token.Eql
     found: Token.Open_brack
-    found: (Token.Ident "panic")
+    found: (Token.Number 123)
     found: Token.Close_brack
-    found: Token.Open
-    found: (Token.Ident "Assert")
-    found: Token.With
+    found: Token.Let
+    found: (Token.Ident "main")
+    found: Token.Double_colon
+    found: Token.Open_paren
+    found: Token.Close_paren
+    found: Token.Eql
     found: Token.Open_brack
-    found: (Token.Ident "assert")
-    found: Token.Comma
-    found: (Token.Ident "Static")
+    found: Token.Let
+    found: (Token.Ident "result")
+    found: Token.Eql
+    found: (Token.Ident "my_func")
+    found: Token.Open_paren
+    found: Token.Close_paren
+    found: Token.Semi_colon
+    found: (Token.Ident "std_c")
     found: Token.Dot
-    found: (Token.Ident "assert_static")
+    found: (Token.Ident "printf")
+    found: Token.Open_paren
+    found: (Token.String "Result: %d\n")
     found: Token.Comma
-    found: (Token.Ident "assert_eq")
-    found: Token.As
-    found: (Token.Ident "is_eq")
-    found: Token.Comma
+    found: (Token.Ident "result")
+    found: Token.Close_paren
+    found: Token.Semi_colon
+    found: (Token.Number 0)
     found: Token.Close_brack
     found: Token.Eof
     File: stdlib_test
@@ -629,24 +737,39 @@ let%expect_test "lexer" =
     File: tags_and_macros
     found: Token.Hash
     found: Token.Open_square
-    found: (Token.Ident "recusive")
-    found: Token.Close_square
-    found: Token.Hash
-    found: Token.Open_square
-    found: Token.Derive
-    found: Token.Open_paren
-    found: (Token.Ident "Show")
-    found: Token.Comma
-    found: (Token.Ident "PrettyPrint")
-    found: Token.Close_paren
+    found: (Token.Ident "no_mangle")
     found: Token.Close_square
     found: Token.Let
-    found: (Token.Ident "my_type")
+    found: (Token.Ident "my_func")
+    found: Token.Double_colon
+    found: Token.Open_paren
+    found: Token.Close_paren
+    found: Token.Skinny_arrow
+    found: (Token.Ident "i32")
+    found: Token.Eql
+    found: Token.Open_brack
+    found: (Token.Number 42)
+    found: Token.Close_brack
+    found: Token.Let
+    found: (Token.Ident "main")
     found: Token.Double_colon
     found: Token.Open_paren
     found: Token.Close_paren
     found: Token.Eql
-    found: (Token.String "ahhh")
+    found: Token.Open_brack
+    found: (Token.Ident "std_c")
+    found: Token.Dot
+    found: (Token.Ident "printf")
+    found: Token.Open_paren
+    found: (Token.String "Tagged function result: %d\n")
+    found: Token.Comma
+    found: (Token.Ident "my_func")
+    found: Token.Open_paren
+    found: Token.Close_paren
+    found: Token.Close_paren
+    found: Token.Semi_colon
+    found: (Token.Number 0)
+    found: Token.Close_brack
     found: Token.Eof
     |}]
 ;;

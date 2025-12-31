@@ -11,16 +11,12 @@ let%expect_test "parser" =
     {|
     File: basic_functions
     found: (Ast.Statement
-       (Ast.Open_stmt
-          { Ast.mods = ["Std"];
-            elements = [{ Ast.path = ["C"; "printf"]; alias = None }] }))
-    found: (Ast.Statement
        (Ast.Decl_stmt
           Ast.Decl {tags = []; name = "add";
             params =
             [(Ast.Typed ("a", (Ast.User "i32")));
               (Ast.Typed ("b", (Ast.User "i32")))];
-            explicit_ret = None;
+            explicit_ret = (Some (Ast.User "i32"));
             body =
             ([],
              (Some (Ast.Relational_expr
@@ -35,7 +31,9 @@ let%expect_test "parser" =
     found: (Ast.Statement
        (Ast.Decl_stmt
           Ast.Decl {tags = []; name = "sub";
-            params = [(Ast.Untyped "a"); (Ast.Untyped "b")];
+            params =
+            [(Ast.Typed ("a", (Ast.User "i32")));
+              (Ast.Typed ("b", (Ast.User "i32")))];
             explicit_ret = (Some (Ast.User "i32"));
             body =
             ([],
@@ -51,7 +49,9 @@ let%expect_test "parser" =
     found: (Ast.Statement
        (Ast.Decl_stmt
           Ast.Decl {tags = []; name = "mul";
-            params = [(Ast.Untyped "a"); (Ast.Untyped "b")];
+            params =
+            [(Ast.Typed ("a", (Ast.User "i32")));
+              (Ast.Typed ("b", (Ast.User "i32")))];
             explicit_ret = (Some (Ast.User "i32"));
             body =
             ([],
@@ -65,7 +65,10 @@ let%expect_test "parser" =
     found: (Ast.Statement
        (Ast.Decl_stmt
           Ast.Decl {tags = []; name = "my_complex_fn";
-            params = [(Ast.Untyped "a"); (Ast.Untyped "b"); (Ast.Untyped "c")];
+            params =
+            [(Ast.Typed ("a", (Ast.User "i32")));
+              (Ast.Typed ("b", (Ast.User "i32")));
+              (Ast.Typed ("c", (Ast.User "i32")))];
             explicit_ret = (Some (Ast.User "i32"));
             body =
             ([(Ast.Decl_stmt
@@ -147,8 +150,10 @@ let%expect_test "parser" =
                                       (Ast.Relational_val
                                          (Ast.Additive_val
                                             (Ast.Multiplicative_val
-                                               (Ast.Unary_val
-                                                  (Ast.Ident "printf")))))),
+                                               (Ast.Unary_member (
+                                                  (Ast.Unary_val
+                                                     (Ast.Ident "std_c")),
+                                                  "printf")))))),
                                    [(Ast.Positional
                                        (Ast.Relational_expr
                                           (Ast.Relational_val
@@ -203,8 +208,10 @@ let%expect_test "parser" =
                                        (Ast.Relational_val
                                           (Ast.Additive_val
                                              (Ast.Multiplicative_val
-                                                (Ast.Unary_val
-                                                   (Ast.Ident "printf")))))),
+                                                (Ast.Unary_member (
+                                                   (Ast.Unary_val
+                                                      (Ast.Ident "std_c")),
+                                                   "printf")))))),
                                     [(Ast.Positional
                                         (Ast.Relational_expr
                                            (Ast.Relational_val
@@ -259,8 +266,10 @@ let%expect_test "parser" =
                                        (Ast.Relational_val
                                           (Ast.Additive_val
                                              (Ast.Multiplicative_val
-                                                (Ast.Unary_val
-                                                   (Ast.Ident "printf")))))),
+                                                (Ast.Unary_member (
+                                                   (Ast.Unary_val
+                                                      (Ast.Ident "std_c")),
+                                                   "printf")))))),
                                     [(Ast.Positional
                                         (Ast.Relational_expr
                                            (Ast.Relational_val
@@ -268,7 +277,7 @@ let%expect_test "parser" =
                                                  (Ast.Multiplicative_val
                                                     (Ast.Unary_val
                                                        (Ast.String
-                                                          "my_complex_fn(2, 1) = %d\n")))))));
+                                                          "my_complex_fn(2, 1, 5) = %d\n")))))));
                                       (Ast.Positional
                                          (Ast.Relational_expr
                                             (Ast.Relational_val
@@ -299,13 +308,24 @@ let%expect_test "parser" =
                                                                         (Ast.Multiplicative_val
                                                                         (Ast.Unary_val
                                                                         (Ast.Int
-                                                                        1)))))))
+                                                                        1)))))));
+                                                             (Ast.Positional
+                                                                (Ast.Relational_expr
+                                                                   (Ast.Relational_val
+                                                                      (Ast.Additive_val
+                                                                        (Ast.Multiplicative_val
+                                                                        (Ast.Unary_val
+                                                                        (Ast.Int
+                                                                        5)))))))
                                                              ]
                                                            ))))))))
                                       ]
                                     ))))))))
                ],
-             None)}))
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val (Ast.Unary_val (Ast.Int 0))))))))}))
     File: complex_types
     found: (Ast.Statement
        (Ast.Decl_stmt
@@ -868,64 +888,209 @@ let%expect_test "parser" =
     File: currying_functions
     found: (Ast.Statement
        (Ast.Decl_stmt
-          Ast.Curry_decl {tags = []; name = "mul_5"; curried = "mul";
-            input =
-            [(Ast.Relational_expr
-                (Ast.Relational_val
-                   (Ast.Additive_val
-                      (Ast.Multiplicative_val (Ast.Unary_val (Ast.Int 5))))))
-              ]}))
-    found: (Ast.Statement
-       (Ast.Decl_stmt
-          Ast.Curry_decl {tags = []; name = "just_15"; curried = "mul";
-            input =
-            [(Ast.Relational_expr
-                (Ast.Relational_val
-                   (Ast.Additive_val
-                      (Ast.Multiplicative_val (Ast.Unary_val (Ast.Int 5))))));
-              (Ast.Relational_expr
-                 (Ast.Relational_val
-                    (Ast.Additive_val
-                       (Ast.Multiplicative_val (Ast.Unary_val (Ast.Int 3))))))
-              ]}))
-    File: ffi_example
-    found: (Ast.Statement
-       (Ast.Decl_stmt
-          Ast.Import_decl {name = "printf"; calling_conf = "c";
-            link_name = "printf"}))
-    found: (Ast.Statement
-       (Ast.Decl_stmt
-          Ast.Decl {tags = []; name = "main"; params = []; explicit_ret = None;
+          Ast.Decl {tags = []; name = "mul";
+            params =
+            [(Ast.Typed ("a", (Ast.User "i32")));
+              (Ast.Typed ("b", (Ast.User "i32")))];
+            explicit_ret = (Some (Ast.User "i32"));
             body =
             ([],
              (Some (Ast.Relational_expr
                       (Ast.Relational_val
                          (Ast.Additive_val
+                            (Ast.Mul (
+                               (Ast.Multiplicative_val
+                                  (Ast.Unary_val (Ast.Ident "a"))),
+                               (Ast.Unary_val (Ast.Ident "b")))))))))}))
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "add";
+            params =
+            [(Ast.Typed ("a", (Ast.User "i32")));
+              (Ast.Typed ("b", (Ast.User "i32")))];
+            explicit_ret = (Some (Ast.User "i32"));
+            body =
+            ([],
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Add (
+                            (Ast.Additive_val
+                               (Ast.Multiplicative_val
+                                  (Ast.Unary_val (Ast.Ident "a")))),
                             (Ast.Multiplicative_val
-                               (Ast.Unary_call
-                                  (Ast.Decl_call (
-                                     (Ast.Relational_expr
-                                        (Ast.Relational_val
-                                           (Ast.Additive_val
-                                              (Ast.Multiplicative_val
-                                                 (Ast.Unary_val
-                                                    (Ast.Ident "printf")))))),
-                                     [(Ast.Positional
+                               (Ast.Unary_val (Ast.Ident "b")))
+                            ))))))}))
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "main"; params = []; explicit_ret = None;
+            body =
+            ([(Ast.Decl_stmt
+                 Ast.Decl {tags = []; name = "result"; params = [];
+                   explicit_ret = None;
+                   body =
+                   ([],
+                    (Some (Ast.Relational_expr
+                             (Ast.Relational_val
+                                (Ast.Additive_val
+                                   (Ast.Multiplicative_val
+                                      (Ast.Unary_call
+                                         (Ast.Decl_call (
+                                            (Ast.Relational_expr
+                                               (Ast.Relational_val
+                                                  (Ast.Additive_val
+                                                     (Ast.Multiplicative_val
+                                                        (Ast.Unary_val
+                                                           (Ast.Ident "mul")))))),
+                                            [(Ast.Positional
+                                                (Ast.Relational_expr
+                                                   (Ast.Relational_val
+                                                      (Ast.Additive_val
+                                                         (Ast.Multiplicative_val
+                                                            (Ast.Unary_val
+                                                               (Ast.Int 5)))))));
+                                              (Ast.Positional
+                                                 (Ast.Relational_expr
+                                                    (Ast.Relational_val
+                                                       (Ast.Additive_val
+                                                          (Ast.Multiplicative_val
+                                                             (Ast.Unary_val
+                                                                (Ast.Int 3)))))))
+                                              ]
+                                            )))))))))});
+               (Ast.Expression_stmt
+                  (Ast.Relational_expr
+                     (Ast.Relational_val
+                        (Ast.Additive_val
+                           (Ast.Multiplicative_val
+                              (Ast.Unary_call
+                                 (Ast.Decl_call (
+                                    (Ast.Relational_expr
+                                       (Ast.Relational_val
+                                          (Ast.Additive_val
+                                             (Ast.Multiplicative_val
+                                                (Ast.Unary_member (
+                                                   (Ast.Unary_val
+                                                      (Ast.Ident "std_c")),
+                                                   "printf")))))),
+                                    [(Ast.Positional
+                                        (Ast.Relational_expr
+                                           (Ast.Relational_val
+                                              (Ast.Additive_val
+                                                 (Ast.Multiplicative_val
+                                                    (Ast.Unary_val
+                                                       (Ast.String "5 * 3 = %d\n")))))));
+                                      (Ast.Positional
                                          (Ast.Relational_expr
                                             (Ast.Relational_val
                                                (Ast.Additive_val
                                                   (Ast.Multiplicative_val
                                                      (Ast.Unary_val
-                                                        (Ast.String
-                                                           "Hello world! %d\n")))))));
-                                       (Ast.Positional
-                                          (Ast.Relational_expr
-                                             (Ast.Relational_val
-                                                (Ast.Additive_val
-                                                   (Ast.Multiplicative_val
-                                                      (Ast.Unary_val (Ast.Int 32)))))))
-                                       ]
-                                     )))))))))}))
+                                                        (Ast.Ident "result")))))))
+                                      ]
+                                    ))))))));
+               (Ast.Expression_stmt
+                  (Ast.Relational_expr
+                     (Ast.Relational_val
+                        (Ast.Additive_val
+                           (Ast.Multiplicative_val
+                              (Ast.Unary_call
+                                 (Ast.Decl_call (
+                                    (Ast.Relational_expr
+                                       (Ast.Relational_val
+                                          (Ast.Additive_val
+                                             (Ast.Multiplicative_val
+                                                (Ast.Unary_member (
+                                                   (Ast.Unary_val
+                                                      (Ast.Ident "std_c")),
+                                                   "printf")))))),
+                                    [(Ast.Positional
+                                        (Ast.Relational_expr
+                                           (Ast.Relational_val
+                                              (Ast.Additive_val
+                                                 (Ast.Multiplicative_val
+                                                    (Ast.Unary_val
+                                                       (Ast.String "2 + 3 = %d\n")))))));
+                                      (Ast.Positional
+                                         (Ast.Relational_expr
+                                            (Ast.Relational_val
+                                               (Ast.Additive_val
+                                                  (Ast.Multiplicative_val
+                                                     (Ast.Unary_call
+                                                        (Ast.Decl_call (
+                                                           (Ast.Relational_expr
+                                                              (Ast.Relational_val
+                                                                 (Ast.Additive_val
+                                                                    (Ast.Multiplicative_val
+                                                                       (Ast.Unary_val
+                                                                        (Ast.Ident
+                                                                        "add")))))),
+                                                           [(Ast.Positional
+                                                               (Ast.Relational_expr
+                                                                  (Ast.Relational_val
+                                                                     (Ast.Additive_val
+                                                                        (
+                                                                        Ast.Multiplicative_val
+                                                                        (Ast.Unary_val
+                                                                        (Ast.Int
+                                                                        2)))))));
+                                                             (Ast.Positional
+                                                                (Ast.Relational_expr
+                                                                   (Ast.Relational_val
+                                                                      (Ast.Additive_val
+                                                                        (Ast.Multiplicative_val
+                                                                        (Ast.Unary_val
+                                                                        (Ast.Int
+                                                                        3)))))))
+                                                             ]
+                                                           ))))))))
+                                      ]
+                                    ))))))))
+               ],
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val (Ast.Unary_val (Ast.Int 0))))))))}))
+    File: ffi_example
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "main"; params = []; explicit_ret = None;
+            body =
+            ([(Ast.Expression_stmt
+                 (Ast.Relational_expr
+                    (Ast.Relational_val
+                       (Ast.Additive_val
+                          (Ast.Multiplicative_val
+                             (Ast.Unary_call
+                                (Ast.Decl_call (
+                                   (Ast.Relational_expr
+                                      (Ast.Relational_val
+                                         (Ast.Additive_val
+                                            (Ast.Multiplicative_val
+                                               (Ast.Unary_member (
+                                                  (Ast.Unary_val
+                                                     (Ast.Ident "std_c")),
+                                                  "printf")))))),
+                                   [(Ast.Positional
+                                       (Ast.Relational_expr
+                                          (Ast.Relational_val
+                                             (Ast.Additive_val
+                                                (Ast.Multiplicative_val
+                                                   (Ast.Unary_val
+                                                      (Ast.String
+                                                         "Hello world! %d\n")))))));
+                                     (Ast.Positional
+                                        (Ast.Relational_expr
+                                           (Ast.Relational_val
+                                              (Ast.Additive_val
+                                                 (Ast.Multiplicative_val
+                                                    (Ast.Unary_val (Ast.Int 32)))))))
+                                     ]
+                                   ))))))))
+               ],
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val (Ast.Unary_val (Ast.Int 0))))))))}))
     File: module_test
     found: (Ast.Statement
        (Ast.Decl_stmt
@@ -1117,21 +1282,75 @@ let%expect_test "parser" =
                                (Ast.Unary_val (Ast.Ident "y")))
                             ))))))}))
     File: open_statements
-    found: (Ast.Statement (Ast.Open_stmt { Ast.mods = ["MyModule"]; elements = [] }))
+    found: (Ast.Statement (Ast.Open_stmt { Ast.mods = ["std"]; elements = [] }))
     found: (Ast.Statement
-       (Ast.Open_stmt { Ast.mods = ["MyModule"; "SomeMod"]; elements = [] }))
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "my_func"; params = [];
+            explicit_ret = (Some (Ast.User "i32"));
+            body =
+            ([],
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val (Ast.Unary_val (Ast.Int 123))))))))}))
     found: (Ast.Statement
-       (Ast.Open_stmt
-          { Ast.mods = ["Panic"];
-            elements = [{ Ast.path = ["panic"]; alias = None }] }))
-    found: (Ast.Statement
-       (Ast.Open_stmt
-          { Ast.mods = ["Assert"];
-            elements =
-            [{ Ast.path = ["assert"]; alias = None };
-              { Ast.path = ["Static"; "assert_static"]; alias = None };
-              { Ast.path = ["assert_eq"]; alias = (Some "is_eq") }]
-            }))
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "main"; params = []; explicit_ret = None;
+            body =
+            ([(Ast.Decl_stmt
+                 Ast.Decl {tags = []; name = "result"; params = [];
+                   explicit_ret = None;
+                   body =
+                   ([],
+                    (Some (Ast.Relational_expr
+                             (Ast.Relational_val
+                                (Ast.Additive_val
+                                   (Ast.Multiplicative_val
+                                      (Ast.Unary_call
+                                         (Ast.Decl_call (
+                                            (Ast.Relational_expr
+                                               (Ast.Relational_val
+                                                  (Ast.Additive_val
+                                                     (Ast.Multiplicative_val
+                                                        (Ast.Unary_val
+                                                           (Ast.Ident "my_func")))))),
+                                            [])))))))))});
+               (Ast.Expression_stmt
+                  (Ast.Relational_expr
+                     (Ast.Relational_val
+                        (Ast.Additive_val
+                           (Ast.Multiplicative_val
+                              (Ast.Unary_call
+                                 (Ast.Decl_call (
+                                    (Ast.Relational_expr
+                                       (Ast.Relational_val
+                                          (Ast.Additive_val
+                                             (Ast.Multiplicative_val
+                                                (Ast.Unary_member (
+                                                   (Ast.Unary_val
+                                                      (Ast.Ident "std_c")),
+                                                   "printf")))))),
+                                    [(Ast.Positional
+                                        (Ast.Relational_expr
+                                           (Ast.Relational_val
+                                              (Ast.Additive_val
+                                                 (Ast.Multiplicative_val
+                                                    (Ast.Unary_val
+                                                       (Ast.String "Result: %d\n")))))));
+                                      (Ast.Positional
+                                         (Ast.Relational_expr
+                                            (Ast.Relational_val
+                                               (Ast.Additive_val
+                                                  (Ast.Multiplicative_val
+                                                     (Ast.Unary_val
+                                                        (Ast.Ident "result")))))))
+                                      ]
+                                    ))))))))
+               ],
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val (Ast.Unary_val (Ast.Int 0))))))))}))
     File: stdlib_test
     found: (Ast.Statement
        (Ast.Decl_stmt
@@ -1207,38 +1426,62 @@ let%expect_test "parser" =
     File: tags_and_macros
     found: (Ast.Statement
        (Ast.Decl_stmt
-          Ast.Decl {
-            tags =
-            [(Ast.Tag_name "recusive");
-              (Ast.Tag_call
-                 (Ast.Decl_call (
-                    (Ast.Relational_expr
-                       (Ast.Relational_val
-                          (Ast.Additive_val
-                             (Ast.Multiplicative_val
-                                (Ast.Unary_val (Ast.Ident "derive")))))),
-                    [(Ast.Positional
-                        (Ast.Relational_expr
-                           (Ast.Relational_val
-                              (Ast.Additive_val
-                                 (Ast.Multiplicative_val
-                                    (Ast.Unary_val (Ast.Ident "Show")))))));
-                      (Ast.Positional
-                         (Ast.Relational_expr
-                            (Ast.Relational_val
-                               (Ast.Additive_val
-                                  (Ast.Multiplicative_val
-                                     (Ast.Unary_val (Ast.Ident "PrettyPrint")))))))
-                      ]
-                    )))
-              ];
-            name = "my_type"; params = []; explicit_ret = None;
+          Ast.Decl {tags = [(Ast.Tag_name "no_mangle")]; name = "my_func";
+            params = []; explicit_ret = (Some (Ast.User "i32"));
             body =
             ([],
              (Some (Ast.Relational_expr
                       (Ast.Relational_val
                          (Ast.Additive_val
-                            (Ast.Multiplicative_val
-                               (Ast.Unary_val (Ast.String "ahhh"))))))))}))
+                            (Ast.Multiplicative_val (Ast.Unary_val (Ast.Int 42))))))))}))
+    found: (Ast.Statement
+       (Ast.Decl_stmt
+          Ast.Decl {tags = []; name = "main"; params = []; explicit_ret = None;
+            body =
+            ([(Ast.Expression_stmt
+                 (Ast.Relational_expr
+                    (Ast.Relational_val
+                       (Ast.Additive_val
+                          (Ast.Multiplicative_val
+                             (Ast.Unary_call
+                                (Ast.Decl_call (
+                                   (Ast.Relational_expr
+                                      (Ast.Relational_val
+                                         (Ast.Additive_val
+                                            (Ast.Multiplicative_val
+                                               (Ast.Unary_member (
+                                                  (Ast.Unary_val
+                                                     (Ast.Ident "std_c")),
+                                                  "printf")))))),
+                                   [(Ast.Positional
+                                       (Ast.Relational_expr
+                                          (Ast.Relational_val
+                                             (Ast.Additive_val
+                                                (Ast.Multiplicative_val
+                                                   (Ast.Unary_val
+                                                      (Ast.String
+                                                         "Tagged function result: %d\n")))))));
+                                     (Ast.Positional
+                                        (Ast.Relational_expr
+                                           (Ast.Relational_val
+                                              (Ast.Additive_val
+                                                 (Ast.Multiplicative_val
+                                                    (Ast.Unary_call
+                                                       (Ast.Decl_call (
+                                                          (Ast.Relational_expr
+                                                             (Ast.Relational_val
+                                                                (Ast.Additive_val
+                                                                   (Ast.Multiplicative_val
+                                                                      (Ast.Unary_val
+                                                                        (Ast.Ident
+                                                                        "my_func")))))),
+                                                          []))))))))
+                                     ]
+                                   ))))))))
+               ],
+             (Some (Ast.Relational_expr
+                      (Ast.Relational_val
+                         (Ast.Additive_val
+                            (Ast.Multiplicative_val (Ast.Unary_val (Ast.Int 0))))))))}))
     |}]
 ;;

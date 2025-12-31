@@ -15,15 +15,38 @@ let files_arg =
 
 let stdlib_dir = "stdlib"
 
+let rec get_stdlib_files_recursive dir prefix =
+  let files = Sys.readdir dir |> Array.to_list in
+  let nova_files = 
+    List.filter (fun f -> Filename.check_suffix f ".nova") files
+    |> List.map (fun f -> 
+      let full_path = Filename.concat dir f in
+      let module_name = 
+        if prefix = "" 
+        then Filename.remove_extension f 
+        else prefix ^ "." ^ Filename.remove_extension f
+      in
+      (full_path, module_name))
+  in
+  let subdirs =
+    List.filter (fun f -> 
+      let full_path = Filename.concat dir f in
+      try Sys.is_directory full_path with _ -> false)
+      files
+    |> List.concat_map (fun f ->
+      let full_path = Filename.concat dir f in
+      let new_prefix = if prefix = "" then f else prefix ^ "." ^ f in
+      get_stdlib_files_recursive full_path new_prefix)
+  in
+  nova_files @ subdirs
+
 let get_stdlib_files () =
-  let files = Sys.readdir stdlib_dir |> Array.to_list in
-  List.filter (fun f -> Filename.check_suffix f ".nova") files
-  |> List.map (fun f -> Filename.concat stdlib_dir f)
+  get_stdlib_files_recursive stdlib_dir ""
 ;;
 
 let get_files_for_frontend stdlib_flag files =
   if stdlib_flag
-  then get_stdlib_files ()
+  then List.map fst (get_stdlib_files ())
   else if files = []
   then (
     Printf.eprintf "Error: No input files provided.\n";
@@ -72,15 +95,11 @@ let process_parse stdlib_flag files =
 
 let process_codegen stdlib_flag files =
   let std_files, app_files = get_files_for_backend stdlib_flag files in
-  let process_file file is_stdlib =
+  let process_file (file, module_name) _is_stdlib =
     Codegen.reset_module ();
-    let base_module_name = Filename.remove_extension (Filename.basename file) in
-    let module_name =
-      if is_stdlib
-      then "std_" ^ base_module_name
-      else base_module_name
-    in
-    Codegen.set_module_name module_name;
+    (* Convert dot notation (std.c) to underscore notation (std_c) for backward compatibility *)
+    let mangled_name = String.map (fun c -> if c = '.' then '_' else c) module_name in
+    Codegen.set_module_name mangled_name;
     let tokens = Lexer.lex_from_file file in
     let nodes = Parser.parse (Parser.create tokens) in
     (* Run analysis to get type information *)
@@ -117,21 +136,17 @@ let process_codegen stdlib_flag files =
     ) else
       Printf.printf "Skipping codegen for %s due to analysis errors\n" file
   in
-  List.iter (fun file -> process_file file true) std_files;
-  List.iter (fun file -> process_file file false) app_files
+  List.iter (fun f -> process_file f true) std_files;
+  List.iter (fun file -> process_file (file, Filename.remove_extension (Filename.basename file)) false) app_files
 ;;
 
 let compile_to_exe stdlib_flag files exe_file =
   let std_files, app_files = get_files_for_backend stdlib_flag files in
-  let compile_single_file file is_stdlib =
+  let compile_single_file file module_name =
     Codegen.reset_module ();
-    let base_module_name = Filename.remove_extension (Filename.basename file) in
-    let module_name =
-      if is_stdlib
-      then "std_" ^ base_module_name
-      else base_module_name
-    in
-    Codegen.set_module_name module_name;
+    (* Convert dot notation (std.c) to underscore notation (std_c) for backward compatibility *)
+    let mangled_name = String.map (fun c -> if c = '.' then '_' else c) module_name in
+    Codegen.set_module_name mangled_name;
     let tokens = Lexer.lex_from_file file in
     let nodes = Parser.parse (Parser.create tokens) in
     List.iter Codegen.codegen nodes;
@@ -143,8 +158,10 @@ let compile_to_exe stdlib_flag files exe_file =
     close_out oc;
     ll_file
   in
-  let std_ll_files = List.map (fun file -> compile_single_file file true) std_files in
-  let app_ll_files = List.map (fun file -> compile_single_file file false) app_files in
+  let std_ll_files = List.map (fun (file, module_name) -> compile_single_file file module_name) std_files in
+  let app_ll_files = List.map (fun file -> 
+    let module_name = Filename.remove_extension (Filename.basename file) in
+    compile_single_file file module_name) app_files in
   let all_ll_files = std_ll_files @ app_ll_files in
   let ll_files_str = String.concat " " all_ll_files in
   let cmd = Printf.sprintf "clang %s -o %s -Wno-override-module" ll_files_str exe_file in
