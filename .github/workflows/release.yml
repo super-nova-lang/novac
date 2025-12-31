@@ -144,8 +144,81 @@ jobs:
           path: ${{ steps.archive.outputs.archive }}
           retention-days: 1
 
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get git hash
+        id: git
+        run: |
+          $GIT_HASH = git rev-parse --short HEAD
+          echo "hash=$GIT_HASH" >> $env:GITHUB_OUTPUT
+          echo "Git hash: $GIT_HASH"
+        shell: pwsh
+
+      - name: Set version
+        id: version
+        run: |
+          if ("${{ github.ref }}".StartsWith("refs/tags/")) {
+            $VERSION = "${{ github.ref }}".Substring("refs/tags/v".Length)
+          } else {
+            $VERSION = "${{ github.event.inputs.version }}"
+          }
+          $RELEASE_VERSION = "$VERSION-${{ steps.git.outputs.hash }}"
+          echo "version=$RELEASE_VERSION" >> $env:GITHUB_OUTPUT
+          echo "Release version: $RELEASE_VERSION"
+        shell: pwsh
+
+      - name: Install LLVM 19
+        run: |
+          choco install llvm --version=19.1.0 -y
+        shell: pwsh
+
+      - name: Setup OCaml
+        uses: ocaml/setup-ocaml@v2
+        with:
+          ocaml-compiler: 5.1.x
+          cache: false
+
+      - name: Install OCaml dependencies
+        run: |
+          $env:LLVM_CONFIG = "C:\Program Files\LLVM\bin\llvm-config.exe"
+          opam install -y llvm easy_logging spectrum cmdliner ppx_deriving ppx_expect ppx_inline_test dune odoc
+        shell: pwsh
+
+      - name: Build project
+        run: |
+          opam exec -- dune build
+        shell: pwsh
+
+      - name: Create binary archive
+        id: archive
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $dir = "novac-$version-windows"
+          New-Item -ItemType Directory -Path "$dir/bin" -Force | Out-Null
+          Copy-Item "_install/default/bin/main.exe" "$dir/bin/novac.exe" -ErrorAction SilentlyContinue
+          if (!(Test-Path "$dir/bin/novac.exe")) {
+            Copy-Item "_install/default/bin/novac.exe" "$dir/bin/novac.exe"
+          }
+          Compress-Archive -Path $dir -DestinationPath "$version-windows.zip"
+          echo "archive=$version-windows.zip" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: novac-${{ steps.version.outputs.version }}-windows
+          path: ${{ steps.archive.outputs.archive }}
+          retention-days: 1
+
   release:
-    needs: [build-ubuntu, build-macos]
+    needs: [build-ubuntu, build-macos, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     
