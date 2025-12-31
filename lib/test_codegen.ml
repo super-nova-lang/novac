@@ -17,8 +17,8 @@ let%expect_test "codegen" =
      This is strongly discouraged as backtraces are fragile.
      Please change this test to not include a backtrace. *)
   ("Novac.Codegen.Error(\"Declaration type not implemented\")")
-  Raised at Novac__Codegen.codegen_decl in file "lib/codegen.ml", line 964, characters 9-57
-  Called from Novac__Codegen.codegen_stmt in file "lib/codegen.ml", line 984, characters 31-50
+  Raised at Novac__Codegen.codegen_decl in file "lib/codegen.ml", line 1002, characters 9-57
+  Called from Novac__Codegen.codegen_stmt in file "lib/codegen.ml", line 1022, characters 31-50
   Called from Stdlib__List.iter in file "list.ml", line 114, characters 12-15
   Called from Novac__Test_codegen.test_codegen in file "lib/test_codegen.ml", line 6, characters 2-33
   Called from Stdlib__List.iter in file "list.ml", line 114, characters 12-15
@@ -59,7 +59,8 @@ let%expect_test "codegen" =
     %divtmp = sdiv i32 %b, %addtmp
     %subtmp = sub i32 %addtmp, 55
     %xortmp = xor i32 %c, %subtmp
-    ret i32 %xortmp
+    %subtmp1 = sub i32 %xortmp, %divtmp
+    ret i32 %subtmp1
   }
 
   define i32 @main() {

@@ -102,24 +102,29 @@ let%expect_test "parser" =
                     ([],
                      (Some (Ast.Relational_expr
                               (Ast.Relational_val
-                                 (Ast.Additive_val
-                                    (Ast.Pow (
-                                       (Ast.Multiplicative_val
-                                          (Ast.Unary_val (Ast.Ident "c"))),
-                                       (Ast.Unary_val
-                                          (Ast.Grouping
-                                             (Ast.Relational_expr
-                                                (Ast.Relational_val
-                                                   (Ast.Sub (
-                                                      (Ast.Additive_val
+                                 (Ast.Sub (
+                                    (Ast.Additive_val
+                                       (Ast.Pow (
+                                          (Ast.Multiplicative_val
+                                             (Ast.Unary_val (Ast.Ident "c"))),
+                                          (Ast.Unary_val
+                                             (Ast.Grouping
+                                                (Ast.Relational_expr
+                                                   (Ast.Relational_val
+                                                      (Ast.Sub (
+                                                         (Ast.Additive_val
+                                                            (Ast.Multiplicative_val
+                                                               (Ast.Unary_val
+                                                                  (Ast.Ident
+                                                                     "res1")))),
                                                          (Ast.Multiplicative_val
                                                             (Ast.Unary_val
-                                                               (Ast.Ident "res1")))),
-                                                      (Ast.Multiplicative_val
-                                                         (Ast.Unary_val
-                                                            (Ast.Int 55)))
-                                                      ))))))
-                                       )))))))})
+                                                               (Ast.Int 55)))
+                                                         ))))))
+                                          ))),
+                                    (Ast.Multiplicative_val
+                                       (Ast.Unary_val (Ast.Ident "res2")))
+                                    ))))))})
                ],
              (Some (Ast.Relational_expr
                       (Ast.Relational_val
