@@ -30,6 +30,7 @@ let in_function = ref false
 let current_type_context : (string * A.typ) option ref = ref None
 let current_module_name = ref ""
 let current_module_path = ref ""
+let current_function_has_explicit_return = ref false
 
 (* Analysis results *)
 let analysis_context : Analysis.context option ref = ref None
@@ -1088,46 +1089,67 @@ and codegen_decl = function
              Hashtbl.add named_values n a;
              Hashtbl.add named_value_types n t)
           args;
+        current_function_has_explicit_return := false;
         let ret_val, _ret_typ = codegen_body body in
-        let ret_val_fixed =
-          if L.type_of ret_val <> ret_type
-          then (
-            match L.classify_type (L.type_of ret_val), L.classify_type ret_type with
-            | L.TypeKind.Pointer, L.TypeKind.Integer ->
-              L.build_ptrtoint ret_val i32_type "retcast" !builder
-            | L.TypeKind.Integer, L.TypeKind.Pointer ->
-              L.build_inttoptr ret_val (L.pointer_type context) "retcast" !builder
-            | _ -> ret_val)
-          else ret_val
-        in
-        ignore (L.build_ret ret_val_fixed !builder);
+        let ret_kind = L.classify_type ret_type in
+        if not !current_function_has_explicit_return
+        then (
+          match ret_kind with
+          | L.TypeKind.Void -> ignore (L.build_ret_void !builder)
+          | L.TypeKind.Integer when name = "main" ->
+            ignore (L.build_ret (L.const_int ret_type 0) !builder)
+          | _ ->
+            let ret_val_fixed =
+              if L.type_of ret_val <> ret_type
+              then (
+                match L.classify_type (L.type_of ret_val), L.classify_type ret_type with
+                | L.TypeKind.Pointer, L.TypeKind.Integer ->
+                  L.build_ptrtoint ret_val i32_type "retcast" !builder
+                | L.TypeKind.Integer, L.TypeKind.Pointer ->
+                  L.build_inttoptr ret_val (L.pointer_type context) "retcast" !builder
+                | _ -> ret_val)
+              else ret_val
+            in
+            ignore (L.build_ret ret_val_fixed !builder));
+        current_function_has_explicit_return := false;
         in_function := false;
         the_function
       with
       | e ->
+        current_function_has_explicit_return := false;
         in_function := false;
         raise e)
   | A.Import_decl { name; calling_conf = _; link_name } ->
     let param_types = [||] in
     let ft = L.var_arg_function_type i32_type param_types in
-    let the_function =
+    let nova_qualified_name =
+      if !current_module_name = "" then name else !current_module_name ^ "_" ^ name
+    in
+    let c_function =
       match L.lookup_function link_name !the_module with
       | None -> L.declare_function link_name ft !the_module
       | Some f -> f
     in
-    let nova_qualified_name =
-      if !current_module_name = "" then name else !current_module_name ^ "_" ^ name
+    let _wrapper =
+      match L.lookup_function nova_qualified_name !the_module with
+      | Some f -> f
+      | None ->
+        let f = L.define_function nova_qualified_name ft !the_module in
+        let entry_bb =
+          let blocks = L.basic_blocks f in
+          if Array.length blocks = 0 then L.append_block context "entry" f else blocks.(0)
+        in
+        let wrapper_builder = L.builder_at_end context entry_bb in
+        let args = Array.to_list (L.params f) in
+        let call = L.build_call ft c_function (Array.of_list args) "calltmp" wrapper_builder in
+        (match L.return_type ft |> L.classify_type with
+         | L.TypeKind.Void -> ignore (L.build_ret_void wrapper_builder)
+         | _ -> ignore (L.build_ret call wrapper_builder));
+        f
     in
-    (* Expose a namespaced alias while keeping the actual link target as the C symbol *)
-    if nova_qualified_name <> link_name
-       && Option.is_none (L.lookup_global nova_qualified_name !the_module)
-    then (
-      let alias_type = L.type_of the_function in
-      ignore (L.add_alias !the_module alias_type 0 the_function nova_qualified_name));
     Hashtbl.add local_imports name nova_qualified_name;
-    Hashtbl.add external_link_names nova_qualified_name link_name;
     Hashtbl.add function_protos nova_qualified_name (ft, A.User "i32");
-    the_function
+    _wrapper
   | _ -> raise (Error "Declaration type not implemented")
 
 and codegen_stmt = function
@@ -1168,6 +1190,7 @@ and codegen_stmt = function
         elements
   | A.Decl_stmt decl -> ignore (codegen_decl decl)
   | A.Return_stmt ret ->
+    current_function_has_explicit_return := true;
     (match ret with
      | A.With_expr expr -> ignore (L.build_ret (codegen_expr expr |> fst) !builder)
      | A.Naked -> ignore (L.build_ret_void !builder))
@@ -1200,7 +1223,11 @@ let finish_module () =
     if L.block_terminator bb = None
     then (
       L.position_at_end bb !builder;
-      ignore (L.build_ret (L.const_int i32_type 0) !builder))
+      let fty = L.element_type (L.type_of f) in
+      let rty = L.return_type fty in
+      match L.classify_type rty with
+      | L.TypeKind.Void -> ignore (L.build_ret_void !builder)
+      | _ -> ignore (L.build_ret (L.const_int i32_type 0) !builder))
   | None -> ()
 ;;
 

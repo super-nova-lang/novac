@@ -4,8 +4,8 @@ module stdio {
 	export putchar
 	export getchar
 
-	let printf :: import <- "c", "printf"
-	let puts   :: import <- "c", "puts"
+	let printf  :: import <- "c", "printf"
+	let puts    :: import <- "c", "puts"
 	let putchar :: import <- "c", "putchar"
 	let getchar :: import <- "c", "getchar"
 }

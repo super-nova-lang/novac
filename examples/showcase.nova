@@ -1,5 +1,5 @@
 (* Novalang Showcase *)
-let printf :: import <- "c", "printf"
+open std.c with { stdio.printf }
 
 let Job :: title, salary = enum {
     programmer :: struct { lang: string },

@@ -356,7 +356,14 @@ and analyze_open ctx { A.mods; elements = _elements } =
   (* Mark the opened module as used *)
   (match mods with
    | [] -> ()
-   | mod_name :: _ -> mark_used ctx mod_name)
+  | mod_name :: _ -> mark_used ctx mod_name);
+  (* Add imported names from `open ... with { ... }` to the current scope so
+    later references don’t appear undefined during analysis. *)
+  List.iter
+   (fun (elem : A.open_stmt_element) ->
+     let local_name = match elem.alias with Some a -> a | None -> List.hd (List.rev elem.path) in
+     add_symbol ctx local_name None (0, 0))
+   _elements
 
 and analyze_decl ctx = function
   | A.Decl { tags = _tags; name; params; explicit_ret; body = stmts, expr_opt } ->
