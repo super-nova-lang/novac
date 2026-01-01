@@ -6,7 +6,8 @@
   - [x] While loops
   - [x] Match expressions (basic - literals and wildcards)
   - [x] Relational operators (==, !=, <, >, <=, >=)
-  - [x] Arithmetic operators (+, -, *, /, %)
+  - [x] Arithmetic operators (+, -, *, /, %, ^)
+  - [x] Power operator (^) with integer exponentiation
   - [x] Struct construction and field access
   - [x] Enum construction (basic)
   - [x] Function calls (up to 6 params)
@@ -22,7 +23,6 @@
     - [ ] Tuple patterns
     - [ ] Complex guard expressions
   - [ ] **For loops** - Iteration over collections
-  - [ ] **Power operator** (`^`) - AST exists, needs codegen
   - [ ] **Macro system**
     - [ ] Macro expansion
     - [ ] Macro execution at compile-time

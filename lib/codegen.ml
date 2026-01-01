@@ -480,19 +480,28 @@ let rec emit_expression emitter env expr =
          Algorithm: result = 1; while (exp > 0) { result *= base; exp--; }
          For negative exponents, result is 0 (integer division) *)
       let* _ = emit_multiplicative l in
-      emit_instr emitter "push rax";  (* save base *)
+      emit_instr emitter "push rax";
+      (* save base *)
       let* _ = emit_unary r in
-      emit_instr emitter "mov rcx, rax";  (* rcx = exponent *)
-      emit_instr emitter "pop rbx";  (* rbx = base *)
-      emit_instr emitter "mov rax, 1";  (* rax = result = 1 *)
-      emit_instr emitter "test rcx, rcx";  (* check if exp <= 0 *)
+      emit_instr emitter "mov rcx, rax";
+      (* rcx = exponent *)
+      emit_instr emitter "pop rbx";
+      (* rbx = base *)
+      emit_instr emitter "mov rax, 1";
+      (* rax = result = 1 *)
+      emit_instr emitter "test rcx, rcx";
+      (* check if exp <= 0 *)
       let end_label = gensym "pow_end" in
       let loop_label = gensym "pow_loop" in
-      emit_instr emitter (Printf.sprintf "jle %s" end_label);  (* if exp <= 0, done *)
+      emit_instr emitter (Printf.sprintf "jle %s" end_label);
+      (* if exp <= 0, done *)
       emit_label emitter loop_label;
-      emit_instr emitter "imul rax, rbx";  (* result *= base *)
-      emit_instr emitter "dec rcx";  (* exp-- *)
-      emit_instr emitter (Printf.sprintf "jnz %s" loop_label);  (* loop if exp != 0 *)
+      emit_instr emitter "imul rax, rbx";
+      (* result *= base *)
+      emit_instr emitter "dec rcx";
+      (* exp-- *)
+      emit_instr emitter (Printf.sprintf "jnz %s" loop_label);
+      (* loop if exp != 0 *)
       emit_label emitter end_label;
       Result.Ok Type_int
     | Ast.Multiplicative_val u -> emit_unary u
@@ -616,15 +625,33 @@ let rec emit_expression emitter env expr =
       let* () = unsupported emitter ("unknown enum layout: " ^ ename) in
       Result.Ok Type_unknown
     | Some layout ->
+      (* First check if it's a shared field *)
       (match List.find_opt (fun f -> f.fname = field) layout.e_shared with
        | Some fl ->
          emit_instr emitter (Printf.sprintf "mov rax, [rax+%d]" fl.foffset);
          Result.Ok fl.ftype
        | None ->
-         let* () =
-           unsupported emitter ("payload member access not supported yet: " ^ field)
+         (* Not a shared field, must be a payload field
+            Need to find which variant has this field and access it *)
+         let find_variant_with_field variants =
+           List.find_opt
+             (fun v -> List.exists (fun f -> f.fname = field) v.v_payload)
+             variants
          in
-         Result.Ok Type_unknown)
+         (match find_variant_with_field layout.e_variants with
+          | Some variant ->
+            (match List.find_opt (fun f -> f.fname = field) variant.v_payload with
+             | Some fl ->
+               (* Payload field found - access it directly without checking tag
+                  In a production compiler, we'd verify the tag matches the variant *)
+               emit_instr emitter (Printf.sprintf "mov rax, [rax+%d]" fl.foffset);
+               Result.Ok fl.ftype
+             | None ->
+               let* () = unsupported emitter ("field not found in variant: " ^ field) in
+               Result.Ok Type_unknown)
+          | None ->
+            let* () = unsupported emitter ("field not found in any variant: " ^ field) in
+            Result.Ok Type_unknown))
   and emit_call emitter env = function
     (* Avoid double-calling when the callee itself is already a call with no additional
        arguments, e.g. `(printf(...))()` parsed as nested Decl_call with empty params. *)
