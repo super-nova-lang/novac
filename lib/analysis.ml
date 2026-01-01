@@ -186,6 +186,7 @@ and infer_atom_type ctx = function
   | A.Bool _ -> A.User "bool"
   | A.Char _ -> A.User "char"
   | A.Int _ -> A.User "i32"
+  | A.Ident "_" -> A.User "i32" (* wildcard, arbitrary type *)
   | A.Ident name ->
     (match lookup_symbol ctx name with
      | Some info ->
@@ -274,6 +275,7 @@ and analyze_unary ctx = function
   | A.Unary_val atom -> analyze_atom ctx atom
 
 and analyze_atom ctx = function
+  | A.Ident "_" -> () (* wildcard *)
   | A.Ident name ->
     (match lookup_symbol ctx name with
      | Some _ -> mark_used ctx name

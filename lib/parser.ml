@@ -816,7 +816,7 @@ and parse_atom p =
   | Token.Char c -> Ok (Ast.Char c)
   | Token.True -> Ok (Ast.Bool true)
   | Token.False -> Ok (Ast.Bool false)
-  | Token.Ident s -> Ok (Ast.Ident s)
+  | Token.Low_dash -> Ok (Ast.Ident "_")
   | Token.Open_paren ->
     if peek p = Token.Close_paren
     then (

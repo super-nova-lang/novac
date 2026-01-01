@@ -299,6 +299,84 @@ let rec emit_expression emitter env expr =
     | _ ->
       let* () = unsupported emitter "relational operators are not supported yet" in
       Result.Ok Type_unknown
+  and emit_match_expr emitter env (target, arms) =
+    let rec extract_atom = function
+      | Ast.Relational_expr (Ast.Relational_val a) -> extract_add a
+      | _ -> None
+    and extract_add = function
+      | Ast.Additive_val m -> extract_mul m
+      | _ -> None
+    and extract_mul = function
+      | Ast.Multiplicative_val u -> extract_unary u
+      | _ -> None
+    and extract_unary = function
+      | Ast.Unary_val a -> Some a
+      | _ -> None
+    in
+    let* _ = emit_expression emitter env target in
+    emit_instr emitter "mov r13, rax";
+    let end_label = gensym "match_end" in
+    let rec emit_arms = function
+      | [] ->
+        (* no match *)
+        emit_instr emitter "mov rax, 60";
+        emit_instr emitter "mov rdi, 1";
+        emit_instr emitter "syscall";
+        Result.Ok ()
+      | (param, guard_opt, (stmts, expr_opt)) :: rest ->
+        let next_label = gensym "match_next" in
+        let* () =
+          match param with
+          | Ast.Single expr ->
+            (match extract_atom expr with
+             | Some (Ast.Int n) ->
+               emit_instr emitter (Printf.sprintf "cmp r13, %d" n);
+               emit_instr emitter (Printf.sprintf "jne %s" next_label);
+               Result.Ok ()
+             | Some (Ast.Ident "_") -> Result.Ok ()
+             | _ ->
+               let* () = unsupported emitter "pattern not supported" in
+               Result.Ok ())
+          | _ ->
+            let* () = unsupported emitter "pattern not supported" in
+            Result.Ok ()
+        in
+        let* () =
+          match guard_opt with
+          | Some g ->
+            let* _ = emit_expression emitter env g in
+            emit_instr emitter "test rax, rax";
+            emit_instr emitter (Printf.sprintf "jz %s" next_label);
+            Result.Ok ()
+          | None -> Result.Ok ()
+        in
+        let rec emit_stmts = function
+          | [] -> Result.Ok ()
+          | stmt :: rest ->
+            let* () =
+              match stmt with
+              | Ast.Expression_stmt e ->
+                let* _ = emit_expression emitter env e in
+                Result.Ok ()
+              | _ -> unsupported emitter "stmt in match arm not supported"
+            in
+            emit_stmts rest
+        in
+        let* () = emit_stmts stmts in
+        let* () =
+          match expr_opt with
+          | Some e ->
+            let* _ = emit_expression emitter env e in
+            Result.Ok ()
+          | None -> Result.Ok ()
+        in
+        emit_instr emitter (Printf.sprintf "jmp %s" end_label);
+        emit_label emitter next_label;
+        emit_arms rest
+    in
+    let* () = emit_arms arms in
+    emit_label emitter end_label;
+    Result.Ok Type_unknown
   and emit_additive = function
     | Ast.Add (l, r) ->
       let* _ = emit_additive l in
@@ -784,9 +862,7 @@ let rec emit_expression emitter env expr =
   match expr with
   | Ast.Call_expr call -> emit_call emitter env call
   | Ast.Relational_expr rel -> emit_relational rel
-  | Ast.Match_expr _ ->
-    let* () = unsupported emitter "match expressions are not supported yet" in
-    Result.Ok Type_unknown
+  | Ast.Match_expr m -> emit_match_expr emitter env m
   | Ast.Struct_expr (fields, with_block) -> emit_struct_literal (fields, with_block)
   | Ast.Enum_expr (variants, with_block) -> emit_enum_literal (variants, with_block)
   | Ast.Macro_expr _ ->
@@ -1006,12 +1082,12 @@ and emit_function emitter prefix name params symbol (stmts, expr_opt) =
   in
   let stack_bytes = (param_count + estimated_locals) * Target.ptr_size in
   let stack_alloc = if stack_bytes = 0 then 0 else (stack_bytes + 15) / 16 * 16 in
-  Printf.eprintf
+  (* Printf.eprintf
     "[codegen] %s locals=%d params=%d stack_alloc=%d\n"
     symbol
     estimated_locals
     param_count
-    stack_alloc;
+    stack_alloc; *)
   Emitter.add_global emitter symbol;
   emit_label emitter symbol;
   emit_instr emitter "push rbp";
