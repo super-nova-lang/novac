@@ -810,8 +810,11 @@ let emit_function_stub emitter symbol =
   emit_label emitter symbol;
   emit_instr emitter "push rbp";
   emit_instr emitter "mov rbp, rsp";
-  emit_instr emitter "; TODO: generate body";
-  emit_instr emitter "xor rax, rax";
+  emit_instr emitter "; stub: abort (unimplemented)";
+  emit_instr emitter (Printf.sprintf "mov rax, %d" Target.exit_syscall);
+  emit_instr emitter "mov rdi, 1";
+  emit_instr emitter "syscall";
+  emit_instr emitter "ud2";
   emit_instr emitter "mov rsp, rbp";
   emit_instr emitter "pop rbp";
   emit_instr emitter "ret";
