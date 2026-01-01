@@ -14,6 +14,13 @@ let files_arg =
 ;;
 
 let stdlib_dir = "stdlib"
+let build_dir = "build"
+let emit_dir = Filename.concat build_dir "emit"
+let debug_dir = Filename.concat build_dir "debug"
+
+let ensure_dir dir =
+  if not (Sys.file_exists dir && Sys.is_directory dir) then Unix.mkdir dir 0o755
+;;
 
 let print_error ?(file = None) msg =
   match file with
@@ -144,6 +151,8 @@ let run_cmd command =
 ;;
 
 let process_codegen stdlib_flag files =
+  ensure_dir build_dir;
+  ensure_dir emit_dir;
   let std_lib_files, user_files = get_files_for_backend stdlib_flag files in
   let all_files =
     List.map fst std_lib_files @ if user_files = [] then [] else user_files
@@ -160,7 +169,8 @@ let process_codegen stdlib_flag files =
        else (
          match Codegen.generate_code nodes with
          | Ok asm ->
-           let output = Filename.remove_extension file ^ ".asm" in
+           let base = Filename.remove_extension (Filename.basename file) in
+           let output = Filename.concat emit_dir (base ^ ".asm") in
            let oc = open_out output in
            output_string oc asm;
            close_out oc;
@@ -175,6 +185,9 @@ let process_codegen stdlib_flag files =
 ;;
 
 let compile_to_exe stdlib_flag files exe_file =
+  ensure_dir build_dir;
+  ensure_dir emit_dir;
+  ensure_dir debug_dir;
   let std_lib_files, user_files = get_files_for_backend stdlib_flag files in
   let all_files = List.map fst std_lib_files @ user_files in
   if all_files = []
@@ -211,7 +224,8 @@ let compile_to_exe stdlib_flag files exe_file =
                    (format_analysis_error (Analysis.Error err));
                  failed := true
                | Ok asm ->
-                 let asm_path = Filename.remove_extension file ^ ".asm" in
+                 let base = Filename.remove_extension (Filename.basename file) in
+                 let asm_path = Filename.concat emit_dir (base ^ ".asm") in
                  let oc = open_out asm_path in
                  output_string oc asm;
                  close_out oc;
@@ -222,7 +236,10 @@ let compile_to_exe stdlib_flag files exe_file =
       else (
         let asm_files = List.rev !asm_files in
         let obj_files =
-          List.map (fun asm_path -> Filename.remove_extension asm_path ^ ".o") asm_files
+          List.map
+            (fun asm_path -> Filename.concat emit_dir (Filename.basename
+              (Filename.remove_extension asm_path) ^ ".o"))
+            asm_files
         in
         let assemble asm_path obj_path =
           let cmd =
@@ -258,23 +275,19 @@ let compile_to_exe stdlib_flag files exe_file =
 ;;
 
 let process_compile stdlib_flag files =
-  let exe_file = "main" in
+  let exe_file = Filename.concat debug_dir "main" in
   let exit_code = compile_to_exe stdlib_flag files exe_file in
   if exit_code <> 0 then exit exit_code
 ;;
 
 let process_run stdlib_flag files =
-  let exe_file = Filename.temp_file "nova_run" ".exe" in
+  let exe_file = Filename.concat debug_dir "main" in
   let exit_code = compile_to_exe stdlib_flag files exe_file in
-  if exit_code <> 0
-  then (
-    Sys.remove exe_file;
-    exit exit_code);
+  if exit_code <> 0 then exit exit_code;
   let run_cmd =
     if Filename.is_relative exe_file then Printf.sprintf "./%s" exe_file else exe_file
   in
   let run_exit_code = Sys.command run_cmd in
-  Sys.remove exe_file;
   if run_exit_code <> 0 then exit run_exit_code
 ;;
 
