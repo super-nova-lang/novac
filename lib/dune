@@ -1,29 +1,16 @@
 (rule
-  (target nova_tests.ml)
-  (deps (glob_files ../examples/*))
-  (action
-    (with-stdout-to %{target}
-      (bash "for file in ../examples/*; do
-               filename=$(basename \"$file\")
-               name=$(echo \"${filename%.*}\" | tr '-' '_')
-               echo \"let content_$name = {s|\"
-               cat \"$file\"
-               echo \"|s}\"
-             done
-
-             echo -n 'let all = ['
-             for file in ../examples/*; do
-               filename=$(basename \"$file\")
-               name=$(echo \"${filename%.*}\" | tr '-' '_')
-               echo -n \"(\\\"$name\\\", content_$name); \"
-             done
-             echo ']'"))))
+ (target nova_tests.ml)
+ (deps
+  (glob_files ../examples/*))
+ (action
+  (with-stdout-to
+   %{target}
+   (bash
+    "echo '[@@@warning \"-32\"]'\n              for file in ../examples/*; do\n               filename=$(basename \"$file\")\n               name=$(echo \"${filename%.*}\" | tr '-' '_')\n               echo \"let content_$name = {s|\"\n               cat \"$file\"\n               echo \"|s}\"\n             done\n\n             echo -n 'let all = ['\n             for file in ../examples/*; do\n               filename=$(basename \"$file\")\n               name=$(echo \"${filename%.*}\" | tr '-' '_')\n               echo -n \"(\\\"$name\\\", content_$name); \"\n             done\n             echo ']'"))))
 
 (library
  (name novac)
  (inline_tests)
- (preprocess 
-   (pps
-     ppx_deriving.show
-     ppx_expect))
- (libraries cmdliner easy_logging spectrum llvm))
+ (preprocess
+  (pps ppx_deriving.show ppx_expect))
+ (libraries cmdliner easy_logging spectrum))

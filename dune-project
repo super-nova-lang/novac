@@ -19,7 +19,6 @@
  (description "Supernova Compiler")
  (depends
   ocaml
-  llvm
   easy_logging
   spectrum
   cmdliner
