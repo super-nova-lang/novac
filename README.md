@@ -19,10 +19,7 @@ Nova is a garbage-collected with an opt in allocator system akin to [Odin's cont
 
 #### Installing
 
-Make sure you have llvm-19 on your system
-
 ```bash
-$ export LLVM_CONFIG=/usr/lib/llvm19/bin/llvm-config
 $ opam install . --deps-only
 ```
 ```
