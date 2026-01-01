@@ -373,6 +373,7 @@ and analyze_statement ctx stmt =
   | A.Decl_stmt decl -> analyze_decl ctx decl
   | A.Return_stmt ret -> analyze_return ctx ret
   | A.If_stmt if_stmt -> analyze_if ctx if_stmt
+  | A.While_stmt while_stmt -> analyze_while ctx while_stmt
   | A.Expression_stmt expr -> analyze_expression ctx expr
 
 and analyze_open ctx { A.mods; elements = _elements } =
@@ -471,6 +472,12 @@ and analyze_if ctx { A.cond; body; elif } =
   List.iter (analyze_ast ctx') body;
   ignore (exit_scope ctx');
   analyze_else ctx elif
+
+and analyze_while ctx { A.cond; body } =
+  analyze_expression ctx cond;
+  let ctx' = enter_scope ctx in
+  List.iter (analyze_ast ctx') body;
+  ignore (exit_scope ctx')
 
 and analyze_else ctx = function
   | A.Else_if (cond, body, elif) ->

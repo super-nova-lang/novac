@@ -10,6 +10,7 @@ type t =
   | As
   | Return
   | If
+  | While
   | Else
   | Struct
   | Enum
@@ -95,6 +96,7 @@ let from_string = function
   | "with" -> With
   | "return" -> Return
   | "if" -> If
+  | "while" -> While
   | "else" -> Else
   | "struct" -> Struct
   | "enum" -> Enum

@@ -296,9 +296,60 @@ let intern_string emitter s =
 let rec emit_expression emitter env expr =
   let rec emit_relational = function
     | Ast.Relational_val add -> emit_additive add
-    | _ ->
-      let* () = unsupported emitter "relational operators are not supported yet" in
-      Result.Ok Type_unknown
+    | Ast.Eql (l, r) ->
+      let* _ = emit_additive l in
+      emit_instr emitter "push rax";
+      let* _ = emit_additive r in
+      emit_instr emitter "pop rbx";
+      emit_instr emitter "cmp rbx, rax";
+      emit_instr emitter "sete al";
+      emit_instr emitter "movzx rax, al";
+      Result.Ok Type_int
+    | Ast.Neq (l, r) ->
+      let* _ = emit_additive l in
+      emit_instr emitter "push rax";
+      let* _ = emit_additive r in
+      emit_instr emitter "pop rbx";
+      emit_instr emitter "cmp rbx, rax";
+      emit_instr emitter "setne al";
+      emit_instr emitter "movzx rax, al";
+      Result.Ok Type_int
+    | Ast.Lt (l, r) ->
+      let* _ = emit_additive l in
+      emit_instr emitter "push rax";
+      let* _ = emit_additive r in
+      emit_instr emitter "pop rbx";
+      emit_instr emitter "cmp rbx, rax";
+      emit_instr emitter "setl al";
+      emit_instr emitter "movzx rax, al";
+      Result.Ok Type_int
+    | Ast.Gt (l, r) ->
+      let* _ = emit_additive l in
+      emit_instr emitter "push rax";
+      let* _ = emit_additive r in
+      emit_instr emitter "pop rbx";
+      emit_instr emitter "cmp rbx, rax";
+      emit_instr emitter "setg al";
+      emit_instr emitter "movzx rax, al";
+      Result.Ok Type_int
+    | Ast.Leq (l, r) ->
+      let* _ = emit_additive l in
+      emit_instr emitter "push rax";
+      let* _ = emit_additive r in
+      emit_instr emitter "pop rbx";
+      emit_instr emitter "cmp rbx, rax";
+      emit_instr emitter "setle al";
+      emit_instr emitter "movzx rax, al";
+      Result.Ok Type_int
+    | Ast.Geq (l, r) ->
+      let* _ = emit_additive l in
+      emit_instr emitter "push rax";
+      let* _ = emit_additive r in
+      emit_instr emitter "pop rbx";
+      emit_instr emitter "cmp rbx, rax";
+      emit_instr emitter "setge al";
+      emit_instr emitter "movzx rax, al";
+      Result.Ok Type_int
   and emit_match_expr emitter env (target, arms) =
     let rec extract_atom = function
       | Ast.Relational_expr (Ast.Relational_val a) -> extract_add a
@@ -936,7 +987,8 @@ and emit_statement emitter prefix _env_stack = function
     emit_decl emitter prefix decl
   | Ast.Return_stmt _ -> unsupported emitter "return outside function"
   | Ast.Open_stmt _ -> Result.Ok ()
-  | Ast.If_stmt _ -> unsupported emitter "if statements are not supported yet"
+  | Ast.If_stmt _ -> unsupported emitter "if statements at top-level not supported"
+  | Ast.While_stmt _ -> unsupported emitter "while statements at top-level not supported"
   | Ast.Expression_stmt _ -> Result.Ok ()
 
 and emit_statement_in_fn emitter prefix env end_label locals_ref = function
@@ -985,6 +1037,27 @@ and emit_statement_in_fn emitter prefix env end_label locals_ref = function
     let* env_else = emit_else env elif in
     emit_label emitter end_label_local;
     Result.Ok env_else
+  | Ast.While_stmt { cond; body } ->
+    let start_label = gensym "while_start" in
+    let end_label = gensym "while_end" in
+    emit_label emitter start_label;
+    let* _ = emit_expression emitter env cond in
+    emit_instr emitter "cmp rax, 0";
+    emit_instr emitter ("je " ^ end_label);
+    let rec emit_block env = function
+      | [] -> Result.Ok env
+      | Ast.Statement s :: rest ->
+        let* env' = emit_statement_in_fn emitter prefix env end_label locals_ref s in
+        emit_block env' rest
+      | Ast.Expression e :: rest ->
+        let* _ = emit_expression emitter env e in
+        emit_block env rest
+      | Ast.Error _ :: rest -> emit_block env rest
+    in
+    let* _env_body = emit_block env body in
+    emit_instr emitter ("jmp " ^ start_label);
+    emit_label emitter end_label;
+    Result.Ok env
   | Ast.Decl_stmt (Ast.Decl { name; params = []; body = stmts, expr_opt; _ })
     when stmts = [] ->
     (* local let binding *)
@@ -1014,6 +1087,8 @@ and emit_function emitter prefix name params symbol (stmts, expr_opt) =
       acc + 1
     | Ast.If_stmt { body; elif; _ } ->
       count_locals_in_else (count_locals_in_t acc body) elif
+    | Ast.While_stmt { body; _ } ->
+      count_locals_in_t acc body
     | _ -> acc
   and count_locals_in_else acc = function
     | Ast.Nope -> acc
@@ -1161,7 +1236,7 @@ and collect_from_statement prefix acc = function
   | Ast.Decl_stmt (Ast.Curry_decl { name; _ }) -> StringSet.add (mangle prefix name) acc
   | Ast.Decl_stmt (Ast.Import_decl { name; _ }) -> StringSet.add (mangle prefix name) acc
   | Ast.Decl_stmt (Ast.Export_stmt _) -> acc
-  | Ast.Open_stmt _ | Ast.Return_stmt _ | Ast.If_stmt _ | Ast.Expression_stmt _ -> acc
+  | Ast.Open_stmt _ | Ast.Return_stmt _ | Ast.If_stmt _ | Ast.While_stmt _ | Ast.Expression_stmt _ -> acc
 ;;
 
 let generate_code nodes =

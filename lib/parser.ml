@@ -190,6 +190,7 @@ and parse_statement p =
   | Token.Let -> parse_decl_stmt p []
   | Token.Return -> parse_return_stmt p
   | Token.If -> parse_if_stmt p
+  | Token.While -> parse_while_stmt p
   | Token.Hash -> Error "Tags can only be applied to declarations"
   | _ -> parse_expression_stmt p
 
@@ -496,6 +497,12 @@ and parse_else_stmt p =
       let body = parse_body_as_t_list p in
       Ast.Else body))
   else Ast.Nope
+
+and parse_while_stmt p =
+  expect p Token.While |> ignore;
+  let cond = parse_expression p |> get_ok_or_fail in
+  let body = parse_body_as_t_list p in
+  Ok (Ast.While_stmt { cond; body })
 
 and parse_body_as_t_list p =
   if peek p = Token.Open_brack

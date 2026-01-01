@@ -10,6 +10,7 @@ and statement =
   | Decl_stmt of decl_stmt
   | Return_stmt of return_stmt
   | If_stmt of if_stmt
+  | While_stmt of while_stmt
   | Expression_stmt of expression
 
 (**
@@ -45,6 +46,14 @@ and if_stmt =
   { cond : expression
   ; body : t list
   ; elif : else_stmt
+  }
+
+(**
+  while cond { body }
+*)
+and while_stmt =
+  { cond : expression
+  ; body : t list
   }
 
 (**
