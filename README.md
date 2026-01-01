@@ -22,8 +22,6 @@ Nova is a garbage-collected with an opt in allocator system akin to [Odin's cont
 ```bash
 $ opam install . --deps-only
 ```
-```
-```
 
 ### Get Involved
 
