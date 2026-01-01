@@ -74,16 +74,6 @@ let rec get_stdlib_files_recursive dir prefix =
 
 let get_stdlib_files () = get_stdlib_files_recursive stdlib_dir ""
 
-let get_files_for_frontend stdlib_flag files =
-  if stdlib_flag
-  then List.map fst (get_stdlib_files ())
-  else if files = []
-  then (
-    Printf.eprintf "Error: No input files provided.\n";
-    exit 1)
-  else files
-;;
-
 let get_files_for_backend stdlib_flag provided_files =
   let std_lib_files = get_stdlib_files () in
   if stdlib_flag
@@ -98,29 +88,6 @@ let get_files_for_backend stdlib_flag provided_files =
     | _ ->
       (* User files provided *)
       std_lib_files, provided_files)
-;;
-
-(* Process stdlib files PLUS user files *)
-
-let process_lex stdlib_flag files =
-  let files_to_process = get_files_for_frontend stdlib_flag files in
-  List.iter
-    (fun file ->
-       Printf.printf "File: %s\n" file;
-       let tokens = Lexer.lex_from_file file in
-       List.iter (fun (t, _) -> Printf.printf "  found: %s\n" (Token.show t)) tokens)
-    files_to_process
-;;
-
-let process_parse stdlib_flag files =
-  let files_to_process = get_files_for_frontend stdlib_flag files in
-  List.iter
-    (fun file ->
-       Printf.printf "File: %s\n" file;
-       let tokens = Lexer.lex_from_file file in
-       let nodes = Parser.parse (Parser.create tokens) in
-       List.iter (fun n -> Printf.printf "  found: %s\n" (Ast.show n)) nodes)
-    files_to_process
 ;;
 
 let format_analysis_error = function
@@ -237,8 +204,10 @@ let compile_to_exe stdlib_flag files exe_file =
         let asm_files = List.rev !asm_files in
         let obj_files =
           List.map
-            (fun asm_path -> Filename.concat emit_dir (Filename.basename
-              (Filename.remove_extension asm_path) ^ ".o"))
+            (fun asm_path ->
+               Filename.concat
+                 emit_dir
+                 (Filename.basename (Filename.remove_extension asm_path) ^ ".o"))
             asm_files
         in
         let assemble asm_path obj_path =
@@ -291,72 +260,6 @@ let process_run stdlib_flag files =
   if run_exit_code <> 0 then exit run_exit_code
 ;;
 
-let process_analyze stdlib_flag files =
-  let files_to_process = get_files_for_frontend stdlib_flag files in
-  List.iter
-    (fun file ->
-       Printf.printf "Analyzing: %s\n" file;
-       let tokens = Lexer.lex_from_file file in
-       let nodes = Parser.parse (Parser.create tokens) in
-       let errors, warnings = Analysis.analyze nodes in
-       if errors <> []
-       then (
-         Printf.printf "Errors:\n";
-         List.iter
-           (fun err ->
-              Printf.printf
-                "  %s\n"
-                (match err with
-                 | Analysis.Error (Analysis.Undefined_variable (v, sugg)) ->
-                   let hint =
-                     match sugg with
-                     | [] -> ""
-                     | xs -> " (did you mean: " ^ String.concat ", " xs ^ ")"
-                   in
-                   "Undefined variable: " ^ v ^ hint
-                 | Analysis.Error (Analysis.Type_mismatch (t1, t2)) ->
-                   Printf.sprintf
-                     "Type mismatch: expected %s, got %s"
-                     (Ast.show_typ t1)
-                     (Ast.show_typ t2)
-                 | Analysis.Error (Analysis.Duplicate_declaration (v, (r, c))) ->
-                   Printf.sprintf "Duplicate declaration: %s at %d:%d" v r c
-                 | Analysis.Error (Analysis.Invalid_operation msg) ->
-                   "Invalid operation: " ^ msg
-                 | Analysis.Error (Analysis.Missing_return_type f) ->
-                   "Missing return type for function: " ^ f
-                 | Analysis.Warning _ -> "Unexpected warning in error list"))
-           errors);
-       if warnings <> []
-       then (
-         Printf.printf "Warnings:\n";
-         List.iter
-           (fun warn ->
-              Printf.printf
-                "  %s\n"
-                (match warn with
-                 | Analysis.Warning (Analysis.Unused_variable v) ->
-                   "Unused variable: " ^ v
-                 | Analysis.Warning (Analysis.Shadowed_variable v) ->
-                   "Shadowed variable: " ^ v
-                 | Analysis.Error _ -> "Unexpected error in warning list"))
-           warnings);
-       if errors = [] && warnings = [] then Printf.printf "  No issues found.\n")
-    files_to_process
-;;
-
-let lex_cmd =
-  let doc = "Lex the input files." in
-  let info = Cmd.info "lex" ~doc in
-  Cmd.v info Term.(const process_lex $ stdlib_flag $ files_arg)
-;;
-
-let parse_cmd =
-  let doc = "Parse the input files." in
-  let info = Cmd.info "parse" ~doc in
-  Cmd.v info Term.(const process_parse $ stdlib_flag $ files_arg)
-;;
-
 let codegen_cmd =
   let doc = "Generate code for the input files." in
   let info = Cmd.info "codegen" ~doc in
@@ -375,14 +278,8 @@ let run_cmd =
   Cmd.v info Term.(const process_run $ stdlib_flag $ files_arg)
 ;;
 
-let analyze_cmd =
-  let doc = "Perform static analysis on the input files." in
-  let info = Cmd.info "analyze" ~doc in
-  Cmd.v info Term.(const process_analyze $ stdlib_flag $ files_arg)
-;;
-
 let main_cmd =
   let doc = "Supernova compiler." in
   let info = Cmd.info "novac" ~doc in
-  Cmd.group info [ lex_cmd; parse_cmd; analyze_cmd; codegen_cmd; compile_cmd; run_cmd ]
+  Cmd.group info [ codegen_cmd; compile_cmd; run_cmd ]
 ;;
