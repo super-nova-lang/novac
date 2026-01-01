@@ -90,6 +90,13 @@ let arg_registers = [| "rdi"; "rsi"; "rdx"; "rcx"; "r8"; "r9" |]
 let string_table : (string, string) Hashtbl.t = Hashtbl.create 32
 let string_counter = ref 0
 let defined_functions = ref StringSet.empty
+let gensym_counter = ref 0
+
+let gensym prefix =
+  let n = !gensym_counter in
+  incr gensym_counter;
+  Printf.sprintf "__%s_%d" prefix n
+;;
 
 (* --- Value typing and layouts --- *)
 
@@ -864,9 +871,44 @@ and emit_statement_in_fn emitter prefix env end_label locals_ref = function
     let* _ = emit_expression emitter env expr in
     Result.Ok env
   | Ast.Open_stmt _ -> Result.Ok env
-  | Ast.If_stmt _ ->
-    let* () = unsupported emitter "if statements are not supported yet" in
-    Result.Ok env
+  | Ast.If_stmt { cond; body; elif } ->
+    let rec emit_block env = function
+      | [] -> Result.Ok env
+      | Ast.Statement s :: rest ->
+        let* env' = emit_statement_in_fn emitter prefix env end_label locals_ref s in
+        emit_block env' rest
+      | Ast.Expression e :: rest ->
+        let* _ = emit_expression emitter env e in
+        emit_block env rest
+      | Ast.Error _ :: rest -> emit_block env rest
+    in
+    let rec emit_else env = function
+      | Ast.Else_if (e, blk, rest) ->
+        let next_label = gensym "elif" in
+        let end_label = gensym "endif" in
+        let* _ = emit_expression emitter env e in
+        emit_instr emitter "cmp rax, 0";
+        emit_instr emitter ("je " ^ next_label);
+        let* _env_then = emit_block env blk in
+        emit_instr emitter ("jmp " ^ end_label);
+        emit_label emitter next_label;
+        let* env_rest = emit_else env rest in
+        emit_label emitter end_label;
+        Result.Ok env_rest
+      | Ast.Else blk -> emit_block env blk
+      | Ast.Nope -> Result.Ok env
+    in
+    let else_label = gensym "else" in
+    let end_label_local = gensym "endif" in
+    let* _ = emit_expression emitter env cond in
+    emit_instr emitter "cmp rax, 0";
+    emit_instr emitter ("je " ^ else_label);
+    let* _env_then = emit_block env body in
+    emit_instr emitter ("jmp " ^ end_label_local);
+    emit_label emitter else_label;
+    let* env_else = emit_else env elif in
+    emit_label emitter end_label_local;
+    Result.Ok env_else
   | Ast.Decl_stmt (Ast.Decl { name; params = []; body = stmts, expr_opt; _ })
     when stmts = [] ->
     (* local let binding *)
@@ -887,11 +929,22 @@ and emit_statement_in_fn emitter prefix env end_label locals_ref = function
 
 and emit_function emitter prefix name params symbol (stmts, expr_opt) =
   let nested_prefix = prefix @ [ name ] in
-  let rec count_locals acc = function
+  let rec count_locals_in_t acc = function
     | [] -> acc
-    | Ast.Decl_stmt (Ast.Decl { params = []; body = stmts, _; _ }) :: rest when stmts = []
-      -> count_locals (acc + 1) rest
-    | _ :: rest -> count_locals acc rest
+    | Ast.Statement s :: rest -> count_locals_in_t (count_locals_in_stmt acc s) rest
+    | _ :: rest -> count_locals_in_t acc rest
+  and count_locals_in_stmt acc = function
+    | Ast.Decl_stmt (Ast.Decl { params = []; body = stmts, _; _ }) when stmts = [] ->
+      acc + 1
+    | Ast.If_stmt { body; elif; _ } ->
+      count_locals_in_else (count_locals_in_t acc body) elif
+    | _ -> acc
+  and count_locals_in_else acc = function
+    | Ast.Nope -> acc
+    | Ast.Else tlist -> count_locals_in_t acc tlist
+    | Ast.Else_if (_e, tlist, rest) ->
+      let acc' = count_locals_in_t acc tlist in
+      count_locals_in_else acc' rest
   in
   let rec build_params idx env = function
     | [] -> Result.Ok (idx, env)
@@ -948,13 +1001,22 @@ and emit_function emitter prefix name params symbol (stmts, expr_opt) =
     | _ -> param_count, env
   in
   let local_slots = ref 0 in
-  let estimated_locals = count_locals 0 stmts in
+  let estimated_locals =
+    count_locals_in_t 0 (List.map (fun s -> Ast.Statement s) stmts)
+  in
   let stack_bytes = (param_count + estimated_locals) * Target.ptr_size in
   let stack_alloc = if stack_bytes = 0 then 0 else (stack_bytes + 15) / 16 * 16 in
+  Printf.eprintf
+    "[codegen] %s locals=%d params=%d stack_alloc=%d\n"
+    symbol
+    estimated_locals
+    param_count
+    stack_alloc;
   Emitter.add_global emitter symbol;
   emit_label emitter symbol;
   emit_instr emitter "push rbp";
   emit_instr emitter "mov rbp, rsp";
+  emit_instr emitter (Printf.sprintf "; stack alloc %d" stack_alloc);
   if stack_alloc > 0 then emit_instr emitter (Printf.sprintf "sub rsp, %d" stack_alloc);
   for i = 0 to param_count - 1 do
     emit_instr

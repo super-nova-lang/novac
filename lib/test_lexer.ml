@@ -6,7 +6,7 @@ let%expect_test "lexer_examples" =
     Nova_tests.all;
   [%expect
     {|
-    lex showcase ok
+    lex if_basic ok
     lex showcase ok
     |}]
 ;;

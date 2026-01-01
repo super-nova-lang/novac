@@ -14,7 +14,7 @@ let%expect_test "parser_examples" =
     Nova_tests.all;
   [%expect
     {|
-    parse showcase ok
+    parse if_basic ok
     parse showcase ok
     |}]
 ;;
