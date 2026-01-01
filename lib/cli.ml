@@ -260,6 +260,11 @@ let process_run stdlib_flag files =
   if run_exit_code <> 0 then exit run_exit_code
 ;;
 
+let process_clean () =
+  let _ = Sys.command (Printf.sprintf "rm -rf %s/* %s/*" debug_dir emit_dir) in
+  ()
+;;
+
 let codegen_cmd =
   let doc = "Generate code for the input files." in
   let info = Cmd.info "codegen" ~doc in
@@ -278,8 +283,14 @@ let run_cmd =
   Cmd.v info Term.(const process_run $ stdlib_flag $ files_arg)
 ;;
 
+let clean_cmd =
+  let doc = "Clean build artifacts." in
+  let info = Cmd.info "clean" ~doc in
+  Cmd.v info Term.(const process_clean $ const ())
+;;
+
 let main_cmd =
   let doc = "Supernova compiler." in
   let info = Cmd.info "novac" ~doc in
-  Cmd.group info [ codegen_cmd; compile_cmd; run_cmd ]
+  Cmd.group info [ codegen_cmd; compile_cmd; run_cmd; clean_cmd ]
 ;;
