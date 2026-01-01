@@ -4,7 +4,9 @@ let%expect_test "lexer_examples" =
        let _ = Lexer.lex (name ^ ".nova") content in
        Format.printf "lex %s ok\n" name)
     Nova_tests.all;
-  [%expect {|
-lex showcase ok
-|}]
+  [%expect
+    {|
+    lex showcase ok
+    lex showcase ok
+    |}]
 ;;

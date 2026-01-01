@@ -8,11 +8,11 @@ let peek p = fst (List.nth p.tokens p.pos)
 let loc p = snd (List.nth p.tokens p.pos)
 let advance p = p.pos <- p.pos + 1
 let is_at_end p = p.pos >= List.length p.tokens || peek p = Token.Eof
-
 let current_token p = if p.pos < List.length p.tokens then peek p else Token.Eof
 
 let current_loc p =
   if p.pos < List.length p.tokens then loc p else { file = "<eof>"; row = 0; col = 0 }
+;;
 
 let failf p fmt =
   Printf.ksprintf
@@ -21,6 +21,7 @@ let failf p fmt =
        let where = current_loc p |> Token.show_loc in
        failwith (Printf.sprintf "%s at %s (next: %s)" msg where tok))
     fmt
+;;
 
 let expect p token =
   if peek p = token
@@ -101,53 +102,60 @@ and parse_toplevel p =
              match peek p with
              | Token.Ident s ->
                advance p;
-               if peek p = Token.As then (
+               if peek p = Token.As
+               then (
                  advance p;
                  match consume p with
                  | Token.Ident alias ->
                    exports := Ast.Export_rename (s, alias) :: !exports
-                 | t -> failf p "Expected alias ident, got %s" (Token.show t)
-               ) else (
-                 exports := Ast.Export_ident s :: !exports
-               );
-               if peek p = Token.Comma then (advance p; parse_exports ())
+                 | t -> failf p "Expected alias ident, got %s" (Token.show t))
+               else exports := Ast.Export_ident s :: !exports;
+               if peek p = Token.Comma
+               then (
+                 advance p;
+                 parse_exports ())
                else parse_exports ()
              | Token.Close_brack -> advance p
              | t -> failf p "Unexpected token in export list: %s" (Token.show t)
            in
            parse_exports ()
-         | t -> failf p "Expected identifier or { after export, got %s" (Token.show t));
+         | t -> failf p "Expected identifier or { after export, got %s" (Token.show t))
       | _ ->
         (match parse_toplevel p with
          | Ok stmt -> body := stmt :: !body
          | Error err -> body := Ast.Error err :: !body)
     done;
     expect p Token.Close_brack |> ignore;
-    Ok (Ast.Statement (Ast.Decl_stmt (Ast.Module_decl { name; exports = List.rev !exports; body = List.rev !body })))
+    Ok
+      (Ast.Statement
+         (Ast.Decl_stmt
+            (Ast.Module_decl { name; exports = List.rev !exports; body = List.rev !body })))
   | Token.Export ->
     advance p;
     (match consume p with
-    | Token.Ident s -> Ok (Ast.Statement (Ast.Decl_stmt (Ast.Export_stmt (Ast.Export_ident s))))
+     | Token.Ident s ->
+       Ok (Ast.Statement (Ast.Decl_stmt (Ast.Export_stmt (Ast.Export_ident s))))
      | Token.Open_brack ->
        let exports = ref [] in
        let rec parse_exports () =
          match consume p with
          | Token.Ident s ->
-           if peek p = Token.As then (
+           if peek p = Token.As
+           then (
              advance p;
              match consume p with
-             | Token.Ident alias ->
-               exports := Ast.Export_rename (s, alias) :: !exports
-             | t -> failf p "Expected alias ident, got %s" (Token.show t)
-           ) else (
-             exports := Ast.Export_ident s :: !exports
-           );
-           if peek p = Token.Comma then (advance p; parse_exports ())
+             | Token.Ident alias -> exports := Ast.Export_rename (s, alias) :: !exports
+             | t -> failf p "Expected alias ident, got %s" (Token.show t))
+           else exports := Ast.Export_ident s :: !exports;
+           if peek p = Token.Comma
+           then (
+             advance p;
+             parse_exports ())
          | Token.Close_brack -> ()
          | t -> failf p "Unexpected token in export list: %s" (Token.show t)
        in
        parse_exports ();
-      Ok (Ast.Statement (Ast.Decl_stmt (Ast.Export_stmt (List.rev !exports |> List.hd))))
+       Ok (Ast.Statement (Ast.Decl_stmt (Ast.Export_stmt (List.rev !exports |> List.hd))))
      | t -> Error ("Expected identifier or { after export, got " ^ Token.show t))
   | Token.Let ->
     (match parse_decl_stmt p tags with
@@ -267,11 +275,7 @@ and parse_decl_stmt p tags =
   let name =
     match consume p with
     | Token.Ident s -> s
-    | t ->
-      failf
-        p
-        "Expected identifier for declaration, got %s"
-        (Token.show t)
+    | t -> failf p "Expected identifier for declaration, got %s" (Token.show t)
   in
   match peek p with
   | Token.Double_colon ->
@@ -383,8 +387,7 @@ and parse_decl_param p =
   let name =
     match consume p with
     | Token.Ident s -> s
-    | t ->
-      failf p "Expected identifier for parameter, got %s" (Token.show t)
+    | t -> failf p "Expected identifier for parameter, got %s" (Token.show t)
   in
   if peek p = Token.Ellipsis
   then (
@@ -743,7 +746,7 @@ and parse_primary p =
       advance p;
       (match consume p with
        | Token.Ident member -> aux (Ast.Unary_member (left, member))
-      | _ -> failf p "Expected identifier after .")
+       | _ -> failf p "Expected identifier after .")
     | Token.Bang ->
       advance p;
       if peek p = Token.Open_paren
@@ -771,7 +774,7 @@ and parse_primary p =
       advance p;
       (match consume p with
        | Token.Ident name -> Ast.Unary_val (Ast.Implicit_member name)
-      | _ -> failf p "Expected identifier after .")
+       | _ -> failf p "Expected identifier after .")
     | _ ->
       (match parse_atom p with
        | Ok atom -> Ast.Unary_val atom

@@ -19,33 +19,43 @@ let print_error ?(file = None) msg =
   match file with
   | Some f -> Printf.eprintf "%s: error: %s\n" f msg
   | None -> Printf.eprintf "error: %s\n" msg
+;;
 
-let has_parse_errors nodes = List.exists (function Ast.Error _ -> true | _ -> false) nodes
+let has_parse_errors nodes =
+  List.exists
+    (function
+      | Ast.Error _ -> true
+      | _ -> false)
+    nodes
+;;
 
 let report_parse_errors file nodes =
   List.iter
     (function
-     | Ast.Error msg -> print_error ~file:(Some file) msg
-     | _ -> ())
+      | Ast.Error msg -> print_error ~file:(Some file) msg
+      | _ -> ())
     nodes
+;;
 
 let rec get_stdlib_files_recursive dir prefix =
   let files = Sys.readdir dir |> Array.to_list in
-  let nova_files = 
+  let nova_files =
     List.filter (fun f -> Filename.check_suffix f ".nova") files
-    |> List.map (fun f -> 
+    |> List.map (fun f ->
       let full_path = Filename.concat dir f in
-      let module_name = 
-        if prefix = "" 
-        then Filename.remove_extension f 
+      let module_name =
+        if prefix = ""
+        then Filename.remove_extension f
         else prefix ^ "." ^ Filename.remove_extension f
       in
-      (full_path, module_name))
+      full_path, module_name)
   in
   let subdirs =
-    List.filter (fun f -> 
-      let full_path = Filename.concat dir f in
-      try Sys.is_directory full_path with _ -> false)
+    List.filter
+      (fun f ->
+         let full_path = Filename.concat dir f in
+         try Sys.is_directory full_path with
+         | _ -> false)
       files
     |> List.concat_map (fun f ->
       let full_path = Filename.concat dir f in
@@ -53,10 +63,9 @@ let rec get_stdlib_files_recursive dir prefix =
       get_stdlib_files_recursive full_path new_prefix)
   in
   nova_files @ subdirs
-
-let get_stdlib_files () =
-  get_stdlib_files_recursive stdlib_dir ""
 ;;
+
+let get_stdlib_files () = get_stdlib_files_recursive stdlib_dir ""
 
 let get_files_for_frontend stdlib_flag files =
   if stdlib_flag
@@ -109,126 +118,143 @@ let process_parse stdlib_flag files =
 
 let format_analysis_error = function
   | Analysis.Error (Analysis.Undefined_variable (v, sugg)) ->
-    let hint = match sugg with | [] -> "" | xs -> " (did you mean: " ^ String.concat ", " xs ^ ")" in
+    let hint =
+      match sugg with
+      | [] -> ""
+      | xs -> " (did you mean: " ^ String.concat ", " xs ^ ")"
+    in
     "Undefined variable: " ^ v ^ hint
   | Analysis.Error (Analysis.Type_mismatch (t1, t2)) ->
-    Printf.sprintf "Type mismatch: expected %s, got %s" (Ast.show_typ t1) (Ast.show_typ t2)
+    Printf.sprintf
+      "Type mismatch: expected %s, got %s"
+      (Ast.show_typ t1)
+      (Ast.show_typ t2)
   | Analysis.Error (Analysis.Duplicate_declaration (v, (r, c))) ->
     Printf.sprintf "Duplicate declaration: %s at %d:%d" v r c
   | Analysis.Error (Analysis.Invalid_operation msg) -> "Invalid operation: " ^ msg
-  | Analysis.Error (Analysis.Missing_return_type f) -> "Missing return type for function: " ^ f
+  | Analysis.Error (Analysis.Missing_return_type f) ->
+    "Missing return type for function: " ^ f
   | Analysis.Warning _ -> "Unexpected warning in error list"
+;;
+
+let run_cmd command =
+  let code = Sys.command command in
+  if code <> 0 then Printf.eprintf "Command failed (%d): %s\n" code command;
+  code
+;;
 
 let process_codegen stdlib_flag files =
-  let std_files, app_files = get_files_for_backend stdlib_flag files in
-  let process_file (file, module_name) _is_stdlib =
-    Codegen.reset_module ();
-    Codegen.set_module_name module_name;
-    let tokens = Lexer.lex_from_file file in
-    let nodes = Parser.parse (Parser.create tokens) in
-    if has_parse_errors nodes then (
-      report_parse_errors file nodes;
-      print_error ~file:(Some file) "aborting due to previous error";
-    ) else (
-      let errors, warnings = Analysis.analyze nodes in
-      if errors <> [] then (
-        print_error ~file:(Some file) "analysis failed";
-        List.iter (fun err -> print_error ~file:(Some file) (format_analysis_error err)) errors
-      );
-      if warnings <> [] then (
-        List.iter
-          (fun warn ->
-             match warn with
-             | Analysis.Warning (Analysis.Unused_variable v) ->
-               Printf.printf "%s: warning: Unused variable: %s\n" file v
-             | Analysis.Warning (Analysis.Shadowed_variable v) ->
-               Printf.printf "%s: warning: Shadowed variable: %s\n" file v
-             | Analysis.Error _ -> ())
-          warnings
-      );
-      if errors = [] then (
-        try
-          Codegen.set_analysis_nodes nodes;
-          List.iter Codegen.codegen nodes;
-          Codegen.finish_module ();
-          Printf.printf "Module for %s:\n" file;
-          Llvm.dump_module !Codegen.the_module
-        with
-        | Codegen.Error msg ->
-          print_error ~file:(Some file) ("codegen failed: " ^ msg)
-        | Failure msg -> print_error ~file:(Some file) msg
-        | exn -> print_error ~file:(Some file) ("unexpected error: " ^ Printexc.to_string exn)
-      ) else
-        print_error ~file:(Some file) "Skipping codegen due to previous errors")
+  let std_lib_files, user_files = get_files_for_backend stdlib_flag files in
+  let all_files =
+    List.map fst std_lib_files @ if user_files = [] then [] else user_files
   in
-  List.iter (fun f -> process_file f true) std_files;
-  List.iter (fun file -> process_file (file, Filename.remove_extension (Filename.basename file)) false) app_files
+  List.iter
+    (fun file ->
+       (* Printf.printf "Generating code for: %s\n" file; *)
+       let tokens = Lexer.lex_from_file file in
+       let nodes = Parser.parse (Parser.create tokens) in
+       if has_parse_errors nodes
+       then (
+         report_parse_errors file nodes;
+         Printf.eprintf "Skipping code generation due to parse errors in %s\n" file)
+       else (
+         match Codegen.generate_code nodes with
+         | Ok asm ->
+           let output = Filename.remove_extension file ^ ".asm" in
+           let oc = open_out output in
+           output_string oc asm;
+           close_out oc;
+           Printf.printf "  Wrote %s\n" output;
+           Printf.printf "===== %s (generated) =====\n%s\n" output asm
+         | Error err ->
+           Printf.eprintf
+             "  Code generation error in %s: %s\n"
+             file
+             (format_analysis_error (Analysis.Error err))))
+    all_files
 ;;
 
 let compile_to_exe stdlib_flag files exe_file =
-  let std_files, app_files = get_files_for_backend stdlib_flag files in
-  let compile_single_file file module_name =
-    Codegen.reset_module ();
-    Codegen.set_module_name module_name;
-    let tokens = Lexer.lex_from_file file in
-    let nodes = Parser.parse (Parser.create tokens) in
-    if has_parse_errors nodes then (
-      report_parse_errors file nodes;
-      Error 1
-    ) else (
-      (* Run analysis to get type information *)
-      let errors, warnings = Analysis.analyze nodes in
-      if errors <> [] then (
-        List.iter (fun err -> print_error ~file:(Some file) (format_analysis_error err)) errors;
-        Error 1
-      ) else (
-        if warnings <> [] then
-          List.iter
-            (fun warn ->
-               match warn with
-               | Analysis.Warning (Analysis.Unused_variable v) ->
-                 Printf.printf "%s: warning: Unused variable: %s\n" file v
-               | Analysis.Warning (Analysis.Shadowed_variable v) ->
-                 Printf.printf "%s: warning: Shadowed variable: %s\n" file v
-               | Analysis.Error _ -> ())
-            warnings;
-        try
-          Codegen.set_analysis_nodes nodes;
-          List.iter Codegen.codegen nodes;
-          Codegen.finish_module ();
-          let ll_code = Llvm.string_of_llmodule !Codegen.the_module in
-          let ll_file = Filename.temp_file (Filename.basename file) ".ll" in
-          let oc = open_out ll_file in
-          output_string oc ll_code;
-          close_out oc;
-          Ok ll_file
-        with
-        | Codegen.Error msg ->
-          print_error ~file:(Some file) ("codegen failed: " ^ msg);
-          Error 1
-        | Failure msg ->
-          print_error ~file:(Some file) msg;
-          Error 1
-        | exn ->
-          print_error ~file:(Some file) ("unexpected error: " ^ Printexc.to_string exn);
-          Error 1))
-  in
-  let std_ll_results = List.map (fun (file, module_name) -> compile_single_file file module_name) std_files in
-  let app_ll_results =
-    List.map
-      (fun file -> compile_single_file file (Filename.remove_extension (Filename.basename file)))
-      app_files
-  in
-  let all_results = std_ll_results @ app_ll_results in
-  if List.exists (function Error _ -> true | Ok _ -> false) all_results
-  then 1
+  let std_lib_files, user_files = get_files_for_backend stdlib_flag files in
+  let all_files = List.map fst std_lib_files @ user_files in
+  if all_files = []
+  then (
+    Printf.eprintf "Error: No input files provided.\n";
+    1)
   else (
-    let ll_files = List.filter_map (function Ok f -> Some f | Error _ -> None) all_results in
-    let ll_files_str = String.concat " " ll_files in
-    let cmd = Printf.sprintf "clang %s -o %s -Wno-override-module" ll_files_str exe_file in
-    let exit_code = Sys.command cmd in
-    List.iter Sys.remove ll_files;
-    exit_code)
+    let assembler_ok = Sys.command "command -v nasm >/dev/null 2>&1" = 0 in
+    if not assembler_ok
+    then (
+      Printf.eprintf
+        "Error: nasm is required for compilation but was not found in PATH.\n";
+      1)
+    else (
+      let failed = ref false in
+      let asm_files = ref [] in
+      List.iter
+        (fun file ->
+           if not !failed
+           then (
+             (* Printf.printf "Generating code for: %s\n" file; *)
+             let tokens = Lexer.lex_from_file file in
+             let nodes = Parser.parse (Parser.create tokens) in
+             if has_parse_errors nodes
+             then (
+               report_parse_errors file nodes;
+               Printf.eprintf "Skipping compilation due to parse errors in %s\n" file;
+               failed := true)
+             else (
+               match Codegen.generate_code nodes with
+               | Error err ->
+                 Printf.eprintf
+                   "Compilation halted: %s\n"
+                   (format_analysis_error (Analysis.Error err));
+                 failed := true
+               | Ok asm ->
+                 let asm_path = Filename.remove_extension file ^ ".asm" in
+                 let oc = open_out asm_path in
+                 output_string oc asm;
+                 close_out oc;
+                 asm_files := asm_path :: !asm_files)))
+        all_files;
+      if !failed
+      then 1
+      else (
+        let asm_files = List.rev !asm_files in
+        let obj_files =
+          List.map (fun asm_path -> Filename.remove_extension asm_path ^ ".o") asm_files
+        in
+        let assemble asm_path obj_path =
+          let cmd =
+            Printf.sprintf
+              "nasm -felf64 -o %s %s"
+              (Filename.quote obj_path)
+              (Filename.quote asm_path)
+          in
+          run_cmd cmd
+        in
+        let rec assemble_all = function
+          | [], [] -> 0
+          | asm :: asms, obj :: objs ->
+            let code = assemble asm obj in
+            if code <> 0 then code else assemble_all (asms, objs)
+          | _ -> 1
+        in
+        let asm_result = assemble_all (asm_files, obj_files) in
+        if asm_result <> 0
+        then asm_result
+        else (
+          let objs = String.concat " " (List.map Filename.quote obj_files) in
+          let link_cmd =
+            Printf.sprintf "cc -no-pie -o %s %s" (Filename.quote exe_file) objs
+          in
+          let link_code = run_cmd link_cmd in
+          List.iter
+            (fun obj ->
+               try Sys.remove obj with
+               | _ -> ())
+            obj_files;
+          link_code))))
 ;;
 
 let process_compile stdlib_flag files =
@@ -260,31 +286,49 @@ let process_analyze stdlib_flag files =
        let tokens = Lexer.lex_from_file file in
        let nodes = Parser.parse (Parser.create tokens) in
        let errors, warnings = Analysis.analyze nodes in
-       if errors <> [] then (
+       if errors <> []
+       then (
          Printf.printf "Errors:\n";
-         List.iter (fun err -> Printf.printf "  %s\n" (match err with
-           | Analysis.Error (Analysis.Undefined_variable (v, sugg)) ->
-             let hint = match sugg with | [] -> "" | xs -> " (did you mean: " ^ String.concat ", " xs ^ ")" in
-             "Undefined variable: " ^ v ^ hint
-           | Analysis.Error (Analysis.Type_mismatch (t1, t2)) -> 
-             Printf.sprintf "Type mismatch: expected %s, got %s" (Ast.show_typ t1) (Ast.show_typ t2)
-           | Analysis.Error (Analysis.Duplicate_declaration (v, (r, c))) ->
-             Printf.sprintf "Duplicate declaration: %s at %d:%d" v r c
-           | Analysis.Error (Analysis.Invalid_operation msg) -> "Invalid operation: " ^ msg
-           | Analysis.Error (Analysis.Missing_return_type f) -> "Missing return type for function: " ^ f
-           | Analysis.Warning _ -> "Unexpected warning in error list"
-         )) errors
-       );
-       if warnings <> [] then (
+         List.iter
+           (fun err ->
+              Printf.printf
+                "  %s\n"
+                (match err with
+                 | Analysis.Error (Analysis.Undefined_variable (v, sugg)) ->
+                   let hint =
+                     match sugg with
+                     | [] -> ""
+                     | xs -> " (did you mean: " ^ String.concat ", " xs ^ ")"
+                   in
+                   "Undefined variable: " ^ v ^ hint
+                 | Analysis.Error (Analysis.Type_mismatch (t1, t2)) ->
+                   Printf.sprintf
+                     "Type mismatch: expected %s, got %s"
+                     (Ast.show_typ t1)
+                     (Ast.show_typ t2)
+                 | Analysis.Error (Analysis.Duplicate_declaration (v, (r, c))) ->
+                   Printf.sprintf "Duplicate declaration: %s at %d:%d" v r c
+                 | Analysis.Error (Analysis.Invalid_operation msg) ->
+                   "Invalid operation: " ^ msg
+                 | Analysis.Error (Analysis.Missing_return_type f) ->
+                   "Missing return type for function: " ^ f
+                 | Analysis.Warning _ -> "Unexpected warning in error list"))
+           errors);
+       if warnings <> []
+       then (
          Printf.printf "Warnings:\n";
-         List.iter (fun warn -> Printf.printf "  %s\n" (match warn with
-           | Analysis.Warning (Analysis.Unused_variable v) -> "Unused variable: " ^ v
-           | Analysis.Warning (Analysis.Shadowed_variable v) -> "Shadowed variable: " ^ v
-           | Analysis.Error _ -> "Unexpected error in warning list"
-         )) warnings
-       );
-       if errors = [] && warnings = [] then
-         Printf.printf "  No issues found.\n")
+         List.iter
+           (fun warn ->
+              Printf.printf
+                "  %s\n"
+                (match warn with
+                 | Analysis.Warning (Analysis.Unused_variable v) ->
+                   "Unused variable: " ^ v
+                 | Analysis.Warning (Analysis.Shadowed_variable v) ->
+                   "Shadowed variable: " ^ v
+                 | Analysis.Error _ -> "Unexpected error in warning list"))
+           warnings);
+       if errors = [] && warnings = [] then Printf.printf "  No issues found.\n")
     files_to_process
 ;;
 
