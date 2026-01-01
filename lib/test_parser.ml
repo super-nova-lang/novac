@@ -14,7 +14,14 @@ let%expect_test "parser_examples" =
     Nova_tests.all;
   [%expect
     {|
-    parse if_basic ok
+    parse enum_payload ok
+    parse macro_simple_test ok
+    parse macros ok
+    parse macros_simple ok
+    parse macro_test ok
+    parse match_basic ok
+    parse power ok
     parse showcase ok
+    parse while_basic ok
     |}]
 ;;

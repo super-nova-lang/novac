@@ -117,6 +117,23 @@ let run_cmd command =
   code
 ;;
 
+let process_parse stdlib_flag files =
+  let std_lib_files, user_files = get_files_for_backend stdlib_flag files in
+  let all_files =
+    List.map fst std_lib_files @ if user_files = [] then [] else user_files
+  in
+  List.iter
+    (fun file ->
+       let tokens = Lexer.lex_from_file file in
+       let nodes = Parser.parse (Parser.create tokens) in
+       if has_parse_errors nodes
+       then (
+         report_parse_errors file nodes;
+         Printf.eprintf "Parse failed for %s\n" file)
+       else Printf.printf "parse %s ok\n" (Filename.basename file))
+    all_files
+;;
+
 let process_codegen stdlib_flag files =
   ensure_dir build_dir;
   ensure_dir emit_dir;
@@ -134,6 +151,7 @@ let process_codegen stdlib_flag files =
          report_parse_errors file nodes;
          Printf.eprintf "Skipping code generation due to parse errors in %s\n" file)
        else (
+         let nodes = Preprocessor.preprocess nodes in
          match Codegen.generate_code nodes with
          | Ok asm ->
            let base = Filename.remove_extension (Filename.basename file) in
@@ -184,6 +202,7 @@ let compile_to_exe stdlib_flag files exe_file =
                Printf.eprintf "Skipping compilation due to parse errors in %s\n" file;
                failed := true)
              else (
+               let nodes = Preprocessor.preprocess nodes in
                match Codegen.generate_code nodes with
                | Error err ->
                  Printf.eprintf
@@ -265,6 +284,12 @@ let process_clean () =
   ()
 ;;
 
+let parse_cmd =
+  let doc = "Parse the input files." in
+  let info = Cmd.info "parse" ~doc in
+  Cmd.v info Term.(const process_parse $ stdlib_flag $ files_arg)
+;;
+
 let codegen_cmd =
   let doc = "Generate code for the input files." in
   let info = Cmd.info "codegen" ~doc in
@@ -292,5 +317,5 @@ let clean_cmd =
 let main_cmd =
   let doc = "Supernova compiler." in
   let info = Cmd.info "novac" ~doc in
-  Cmd.group info [ codegen_cmd; compile_cmd; run_cmd; clean_cmd ]
+  Cmd.group info [ parse_cmd; codegen_cmd; compile_cmd; run_cmd; clean_cmd ]
 ;;
