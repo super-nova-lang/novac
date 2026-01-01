@@ -22,7 +22,7 @@
     - [ ] Tuple patterns
     - [ ] Complex guard expressions
   - [ ] **For loops** - Iteration over collections
-  - [ ] **Power operator** (`**`) - AST exists, needs codegen
+  - [ ] **Power operator** (`^`) - AST exists, needs codegen
   - [ ] **Macro system**
     - [ ] Macro expansion
     - [ ] Macro execution at compile-time

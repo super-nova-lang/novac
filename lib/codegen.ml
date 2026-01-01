@@ -475,9 +475,26 @@ let rec emit_expression emitter env expr =
       emit_instr emitter "idiv rcx";
       emit_instr emitter "mov rax, rdx";
       Result.Ok Type_int
-    | Ast.Pow _ ->
-      let* () = unsupported emitter "power operator is not supported yet" in
-      Result.Ok Type_unknown
+    | Ast.Pow (l, r) ->
+      (* Implement power using repeated multiplication loop
+         Algorithm: result = 1; while (exp > 0) { result *= base; exp--; }
+         For negative exponents, result is 0 (integer division) *)
+      let* _ = emit_multiplicative l in
+      emit_instr emitter "push rax";  (* save base *)
+      let* _ = emit_unary r in
+      emit_instr emitter "mov rcx, rax";  (* rcx = exponent *)
+      emit_instr emitter "pop rbx";  (* rbx = base *)
+      emit_instr emitter "mov rax, 1";  (* rax = result = 1 *)
+      emit_instr emitter "test rcx, rcx";  (* check if exp <= 0 *)
+      let end_label = gensym "pow_end" in
+      let loop_label = gensym "pow_loop" in
+      emit_instr emitter (Printf.sprintf "jle %s" end_label);  (* if exp <= 0, done *)
+      emit_label emitter loop_label;
+      emit_instr emitter "imul rax, rbx";  (* result *= base *)
+      emit_instr emitter "dec rcx";  (* exp-- *)
+      emit_instr emitter (Printf.sprintf "jnz %s" loop_label);  (* loop if exp != 0 *)
+      emit_label emitter end_label;
+      Result.Ok Type_int
     | Ast.Multiplicative_val u -> emit_unary u
   and emit_unary = function
     | Ast.Neg u ->
@@ -1087,8 +1104,7 @@ and emit_function emitter prefix name params symbol (stmts, expr_opt) =
       acc + 1
     | Ast.If_stmt { body; elif; _ } ->
       count_locals_in_else (count_locals_in_t acc body) elif
-    | Ast.While_stmt { body; _ } ->
-      count_locals_in_t acc body
+    | Ast.While_stmt { body; _ } -> count_locals_in_t acc body
     | _ -> acc
   and count_locals_in_else acc = function
     | Ast.Nope -> acc
@@ -1236,7 +1252,11 @@ and collect_from_statement prefix acc = function
   | Ast.Decl_stmt (Ast.Curry_decl { name; _ }) -> StringSet.add (mangle prefix name) acc
   | Ast.Decl_stmt (Ast.Import_decl { name; _ }) -> StringSet.add (mangle prefix name) acc
   | Ast.Decl_stmt (Ast.Export_stmt _) -> acc
-  | Ast.Open_stmt _ | Ast.Return_stmt _ | Ast.If_stmt _ | Ast.While_stmt _ | Ast.Expression_stmt _ -> acc
+  | Ast.Open_stmt _
+  | Ast.Return_stmt _
+  | Ast.If_stmt _
+  | Ast.While_stmt _
+  | Ast.Expression_stmt _ -> acc
 ;;
 
 let generate_code nodes =
