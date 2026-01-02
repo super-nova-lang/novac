@@ -125,6 +125,15 @@ let rec infer_expression_type ctx expr =
   match expr with
   | A.Call_expr call -> infer_call_type ctx call
   | A.Relational_expr rel -> infer_relational_type ctx rel
+  | A.Assignment_expr _ -> A.Unit_typ (* Assignment expressions return unit *)
+  | A.List_expr elems ->
+    List.iter (fun e -> ignore (infer_expression_type ctx e)) elems;
+    let elem_typ =
+      match elems with
+      | [] -> A.Unit_typ
+      | hd :: _ -> infer_expression_type ctx hd
+    in
+    A.List_typ elem_typ
   | A.Match_expr match_expr -> infer_match_type ctx match_expr
   | A.Struct_expr _ -> A.User "struct" (* TODO: proper struct types *)
   | A.Enum_expr _ -> A.User "enum" (* TODO: proper enum types *)
@@ -182,7 +191,7 @@ and infer_unary_type ctx = function
   | A.Unary_val atom -> infer_atom_type ctx atom
 
 and infer_atom_type ctx = function
-  | A.String _ -> A.User "string"
+  | A.String _ -> A.List_typ (A.User "char")
   | A.Bool _ -> A.User "bool"
   | A.Char _ -> A.User "char"
   | A.Int _ -> A.User "i32"
@@ -224,8 +233,10 @@ let mark_used ctx name =
 let rec analyze_expression ctx expr =
   ignore (infer_expression_type ctx expr);
   match expr with
+  | A.List_expr elems -> List.iter (analyze_expression ctx) elems
   | A.Call_expr call -> analyze_call ctx call
   | A.Relational_expr rel -> analyze_relational ctx rel
+  | A.Assignment_expr assign -> analyze_assignment ctx assign
   | A.Match_expr match_expr -> analyze_match ctx match_expr
   | A.Struct_expr (fields, with_block) -> analyze_struct ctx fields with_block
   | A.Enum_expr (variants, with_block) -> analyze_enum ctx variants with_block
@@ -254,6 +265,12 @@ and analyze_relational ctx = function
     analyze_additive ctx left;
     analyze_additive ctx right
   | A.Relational_val expr -> analyze_additive ctx expr
+
+and analyze_assignment ctx = function
+  | A.Add_assign (_, expr)
+  | A.Sub_assign (_, expr)
+  | A.Mul_assign (_, expr)
+  | A.Div_assign (_, expr) -> analyze_additive ctx expr
 
 and analyze_additive ctx = function
   | A.Add (left, right) | A.Sub (left, right) ->
@@ -374,6 +391,7 @@ and analyze_statement ctx stmt =
   | A.Return_stmt ret -> analyze_return ctx ret
   | A.If_stmt if_stmt -> analyze_if ctx if_stmt
   | A.While_stmt while_stmt -> analyze_while ctx while_stmt
+  | A.For_stmt for_stmt -> analyze_for ctx for_stmt
   | A.Expression_stmt expr -> analyze_expression ctx expr
 
 and analyze_open ctx { A.mods; elements = _elements } =
@@ -478,6 +496,28 @@ and analyze_while ctx { A.cond; body } =
   let ctx' = enter_scope ctx in
   List.iter (analyze_ast ctx') body;
   ignore (exit_scope ctx')
+
+and analyze_for ctx = function
+  | A.For_iter { var; iterable; body } ->
+    analyze_expression ctx iterable;
+    let ctx' = enter_scope ctx in
+    add_symbol ctx' var None (0, 0);
+    List.iter (analyze_ast ctx') body;
+    ignore (exit_scope ctx')
+  | A.For_c { var; init; cond; update; body } ->
+    analyze_expression ctx init;
+    let ctx' = enter_scope ctx in
+    add_symbol ctx' var None (0, 0);
+    analyze_expression ctx' cond;
+    analyze_expression ctx' update;
+    List.iter (analyze_ast ctx') body;
+    ignore (exit_scope ctx')
+  | A.For_tuple { vars; iterable; body } ->
+    analyze_expression ctx iterable;
+    let ctx' = enter_scope ctx in
+    List.iter (fun var -> add_symbol ctx' var None (0, 0)) vars;
+    List.iter (analyze_ast ctx') body;
+    ignore (exit_scope ctx')
 
 and analyze_else ctx = function
   | A.Else_if (cond, body, elif) ->

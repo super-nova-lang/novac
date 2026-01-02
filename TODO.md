@@ -12,6 +12,8 @@
   - [x] Enum construction (basic)
   - [x] Function calls (up to 6 params)
   - [x] String literals with proper escaping
+  - [x] Preprocessor module for macro expansion
+  - [x] Parse command in CLI for syntax validation
 
 ## High Priority
 
@@ -23,8 +25,11 @@
     - [ ] Tuple patterns
     - [ ] Complex guard expressions
   - [ ] **For loops** - Iteration over collections
-  - [ ] **Macro system**
-    - [ ] Macro expansion
+  - [ ] **Macro system** - PARTIAL (preprocessor in place, needs pattern matching)
+    - [x] Macro definitions parsing
+    - [x] Preprocessor infrastructure
+    - [ ] Macro pattern matching with type annotations
+    - [ ] Macro invocation expansion
     - [ ] Macro execution at compile-time
   - [ ] **Derive/Trait system**
     - [ ] Derive attribute expansion

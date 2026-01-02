@@ -1,0 +1,8 @@
+open std.c with { printf }
+
+let main :: () = {
+    let x := 10
+    printf("x before: %d\n", x)
+    x -= 3
+    printf("x after: %d\n", x)
+}

@@ -1,0 +1,8 @@
+open std.c with { printf }
+
+let main :: () = {
+    printf("Testing simple for loop\n")
+    for i in 5 {
+        printf("i = %d\n", i)
+    }
+}

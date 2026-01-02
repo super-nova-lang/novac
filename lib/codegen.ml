@@ -87,9 +87,8 @@ let emit_placeholder emitter msg =
 
 let unsupported emitter msg = emit_placeholder emitter msg
 let arg_registers = [| "rdi"; "rsi"; "rdx"; "rcx"; "r8"; "r9" |]
-let string_table : (string, string) Hashtbl.t = Hashtbl.create 32
-let string_counter = ref 0
 let defined_functions = ref StringSet.empty
+let imported_functions = ref StringSet.empty
 let gensym_counter = ref 0
 
 let gensym prefix =
@@ -98,16 +97,18 @@ let gensym prefix =
   Printf.sprintf "__%s_%d" prefix n
 ;;
 
+let list_node_size = Target.ptr_size * 2
+
 (* --- Value typing and layouts --- *)
 
 type value_type =
   | Type_int
   | Type_bool
   | Type_char
-  | Type_string
   | Type_unit
   | Type_struct of string
   | Type_enum of string
+  | Type_list of value_type
   | Type_unknown
 
 type field_layout =
@@ -135,12 +136,13 @@ type enum_layout =
 let struct_layouts : struct_layout StringMap.t ref = ref StringMap.empty
 let enum_layouts : enum_layout StringMap.t ref = ref StringMap.empty
 
-let type_of_typ = function
+let rec type_of_typ = function
   | Ast.User "i32" -> Type_int
   | Ast.User "bool" -> Type_bool
   | Ast.User "char" -> Type_char
-  | Ast.User "string" -> Type_string
+  | Ast.User "string" -> Type_list Type_char
   | Ast.Unit_typ -> Type_unit
+  | Ast.List_typ t -> Type_list (type_of_typ t)
   | Ast.Builtin _ -> Type_unknown
   | Ast.User n when StringMap.mem n !struct_layouts -> Type_struct n
   | Ast.User n when StringMap.mem n !enum_layouts -> Type_enum n
@@ -273,23 +275,6 @@ type env = env_entry StringMap.t
 
 let env_lookup name env = StringMap.find_opt name env
 let env_add name entry env = StringMap.add name entry env
-
-(* --- String interning --- *)
-
-let intern_string emitter s =
-  match Hashtbl.find_opt string_table s with
-  | Some lbl -> lbl
-  | None ->
-    let lbl = Printf.sprintf "str_%d" !string_counter in
-    incr string_counter;
-    Hashtbl.add string_table s lbl;
-    let bytes =
-      s |> String.to_seq |> List.of_seq |> List.map (fun c -> string_of_int (Char.code c))
-    in
-    let data = String.concat ", " (bytes @ [ "0" ]) in
-    Emitter.emit_data emitter (Printf.sprintf "%s: db %s" lbl data);
-    lbl
-;;
 
 (* --- Expression emission returning value_type --- *)
 
@@ -530,9 +515,23 @@ let rec emit_expression emitter env expr =
       emit_instr emitter (Printf.sprintf "mov rax, %d" i);
       Result.Ok Type_int
     | Ast.String s ->
-      let lbl = intern_string emitter s in
-      emit_instr emitter (Printf.sprintf "lea rax, [rel %s]" lbl);
-      Result.Ok Type_string
+      let chars = s |> String.to_seq |> List.of_seq |> List.map Char.code in
+      emit_instr emitter "mov r12, 0";
+      let rec build = function
+        | [] -> ()
+        | c :: rest ->
+          emit_instr emitter (Printf.sprintf "mov rbx, %d" c);
+          Emitter.add_extern emitter "malloc";
+          emit_instr emitter (Printf.sprintf "mov rdi, %d" list_node_size);
+          emit_instr emitter "call malloc";
+          emit_instr emitter "mov [rax], rbx";
+          emit_instr emitter "mov [rax+8], r12";
+          emit_instr emitter "mov r12, rax";
+          build rest
+      in
+      build (List.rev chars);
+      emit_instr emitter "mov rax, r12";
+      Result.Ok (Type_list Type_char)
     | Ast.Unit_val ->
       emit_instr emitter "mov rax, 0";
       Result.Ok Type_unit
@@ -681,7 +680,14 @@ let rec emit_expression emitter env expr =
             when StringMap.mem n !struct_layouts || StringMap.mem n !enum_layouts ->
             (* Type-qualified member: let callee logic handle (e.g., enum ctor) *)
             let* ctyp = emit_callee emitter env callee in
-            let* () = emit_params emitter env params 0 in
+            let convert_string =
+              match ctyp with
+              | `Direct name ->
+                StringSet.mem name !imported_functions
+                || not (StringSet.mem name !defined_functions)
+              | _ -> false
+            in
+            let* () = emit_params emitter env convert_string params 0 in
             (match ctyp with
              | `Direct name ->
                if not (StringSet.mem name !defined_functions)
@@ -695,20 +701,31 @@ let rec emit_expression emitter env expr =
                Result.Ok Type_unknown)
           | _ ->
             let* btype = emit_unary base in
-            emit_instr emitter "mov rdi, rax";
-            let* () = emit_params emitter env params 1 in
             let symbol =
               match btype with
               | Type_struct s | Type_enum s -> String.concat "_" [ s; field ]
               | _ -> field
             in
+            let convert_string =
+              StringSet.mem symbol !imported_functions
+              || not (StringSet.mem symbol !defined_functions)
+            in
+            emit_instr emitter "mov rdi, rax";
+            let* () = emit_params emitter env convert_string params 1 in
             if not (StringSet.mem symbol !defined_functions)
             then Emitter.add_extern emitter symbol;
             emit_instr emitter ("call " ^ symbol);
             Result.Ok Type_unknown)
        | None ->
          let* ctyp = emit_callee emitter env callee in
-         let* () = emit_params emitter env params 0 in
+         let convert_string =
+           match ctyp with
+           | `Direct name ->
+             StringSet.mem name !imported_functions
+             || not (StringSet.mem name !defined_functions)
+           | _ -> false
+         in
+         let* () = emit_params emitter env convert_string params 0 in
          (match ctyp with
           | `Direct name ->
             if not (StringSet.mem name !defined_functions)
@@ -723,7 +740,52 @@ let rec emit_expression emitter env expr =
     | Ast.Macro_call _ ->
       let* () = unsupported emitter "macro calls are not supported yet" in
       Result.Ok Type_unknown
-  and emit_params emitter env params idx =
+  and emit_params emitter env convert_string params idx =
+    let emit_list_to_cstring () =
+      let len_loop = gensym "list_strlen" in
+      let len_done = gensym "list_strlen_done" in
+      let copy_loop = gensym "list_strcpy" in
+      let copy_done = gensym "list_strcpy_done" in
+      emit_instr emitter "mov rbx, rax";
+      emit_instr emitter "mov r12, rax";
+      emit_instr emitter "xor rcx, rcx";
+      emit_label emitter len_loop;
+      emit_instr emitter "cmp r12, 0";
+      emit_instr emitter (Printf.sprintf "je %s" len_done);
+      emit_instr emitter "inc rcx";
+      emit_instr emitter "mov r12, [r12+8]";
+      emit_instr emitter (Printf.sprintf "jmp %s" len_loop);
+      emit_label emitter len_done;
+      emit_instr emitter "mov rdi, rcx";
+      emit_instr emitter "inc rdi";
+      Emitter.add_extern emitter "malloc";
+      emit_instr emitter "call malloc";
+      emit_instr emitter "mov r13, rax";
+      emit_instr emitter "mov r12, rbx";
+      emit_instr emitter "xor rdx, rdx";
+      emit_label emitter copy_loop;
+      emit_instr emitter "cmp r12, 0";
+      emit_instr emitter (Printf.sprintf "je %s" copy_done);
+      emit_instr emitter "mov r14, [r12]";
+      emit_instr emitter "mov byte [r13+rdx], r14b";
+      emit_instr emitter "mov r12, [r12+8]";
+      emit_instr emitter "inc rdx";
+      emit_instr emitter (Printf.sprintf "jmp %s" copy_loop);
+      emit_label emitter copy_done;
+      emit_instr emitter "mov byte [r13+rdx], 0";
+      emit_instr emitter "mov rax, r13";
+      Result.Ok ()
+    in
+    let save_args count =
+      for i = 0 to count - 1 do
+        emit_instr emitter (Printf.sprintf "push %s" arg_registers.(i))
+      done
+    in
+    let restore_args count =
+      for i = count - 1 downto 0 do
+        emit_instr emitter (Printf.sprintf "pop %s" arg_registers.(i))
+      done
+    in
     match params with
     | [] -> Result.Ok ()
     | Ast.Named _ :: _ -> unsupported emitter "named call parameters are not supported"
@@ -731,9 +793,18 @@ let rec emit_expression emitter env expr =
       if idx >= Array.length arg_registers
       then unsupported emitter "more than 6 call arguments are not supported"
       else
-        let* _ = emit_expression emitter env e in
+        let* vtype = emit_expression emitter env e in
+        let* () =
+          match convert_string, vtype with
+          | true, Type_list Type_char ->
+            save_args idx;
+            let* () = emit_list_to_cstring () in
+            restore_args idx;
+            Result.Ok ()
+          | _ -> Result.Ok ()
+        in
         emit_instr emitter (Printf.sprintf "mov %s, rax" arg_registers.(idx));
-        emit_params emitter env rest (idx + 1)
+        emit_params emitter env convert_string rest (idx + 1)
   and emit_callee emitter env callee =
     match callee with
     | Ast.Relational_expr
@@ -954,9 +1025,85 @@ let rec emit_expression emitter env expr =
     emit_instr emitter "mov rax, r12";
     Result.Ok (Type_enum name)
   in
+  let emit_assignment emitter env = function
+    | Ast.Add_assign (name, right) ->
+      let* _ = emit_additive right in
+      (match env_lookup name env with
+       | Some var_info ->
+         let offset = var_info.offset in
+         emit_instr emitter (Printf.sprintf "mov rbx, [rbp - %d]" offset);
+         emit_instr emitter "add rax, rbx";
+         emit_instr emitter (Printf.sprintf "mov [rbp - %d], rax" offset);
+         Result.Ok Type_int
+       | None ->
+         let* () = unsupported emitter (Printf.sprintf "undefined variable %s" name) in
+         Result.Ok Type_int)
+    | Ast.Sub_assign (name, right) ->
+      let* _ = emit_additive right in
+      (match env_lookup name env with
+       | Some var_info ->
+         let offset = var_info.offset in
+         emit_instr emitter (Printf.sprintf "mov rbx, [rbp - %d]" offset);
+         emit_instr emitter "sub rbx, rax";
+         emit_instr emitter (Printf.sprintf "mov [rbp - %d], rbx" offset);
+         emit_instr emitter "mov rax, rbx";
+         Result.Ok Type_int
+       | None ->
+         let* () = unsupported emitter (Printf.sprintf "undefined variable %s" name) in
+         Result.Ok Type_int)
+    | Ast.Mul_assign (name, right) ->
+      let* _ = emit_additive right in
+      (match env_lookup name env with
+       | Some var_info ->
+         let offset = var_info.offset in
+         emit_instr emitter (Printf.sprintf "mov rbx, [rbp - %d]" offset);
+         emit_instr emitter "imul rax, rbx";
+         emit_instr emitter (Printf.sprintf "mov [rbp - %d], rax" offset);
+         Result.Ok Type_int
+       | None ->
+         let* () = unsupported emitter (Printf.sprintf "undefined variable %s" name) in
+         Result.Ok Type_int)
+    | Ast.Div_assign (name, right) ->
+      let* _ = emit_additive right in
+      (match env_lookup name env with
+       | Some var_info ->
+         let offset = var_info.offset in
+         emit_instr emitter (Printf.sprintf "mov rbx, [rbp - %d]" offset);
+         emit_instr emitter "mov rax, rbx";
+         emit_instr emitter "cqo";
+         (* sign extend rax into rdx:rax *)
+         emit_instr emitter "idiv rcx";
+         (* divide rdx:rax by rcx *)
+         emit_instr emitter (Printf.sprintf "mov [rbp - %d], rax" offset);
+         Result.Ok Type_int
+       | None ->
+         let* () = unsupported emitter (Printf.sprintf "undefined variable %s" name) in
+         Result.Ok Type_int)
+  in
   match expr with
   | Ast.Call_expr call -> emit_call emitter env call
   | Ast.Relational_expr rel -> emit_relational rel
+  | Ast.Assignment_expr assign -> emit_assignment emitter env assign
+  | Ast.List_expr elems ->
+    emit_instr emitter "mov r12, 0";
+    let elem_type = ref Type_unknown in
+    let rec build = function
+      | [] ->
+        emit_instr emitter "mov rax, r12";
+        Result.Ok (Type_list !elem_type)
+      | hd :: tl ->
+        let* et = emit_expression emitter env hd in
+        if !elem_type = Type_unknown then elem_type := et;
+        emit_instr emitter "mov rbx, rax";
+        Emitter.add_extern emitter "malloc";
+        emit_instr emitter (Printf.sprintf "mov rdi, %d" list_node_size);
+        emit_instr emitter "call malloc";
+        emit_instr emitter "mov [rax], rbx";
+        emit_instr emitter "mov [rax+8], r12";
+        emit_instr emitter "mov r12, rax";
+        build tl
+    in
+    build (List.rev elems)
   | Ast.Match_expr m -> emit_match_expr emitter env m
   | Ast.Struct_expr (fields, with_block) -> emit_struct_literal (fields, with_block)
   | Ast.Enum_expr (variants, with_block) -> emit_enum_literal (variants, with_block)
@@ -1033,6 +1180,7 @@ and emit_statement emitter prefix _env_stack = function
   | Ast.Open_stmt _ -> Result.Ok ()
   | Ast.If_stmt _ -> unsupported emitter "if statements at top-level not supported"
   | Ast.While_stmt _ -> unsupported emitter "while statements at top-level not supported"
+  | Ast.For_stmt _ -> unsupported emitter "for statements at top-level not supported"
   | Ast.Expression_stmt _ -> Result.Ok ()
 
 and emit_statement_in_fn emitter prefix env end_label locals_ref = function
@@ -1102,6 +1250,128 @@ and emit_statement_in_fn emitter prefix env end_label locals_ref = function
     emit_instr emitter ("jmp " ^ start_label);
     emit_label emitter end_label;
     Result.Ok env
+  | Ast.For_stmt for_kind ->
+    (match for_kind with
+     | Ast.For_iter { var; iterable; body } ->
+       (* Iterator: for var in iterable { body } *)
+       let start_label = gensym "for_start" in
+       let end_label = gensym "for_end" in
+       let* iter_type = emit_expression emitter env iterable in
+       let cursor_offset = (!locals_ref + 1) * Target.ptr_size in
+       let var_offset = (!locals_ref + 2) * Target.ptr_size in
+       locals_ref := !locals_ref + 2;
+       let rec emit_block env = function
+         | [] -> Result.Ok env
+         | Ast.Statement s :: rest ->
+           let* env' = emit_statement_in_fn emitter prefix env end_label locals_ref s in
+           emit_block env' rest
+         | Ast.Expression e :: rest ->
+           let* _ = emit_expression emitter env e in
+           emit_block env rest
+         | Ast.Error _ :: rest -> emit_block env rest
+       in
+       (match iter_type with
+        | Type_list elem_type ->
+          emit_instr emitter (Printf.sprintf "mov [rbp - %d], rax" cursor_offset);
+          let new_env = env_add var { offset = var_offset; vtype = elem_type } env in
+          emit_label emitter start_label;
+          emit_instr emitter (Printf.sprintf "mov r12, [rbp - %d]" cursor_offset);
+          emit_instr emitter "cmp r12, 0";
+          emit_instr emitter ("je " ^ end_label);
+          emit_instr emitter "mov rax, [r12]";
+          emit_instr emitter (Printf.sprintf "mov [rbp - %d], rax" var_offset);
+          emit_instr emitter "mov r12, [r12+8]";
+          emit_instr emitter (Printf.sprintf "mov [rbp - %d], r12" cursor_offset);
+          let* _env_body = emit_block new_env body in
+          emit_instr emitter ("jmp " ^ start_label);
+          emit_label emitter end_label;
+          Result.Ok env
+        | Type_int ->
+          emit_instr emitter (Printf.sprintf "mov [rbp - %d], rax" cursor_offset);
+          emit_instr emitter (Printf.sprintf "mov qword [rbp - %d], 0" var_offset);
+          let new_env = env_add var { offset = var_offset; vtype = Type_int } env in
+          emit_label emitter start_label;
+          emit_instr emitter (Printf.sprintf "mov rcx, [rbp - %d]" cursor_offset);
+          emit_instr emitter "cmp rcx, 0";
+          emit_instr emitter ("jle " ^ end_label);
+          let* _env_body = emit_block new_env body in
+          emit_instr emitter (Printf.sprintf "dec qword [rbp - %d]" cursor_offset);
+          emit_instr emitter (Printf.sprintf "inc qword [rbp - %d]" var_offset);
+          emit_instr emitter ("jmp " ^ start_label);
+          emit_label emitter end_label;
+          Result.Ok env
+        | _ ->
+          let* () = unsupported emitter "for-in expects an int or list" in
+          Result.Ok env)
+     | Ast.For_c { var; init; cond; update; body } ->
+       (* C-style: for let i := init; cond; update { body } *)
+       let start_label = gensym "for_start" in
+       let end_label = gensym "for_end" in
+       (* Emit initialization *)
+       let* _ = emit_expression emitter env init in
+       let offset = (!locals_ref + 1) * Target.ptr_size in
+       emit_instr emitter (Printf.sprintf "mov qword [rbp - %d], rax" offset);
+       locals_ref := !locals_ref + 1;
+       let new_env = env_add var { offset; vtype = Type_unknown } env in
+       (* Emit loop label *)
+       emit_label emitter start_label;
+       (* Evaluate condition *)
+       let* _cond_val = emit_expression emitter new_env cond in
+       emit_instr emitter "test rax, rax";
+       emit_instr emitter ("jz " ^ end_label);
+       (* Emit body *)
+       let rec emit_block env = function
+         | [] -> Result.Ok env
+         | Ast.Statement s :: rest ->
+           let* env' = emit_statement_in_fn emitter prefix env end_label locals_ref s in
+           emit_block env' rest
+         | Ast.Expression e :: rest ->
+           let* _ = emit_expression emitter env e in
+           emit_block env rest
+         | Ast.Error _ :: rest -> emit_block env rest
+       in
+       let* _env_body = emit_block new_env body in
+       (* Emit update expression *)
+       let* _ = emit_expression emitter new_env update in
+       emit_instr emitter ("jmp " ^ start_label);
+       emit_label emitter end_label;
+       Result.Ok env
+     | Ast.For_tuple { vars; iterable; body } ->
+       (* Tuple: for (v1, v2, ...) in iterable { body } *)
+       (* For now, we'll implement a basic version *)
+       let start_label = gensym "for_start" in
+       let end_label = gensym "for_end" in
+       let* _ = emit_expression emitter env iterable in
+       (* Simplified: just iterate once per variable *)
+       let offset = (!locals_ref + 1) * Target.ptr_size in
+       emit_instr emitter "mov rcx, 1";
+       let rec add_vars env offset vars =
+         match vars with
+         | [] -> env
+         | var :: rest ->
+           locals_ref := !locals_ref + 1;
+           let new_env = env_add var { offset; vtype = Type_unknown } env in
+           add_vars new_env (offset + Target.ptr_size) rest
+       in
+       let new_env = add_vars env offset vars in
+       emit_label emitter start_label;
+       emit_instr emitter "cmp rcx, 0";
+       emit_instr emitter ("jle " ^ end_label);
+       let rec emit_block env = function
+         | [] -> Result.Ok env
+         | Ast.Statement s :: rest ->
+           let* env' = emit_statement_in_fn emitter prefix env end_label locals_ref s in
+           emit_block env' rest
+         | Ast.Expression e :: rest ->
+           let* _ = emit_expression emitter env e in
+           emit_block env rest
+         | Ast.Error _ :: rest -> emit_block env rest
+       in
+       let* _env_body = emit_block new_env body in
+       emit_instr emitter "dec rcx";
+       emit_instr emitter ("jmp " ^ start_label);
+       emit_label emitter end_label;
+       Result.Ok env)
   | Ast.Decl_stmt (Ast.Decl { name; params = []; body = stmts, expr_opt; _ })
     when stmts = [] ->
     (* local let binding *)
@@ -1132,6 +1402,12 @@ and emit_function emitter prefix name params symbol (stmts, expr_opt) =
     | Ast.If_stmt { body; elif; _ } ->
       count_locals_in_else (count_locals_in_t acc body) elif
     | Ast.While_stmt { body; _ } -> count_locals_in_t acc body
+    | Ast.For_stmt for_kind ->
+      (match for_kind with
+       | Ast.For_iter { body; _ } -> acc + 2 + count_locals_in_t 0 body
+       | Ast.For_c { body; _ } -> acc + 1 + count_locals_in_t 0 body
+       | Ast.For_tuple { vars; body; _ } ->
+         acc + List.length vars + count_locals_in_t 0 body)
     | _ -> acc
   and count_locals_in_else acc = function
     | Ast.Nope -> acc
@@ -1283,6 +1559,44 @@ and collect_from_statement prefix acc = function
   | Ast.Return_stmt _
   | Ast.If_stmt _
   | Ast.While_stmt _
+  | Ast.For_stmt _
+  | Ast.Expression_stmt _ -> acc
+;;
+
+let rec collect_imports prefix acc = function
+  | [] -> acc
+  | Ast.Statement stmt :: rest ->
+    let acc' = collect_import_from_statement prefix acc stmt in
+    collect_imports prefix acc' rest
+  | Ast.Expression _ :: rest -> collect_imports prefix acc rest
+  | Ast.Error _ :: rest -> collect_imports prefix acc rest
+
+and collect_import_from_body prefix acc (stmts, expr_opt) =
+  let acc =
+    List.fold_left
+      (fun acc stmt -> collect_import_from_statement prefix acc stmt)
+      acc
+      stmts
+  in
+  match expr_opt with
+  | Some (Ast.Struct_expr (_, Some w)) | Some (Ast.Enum_expr (_, Some w)) ->
+    collect_imports prefix acc w
+  | _ -> acc
+
+and collect_import_from_statement prefix acc = function
+  | Ast.Decl_stmt (Ast.Import_decl { name; _ }) -> StringSet.add (mangle prefix name) acc
+  | Ast.Decl_stmt (Ast.Module_decl { name; body; _ }) ->
+    collect_imports (prefix @ [ name ]) acc body
+  | Ast.Decl_stmt (Ast.Decl { name; body; _ }) ->
+    let nested_prefix = prefix @ [ name ] in
+    collect_import_from_body nested_prefix acc body
+  | Ast.Decl_stmt (Ast.Curry_decl _)
+  | Ast.Decl_stmt (Ast.Export_stmt _)
+  | Ast.Open_stmt _
+  | Ast.Return_stmt _
+  | Ast.If_stmt _
+  | Ast.While_stmt _
+  | Ast.For_stmt _
   | Ast.Expression_stmt _ -> acc
 ;;
 
@@ -1292,8 +1606,7 @@ let generate_code nodes =
   | Result.Ok () ->
     collect_layouts nodes;
     let emitter = Emitter.create () in
-    Hashtbl.reset string_table;
-    string_counter := 0;
+    imported_functions := collect_imports [] StringSet.empty nodes;
     let functions = collect_functions [] StringSet.empty nodes in
     defined_functions := functions;
     let* () = emit_nodes emitter [] nodes in

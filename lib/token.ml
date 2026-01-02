@@ -11,6 +11,8 @@ type t =
   | Return
   | If
   | While
+  | For
+  | In
   | Else
   | Struct
   | Enum
@@ -37,6 +39,10 @@ type t =
   | Ellipsis (* ... *)
   | Walrus (* := *)
   | Concat (* ++ for string concatenation *)
+  | Plus_eql (* += *)
+  | Minus_eql (* -= *)
+  | Star_eql (* *= *)
+  | Slash_eql (* /= *)
   (* - Single*)
   | Tilde
   | Back_tick
@@ -97,6 +103,8 @@ let from_string = function
   | "return" -> Return
   | "if" -> If
   | "while" -> While
+  | "for" -> For
+  | "in" -> In
   | "else" -> Else
   | "struct" -> Struct
   | "enum" -> Enum

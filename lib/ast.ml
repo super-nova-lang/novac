@@ -11,6 +11,7 @@ and statement =
   | Return_stmt of return_stmt
   | If_stmt of if_stmt
   | While_stmt of while_stmt
+  | For_stmt of for_stmt
   | Expression_stmt of expression
 
 (**
@@ -53,6 +54,36 @@ and if_stmt =
 *)
 and while_stmt =
   { cond : expression
+  ; body : t list
+  }
+
+(**
+  Style 1: for var in iterable { body }
+  Style 2: for let var := init; cond; update { body }
+  Style 3: for (var1, var2) in iterable { body }
+*)
+and for_stmt =
+  | For_iter of for_iter_stmt
+  | For_c of for_c_stmt
+  | For_tuple of for_tuple_stmt
+
+and for_iter_stmt =
+  { var : ident
+  ; iterable : expression
+  ; body : t list
+  }
+
+and for_c_stmt =
+  { var : ident
+  ; init : expression
+  ; cond : expression
+  ; update : expression
+  ; body : t list
+  }
+
+and for_tuple_stmt =
+  { vars : ident list
+  ; iterable : expression
   ; body : t list
   }
 
@@ -149,11 +180,19 @@ and tag =
 and expression =
   | Call_expr of call_expr
   | Relational_expr of relational_expr
+  | Assignment_expr of assignment_expr
+  | List_expr of expression list
   | Match_expr of match_expr
   | Struct_expr of struct_field list * with_block option
   | Enum_expr of enum_variant list * with_block option
   | Macro_expr of t list
   | Derive_expr of t list
+
+and assignment_expr =
+  | Add_assign of ident * additive_expr
+  | Sub_assign of ident * additive_expr
+  | Mul_assign of ident * additive_expr
+  | Div_assign of ident * additive_expr
 
 and with_block = t list
 and struct_field = ident * typ * expression option
@@ -254,4 +293,5 @@ and typ =
   | User of ident
   | Builtin of ident
   | Unit_typ
+  | List_typ of typ
 [@@deriving show]

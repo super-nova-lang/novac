@@ -191,6 +191,7 @@ and parse_statement p =
   | Token.Return -> parse_return_stmt p
   | Token.If -> parse_if_stmt p
   | Token.While -> parse_while_stmt p
+  | Token.For -> parse_for_stmt p
   | Token.Hash -> Error "Tags can only be applied to declarations"
   | _ -> parse_expression_stmt p
 
@@ -428,6 +429,10 @@ and parse_decl_param p =
 and parse_type p =
   match consume p with
   | Token.Ident s -> Ast.User s
+  | Token.Open_square ->
+    let inner = parse_type p in
+    expect p Token.Close_square |> ignore;
+    Ast.List_typ inner
   | Token.Open_paren ->
     expect p Token.Close_paren |> ignore;
     Ast.Unit_typ
@@ -504,6 +509,54 @@ and parse_while_stmt p =
   let body = parse_body_as_t_list p in
   Ok (Ast.While_stmt { cond; body })
 
+and parse_for_stmt p =
+  expect p Token.For |> ignore;
+  (* Check if this is a C-style for loop or iterator-style *)
+  match peek p with
+  | Token.Let ->
+    (* C-style: for let var := init; cond; update { body } *)
+    advance p;
+    let var =
+      match consume p with
+      | Token.Ident s -> s
+      | _ -> failf p "Expected variable name in for loop initialization"
+    in
+    expect p Token.Walrus |> ignore;
+    let init = parse_expression p |> get_ok_or_fail in
+    expect p Token.Semi_colon |> ignore;
+    let cond = parse_expression p |> get_ok_or_fail in
+    expect p Token.Semi_colon |> ignore;
+    let update = parse_expression p |> get_ok_or_fail in
+    let body = parse_body_as_t_list p in
+    Ok (Ast.For_stmt (Ast.For_c { var; init; cond; update; body }))
+  | Token.Open_paren ->
+    (* Tuple-style: for (var1, var2, ...) in iterable { body } *)
+    advance p;
+    let vars = ref [] in
+    while peek p <> Token.Close_paren do
+      match consume p with
+      | Token.Ident s -> vars := s :: !vars
+      | _ -> failf p "Expected variable name in tuple pattern"
+    done;
+    let vars = List.rev !vars in
+    expect p Token.Close_paren |> ignore;
+    expect p Token.In |> ignore;
+    let iterable = parse_expression p |> get_ok_or_fail in
+    let body = parse_body_as_t_list p in
+    Ok (Ast.For_stmt (Ast.For_tuple { vars; iterable; body }))
+  | Token.Ident _ ->
+    (* Iterator-style: for var in iterable { body } *)
+    let var =
+      match consume p with
+      | Token.Ident s -> s
+      | _ -> failf p "Expected variable name in for loop"
+    in
+    expect p Token.In |> ignore;
+    let iterable = parse_expression p |> get_ok_or_fail in
+    let body = parse_body_as_t_list p in
+    Ok (Ast.For_stmt (Ast.For_iter { var; iterable; body }))
+  | _ -> failf p "Expected 'let', '(', or variable name after 'for'"
+
 and parse_body_as_t_list p =
   if peek p = Token.Open_brack
   then (
@@ -536,7 +589,25 @@ and parse_expression p =
   | Token.Macro -> parse_macro_expr p
   | Token.Derive -> parse_derive_expr p
   | Token.Match -> parse_match_expr p
+  | Token.Open_square -> parse_list_expr p
   | _ -> parse_relational_expr p
+
+and parse_list_expr p =
+  expect p Token.Open_square |> ignore;
+  let elems =
+    if peek p = Token.Close_square
+    then (
+      advance p;
+      [])
+    else (
+      let es =
+        parse_list p [ Token.Close_square ] (fun p ->
+          parse_expression p |> get_ok_or_fail)
+      in
+      expect p Token.Close_square |> ignore;
+      es)
+  in
+  Ok (Ast.List_expr elems)
 
 and parse_match_expr p =
   expect p Token.Match |> ignore;
@@ -702,6 +773,34 @@ and parse_relational_expr p =
   | Token.Greater ->
     advance p;
     Ok (Ast.Relational_expr (Ast.Gt (left, parse_additive_expr p |> get_ok_or_fail)))
+  | Token.Plus_eql ->
+    (match left with
+     | Ast.Additive_val (Ast.Multiplicative_val (Ast.Unary_val (Ast.Ident name))) ->
+       advance p;
+       let right = parse_additive_expr p |> get_ok_or_fail in
+       Ok (Ast.Assignment_expr (Ast.Add_assign (name, right)))
+     | _ -> failf p "Assignment target must be an identifier")
+  | Token.Minus_eql ->
+    (match left with
+     | Ast.Additive_val (Ast.Multiplicative_val (Ast.Unary_val (Ast.Ident name))) ->
+       advance p;
+       let right = parse_additive_expr p |> get_ok_or_fail in
+       Ok (Ast.Assignment_expr (Ast.Sub_assign (name, right)))
+     | _ -> failf p "Assignment target must be an identifier")
+  | Token.Star_eql ->
+    (match left with
+     | Ast.Additive_val (Ast.Multiplicative_val (Ast.Unary_val (Ast.Ident name))) ->
+       advance p;
+       let right = parse_additive_expr p |> get_ok_or_fail in
+       Ok (Ast.Assignment_expr (Ast.Mul_assign (name, right)))
+     | _ -> failf p "Assignment target must be an identifier")
+  | Token.Slash_eql ->
+    (match left with
+     | Ast.Additive_val (Ast.Multiplicative_val (Ast.Unary_val (Ast.Ident name))) ->
+       advance p;
+       let right = parse_additive_expr p |> get_ok_or_fail in
+       Ok (Ast.Assignment_expr (Ast.Div_assign (name, right)))
+     | _ -> failf p "Assignment target must be an identifier")
   | _ -> Ok (Ast.Relational_expr (Ast.Relational_val left))
 
 and parse_additive_expr p =

@@ -6,14 +6,15 @@ let%expect_test "lexer_examples" =
     Nova_tests.all;
   [%expect
     {|
+    lex compound_assign ok
+    lex c_style_for_loop ok
     lex enum_payload ok
-    lex macro_simple_test ok
+    lex for_loop_test ok
     lex macros ok
-    lex macros_simple ok
-    lex macro_test ok
     lex match_basic ok
     lex power ok
     lex showcase ok
+    lex simple_for_loop ok
     lex while_basic ok
     |}]
 ;;

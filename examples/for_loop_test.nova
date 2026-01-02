@@ -1,0 +1,17 @@
+open std.c with { printf }
+
+let main :: () = {
+    printf("In T-minus...\n")
+
+    let countdown := [10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+    for tick in countdown {
+        printf("%d...\n", tick)
+    }
+
+    let arr := [1, 2, 3, 4, 5]
+    let idx := 0
+    for item in arr {
+        printf("%d -> %d\n", idx, item);
+        idx += 1
+    }
+}
