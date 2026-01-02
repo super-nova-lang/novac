@@ -14,4 +14,11 @@ let main :: () = {
         printf("%d -> %d\n", idx, item);
         idx += 1
     }
+
+    let my_str := "Hello world"
+    let idx := 0
+    for c in my_str {
+        printf("%d -> %c", idx, c)
+        idx += 1    
+    }
 }

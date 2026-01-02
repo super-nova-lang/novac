@@ -27,7 +27,7 @@ type symbol_info =
   }
 
 (** Symbol table *)
-type symbol_table = (string, symbol_info) Hashtbl.t
+type symbol_table = (string, symbol_info list) Hashtbl.t
 
 (** Analysis context *)
 type context =
@@ -68,40 +68,57 @@ let enter_scope ctx = { ctx with scope_level = ctx.scope_level + 1 }
 
 (* Exit current scope and check for unused variables. Only warn for locals (scope > 0). *)
 let exit_scope ctx =
+  (* Warn on unused bindings in the current scope (including shadowed ones). *)
   Hashtbl.iter
-    (fun name info ->
-       if (not info.used) && info.scope_level = ctx.scope_level && ctx.scope_level > 0
-       then ctx.warnings := Warning (Unused_variable name) :: !(ctx.warnings))
+    (fun name infos ->
+       let rec warn (bindings : symbol_info list) =
+         match bindings with
+         | info :: rest when info.scope_level = ctx.scope_level ->
+           if (not info.used) && ctx.scope_level > 0
+           then ctx.warnings := Warning (Unused_variable name) :: !(ctx.warnings);
+           warn rest
+         | _ -> ()
+       in
+       warn infos)
     ctx.symbols;
+  (* Pop all bindings belonging to the current scope. *)
   Hashtbl.filter_map_inplace
-    (fun _ (info : symbol_info) ->
-       if info.scope_level < ctx.scope_level then Some info else None)
+    (fun _ (infos : symbol_info list) ->
+       let rec drop (bindings : symbol_info list) =
+         match bindings with
+         | info :: rest when info.scope_level = ctx.scope_level -> drop rest
+         | remaining -> remaining
+       in
+       match drop infos with
+       | [] -> None
+       | xs -> Some xs)
     ctx.symbols;
   { ctx with scope_level = ctx.scope_level - 1 }
 ;;
 
 (** Add a symbol to the current scope *)
 let add_symbol ctx name typ location =
-  (* Check if symbol already exists in current scope *)
-  let existing = Hashtbl.find_opt ctx.symbols name in
-  match existing with
-  | Some info when info.scope_level = ctx.scope_level ->
-    ctx.errors := Error (Duplicate_declaration (name, location)) :: !(ctx.errors)
-  | _ ->
-    let info =
-      { name
-      ; declared_typ = typ
-      ; inferred_typ = ref None
-      ; used = false
-      ; scope_level = ctx.scope_level
-      ; location
-      }
-    in
-    Hashtbl.add ctx.symbols name info
+  let info =
+    { name
+    ; declared_typ = typ
+    ; inferred_typ = ref None
+    ; used = false
+    ; scope_level = ctx.scope_level
+    ; location
+    }
+  in
+  (match Hashtbl.find_opt ctx.symbols name with
+   | Some stack ->
+     ctx.warnings := Warning (Shadowed_variable name) :: !(ctx.warnings);
+     Hashtbl.replace ctx.symbols name (info :: stack)
+   | None -> Hashtbl.add ctx.symbols name [ info ])
 ;;
 
 (** Look up a symbol (find the one with highest scope level) *)
-let lookup_symbol ctx name = Hashtbl.find_opt ctx.symbols name
+let lookup_symbol ctx name =
+  match Hashtbl.find_opt ctx.symbols name with
+  | Some (info :: _) -> Some info
+  | _ -> None
 
 (** Set inferred type for a symbol *)
 let set_inferred_type ctx name typ =
@@ -542,14 +559,17 @@ and analyze_ast ctx = function
 (** Check for unused variables after analysis *)
 let check_unused_variables ctx =
   Hashtbl.iter
-    (fun name info ->
-       Printf.printf
-         "Checking symbol: %s, used: %b, scope: %d\n"
-         name
-         info.used
-         info.scope_level;
-       if (not info.used) && info.scope_level > 0
-       then ctx.warnings := Warning (Unused_variable name) :: !(ctx.warnings))
+    (fun name infos ->
+       List.iter
+         (fun info ->
+            Printf.printf
+              "Checking symbol: %s, used: %b, scope: %d\n"
+              name
+              info.used
+              info.scope_level;
+            if (not info.used) && info.scope_level > 0
+            then ctx.warnings := Warning (Unused_variable name) :: !(ctx.warnings))
+         infos)
     ctx.symbols
 ;;
 
