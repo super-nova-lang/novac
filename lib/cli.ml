@@ -284,28 +284,45 @@ let process_clean () =
   ()
 ;;
 
+let handle_novac_error f =
+  try f () with
+  | Utils.Novac_error (phase, err) ->
+    let phase_str =
+      match phase with
+      | Utils.Lexer -> "Lexer"
+      | Utils.Parser -> "Parser"
+      | Utils.Analyzer -> "Analyzer"
+      | Utils.Preprocessor -> "Preprocessor"
+      | Utils.Optimizer -> "Optimizer"
+      | Utils.Codegen -> "Codegen"
+      | Utils.Io -> "IO"
+    in
+    Printf.eprintf "%s error at %s:%d:%d: %s\n" phase_str err.file err.row err.col err.msg;
+    exit 1
+;;
+
 let parse_cmd =
   let doc = "Parse the input files." in
   let info = Cmd.info "parse" ~doc in
-  Cmd.v info Term.(const process_parse $ stdlib_flag $ files_arg)
+  Cmd.v info Term.(const (fun stdlib files -> handle_novac_error (fun () -> process_parse stdlib files)) $ stdlib_flag $ files_arg)
 ;;
 
 let codegen_cmd =
   let doc = "Generate code for the input files." in
   let info = Cmd.info "codegen" ~doc in
-  Cmd.v info Term.(const process_codegen $ stdlib_flag $ files_arg)
+  Cmd.v info Term.(const (fun stdlib files -> handle_novac_error (fun () -> process_codegen stdlib files)) $ stdlib_flag $ files_arg)
 ;;
 
 let compile_cmd =
   let doc = "Compile the input files to an executable." in
   let info = Cmd.info "compile" ~doc in
-  Cmd.v info Term.(const process_compile $ stdlib_flag $ files_arg)
+  Cmd.v info Term.(const (fun stdlib files -> handle_novac_error (fun () -> process_compile stdlib files)) $ stdlib_flag $ files_arg)
 ;;
 
 let run_cmd =
   let doc = "Compile and run the input files." in
   let info = Cmd.info "run" ~doc in
-  Cmd.v info Term.(const process_run $ stdlib_flag $ files_arg)
+  Cmd.v info Term.(const (fun stdlib files -> handle_novac_error (fun () -> process_run stdlib files)) $ stdlib_flag $ files_arg)
 ;;
 
 let clean_cmd =

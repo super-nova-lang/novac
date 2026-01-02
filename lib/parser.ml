@@ -17,9 +17,14 @@ let current_loc p =
 let failf p fmt =
   Printf.ksprintf
     (fun msg ->
+       let loc = current_loc p in
        let tok = current_token p |> Token.show in
-       let where = current_loc p |> Token.show_loc in
-       failwith (Printf.sprintf "%s at %s (next: %s)" msg where tok))
+       Utils.raise_error
+         ~phase:Utils.Parser
+         ~file:loc.file
+         ~row:loc.row
+         ~col:loc.col
+         (Printf.sprintf "%s (next: %s)" msg tok))
     fmt
 ;;
 
@@ -43,9 +48,11 @@ let consume p =
   token
 ;;
 
-let get_ok_or_fail = function
+let get_ok_or_fail p = function
   | Ok v -> v
-  | Error err -> failwith err
+  | Error err ->
+    let loc = current_loc p in
+    Utils.raise_error ~phase:Utils.Parser ~file:loc.file ~row:loc.row ~col:loc.col err
 ;;
 
 let wrap_unary (u : Ast.unary_expr) : Ast.expression =
@@ -317,7 +324,7 @@ and parse_decl_stmt p tags =
         expect p Token.Back_arrow |> ignore;
         let input =
           parse_list p [ Token.Semi_colon; Token.Eof; Token.Let ] (fun p ->
-            parse_expression p |> get_ok_or_fail)
+            parse_expression p |> get_ok_or_fail p)
         in
         Ok (Ast.Decl_stmt (Ast.Curry_decl { tags; name; curried; input })))
       else (
@@ -361,7 +368,7 @@ and parse_decl_stmt p tags =
     in
     let input =
       parse_list p [ Token.Semi_colon; Token.Eof; Token.Let ] (fun p ->
-        parse_expression p |> get_ok_or_fail)
+        parse_expression p |> get_ok_or_fail p)
     in
     Ok (Ast.Decl_stmt (Ast.Curry_decl { tags; name; curried; input }))
   | Token.Colon ->
@@ -405,7 +412,7 @@ and parse_decl_param p =
           if is_optional && peek p = Token.Eql
           then (
             advance p;
-            Some (parse_expression p |> get_ok_or_fail))
+            Some (parse_expression p |> get_ok_or_fail p))
           else None
         in
         Some t, default)
@@ -414,7 +421,7 @@ and parse_decl_param p =
           if is_optional && peek p = Token.Eql
           then (
             advance p;
-            Some (parse_expression p |> get_ok_or_fail))
+            Some (parse_expression p |> get_ok_or_fail p))
           else None
         in
         None, default)
@@ -458,18 +465,18 @@ and parse_body p =
       in
       p.pos <- current_pos;
       if is_last
-      then expr := Some (parse_expression p |> get_ok_or_fail)
+      then expr := Some (parse_expression p |> get_ok_or_fail p)
       else (
         match parse_statement p with
         | Ok stmt ->
           stmts := stmt :: !stmts;
           if peek p = Token.Semi_colon then advance p
-        | Error err -> failwith err)
+        | Error err -> get_ok_or_fail p (Error err))
     done;
     expect p Token.Close_brack |> ignore;
     List.rev !stmts, !expr)
   else (
-    let expr = parse_expression p |> get_ok_or_fail in
+    let expr = parse_expression p |> get_ok_or_fail p in
     [], Some expr)
 
 and parse_return_stmt p =
@@ -477,12 +484,12 @@ and parse_return_stmt p =
   if peek p = Token.Semi_colon || is_at_end p
   then Ok (Ast.Return_stmt Ast.Naked)
   else (
-    let expr = parse_expression p |> get_ok_or_fail in
+    let expr = parse_expression p |> get_ok_or_fail p in
     Ok (Ast.Return_stmt (With_expr expr)))
 
 and parse_if_stmt p =
   expect p Token.If |> ignore;
-  let cond = parse_expression p |> get_ok_or_fail in
+  let cond = parse_expression p |> get_ok_or_fail p in
   let body = parse_body_as_t_list p in
   let elif = parse_else_stmt p in
   Ok (Ast.If_stmt { cond; body; elif })
@@ -494,7 +501,7 @@ and parse_else_stmt p =
     if peek p = Token.If
     then (
       advance p;
-      let cond = parse_expression p |> get_ok_or_fail in
+      let cond = parse_expression p |> get_ok_or_fail p in
       let body = parse_body_as_t_list p in
       let elif = parse_else_stmt p in
       Ast.Else_if (cond, body, elif))
@@ -505,7 +512,7 @@ and parse_else_stmt p =
 
 and parse_while_stmt p =
   expect p Token.While |> ignore;
-  let cond = parse_expression p |> get_ok_or_fail in
+  let cond = parse_expression p |> get_ok_or_fail p in
   let body = parse_body_as_t_list p in
   Ok (Ast.While_stmt { cond; body })
 
@@ -522,11 +529,11 @@ and parse_for_stmt p =
       | _ -> failf p "Expected variable name in for loop initialization"
     in
     expect p Token.Walrus |> ignore;
-    let init = parse_expression p |> get_ok_or_fail in
+    let init = parse_expression p |> get_ok_or_fail p in
     expect p Token.Semi_colon |> ignore;
-    let cond = parse_expression p |> get_ok_or_fail in
+    let cond = parse_expression p |> get_ok_or_fail p in
     expect p Token.Semi_colon |> ignore;
-    let update = parse_expression p |> get_ok_or_fail in
+    let update = parse_expression p |> get_ok_or_fail p in
     let body = parse_body_as_t_list p in
     Ok (Ast.For_stmt (Ast.For_c { var; init; cond; update; body }))
   | Token.Open_paren ->
@@ -541,7 +548,7 @@ and parse_for_stmt p =
     let vars = List.rev !vars in
     expect p Token.Close_paren |> ignore;
     expect p Token.In |> ignore;
-    let iterable = parse_expression p |> get_ok_or_fail in
+    let iterable = parse_expression p |> get_ok_or_fail p in
     let body = parse_body_as_t_list p in
     Ok (Ast.For_stmt (Ast.For_tuple { vars; iterable; body }))
   | Token.Ident _ ->
@@ -552,7 +559,7 @@ and parse_for_stmt p =
       | _ -> failf p "Expected variable name in for loop"
     in
     expect p Token.In |> ignore;
-    let iterable = parse_expression p |> get_ok_or_fail in
+    let iterable = parse_expression p |> get_ok_or_fail p in
     let body = parse_body_as_t_list p in
     Ok (Ast.For_stmt (Ast.For_iter { var; iterable; body }))
   | _ -> failf p "Expected 'let', '(', or variable name after 'for'"
@@ -566,14 +573,14 @@ and parse_body_as_t_list p =
       if peek p = Token.Eof then failf p "Unclosed block";
       match parse_statement p with
       | Ok stmt -> stmts := Ast.Statement stmt :: !stmts
-      | Error err -> failwith err
+      | Error err -> get_ok_or_fail p (Error err)
     done;
     expect p Token.Close_brack |> ignore;
     List.rev !stmts)
   else (
     match parse_statement p with
     | Ok stmt -> [ Ast.Statement stmt ]
-    | Error err -> failwith err)
+    | Error err -> get_ok_or_fail p (Error err))
 
 and parse_expression_stmt p =
   match parse_expression p with
@@ -602,7 +609,7 @@ and parse_list_expr p =
     else (
       let es =
         parse_list p [ Token.Close_square ] (fun p ->
-          parse_expression p |> get_ok_or_fail)
+          parse_expression p |> get_ok_or_fail p)
       in
       expect p Token.Close_square |> ignore;
       es)
@@ -611,7 +618,7 @@ and parse_list_expr p =
 
 and parse_match_expr p =
   expect p Token.Match |> ignore;
-  let target = parse_expression p |> get_ok_or_fail in
+  let target = parse_expression p |> get_ok_or_fail p in
   expect p Token.With |> ignore;
   let arms = ref [] in
   while peek p = Token.Bar do
@@ -621,7 +628,7 @@ and parse_match_expr p =
       if peek p = Token.If
       then (
         advance p;
-        Some (parse_expression p |> get_ok_or_fail))
+        Some (parse_expression p |> get_ok_or_fail p))
       else None
     in
     expect p Token.Skinny_arrow |> ignore;
@@ -632,12 +639,12 @@ and parse_match_expr p =
 
 and parse_match_param p =
   (* Try to parse a pattern. For now, we'll reuse primary expression parsing. *)
-  let e = parse_primary p |> get_ok_or_fail in
+  let e = parse_primary p |> get_ok_or_fail p in
   match e with
   | Ast.Unary_val (Ast.Implicit_member _) ->
     (match peek p with
      | Token.Ident _ ->
-       let var = parse_primary p |> get_ok_or_fail in
+       let var = parse_primary p |> get_ok_or_fail p in
        Ast.Single
          (wrap_unary
             (Ast.Unary_call
@@ -652,7 +659,7 @@ and parse_match_arm_body p =
   if peek p = Token.Open_brack
   then parse_body p
   else (
-    let e = parse_expression p |> get_ok_or_fail in
+    let e = parse_expression p |> get_ok_or_fail p in
     [], Some e)
 
 and parse_with_block p =
@@ -666,7 +673,7 @@ and parse_with_block p =
       | Ok stmt ->
         stmts := stmt :: !stmts;
         if peek p = Token.Semi_colon || peek p = Token.Comma then advance p
-      | Error err -> failwith err
+      | Error err -> get_ok_or_fail p (Error err)
     done;
     expect p Token.Close_brack |> ignore;
     Some (List.rev !stmts))
@@ -692,7 +699,7 @@ and parse_struct_field p =
     if peek p = Token.Eql
     then (
       advance p;
-      Some (parse_expression p |> get_ok_or_fail))
+      Some (parse_expression p |> get_ok_or_fail p))
     else None
   in
   name, typ, expr
@@ -736,7 +743,7 @@ and parse_macro_expr p =
     | Ok stmt ->
       stmts := stmt :: !stmts;
       if peek p = Token.Semi_colon then advance p
-    | Error err -> failwith err
+    | Error err -> get_ok_or_fail p (Error err)
   done;
   expect p Token.Close_brack |> ignore;
   Ok (Ast.Macro_expr (List.rev !stmts))
@@ -750,55 +757,55 @@ and parse_derive_expr p =
     | Ok stmt ->
       stmts := stmt :: !stmts;
       if peek p = Token.Semi_colon then advance p
-    | Error err -> failwith err
+    | Error err -> get_ok_or_fail p (Error err)
   done;
   expect p Token.Close_brack |> ignore;
   Ok (Ast.Derive_expr (List.rev !stmts))
 
 and parse_relational_expr p =
-  let left = parse_additive_expr p |> get_ok_or_fail in
+  let left = parse_additive_expr p |> get_ok_or_fail p in
   match peek p with
   | Token.Double_eql ->
     advance p;
-    Ok (Ast.Relational_expr (Ast.Eql (left, parse_additive_expr p |> get_ok_or_fail)))
+    Ok (Ast.Relational_expr (Ast.Eql (left, parse_additive_expr p |> get_ok_or_fail p)))
   | Token.Lesser_eql ->
     advance p;
-    Ok (Ast.Relational_expr (Ast.Leq (left, parse_additive_expr p |> get_ok_or_fail)))
+    Ok (Ast.Relational_expr (Ast.Leq (left, parse_additive_expr p |> get_ok_or_fail p)))
   | Token.Greater_eql ->
     advance p;
-    Ok (Ast.Relational_expr (Ast.Geq (left, parse_additive_expr p |> get_ok_or_fail)))
+    Ok (Ast.Relational_expr (Ast.Geq (left, parse_additive_expr p |> get_ok_or_fail p)))
   | Token.Lesser ->
     advance p;
-    Ok (Ast.Relational_expr (Ast.Lt (left, parse_additive_expr p |> get_ok_or_fail)))
+    Ok (Ast.Relational_expr (Ast.Lt (left, parse_additive_expr p |> get_ok_or_fail p)))
   | Token.Greater ->
     advance p;
-    Ok (Ast.Relational_expr (Ast.Gt (left, parse_additive_expr p |> get_ok_or_fail)))
+    Ok (Ast.Relational_expr (Ast.Gt (left, parse_additive_expr p |> get_ok_or_fail p)))
   | Token.Plus_eql ->
     (match left with
      | Ast.Additive_val (Ast.Multiplicative_val (Ast.Unary_val (Ast.Ident name))) ->
        advance p;
-       let right = parse_additive_expr p |> get_ok_or_fail in
+       let right = parse_additive_expr p |> get_ok_or_fail p in
        Ok (Ast.Assignment_expr (Ast.Add_assign (name, right)))
      | _ -> failf p "Assignment target must be an identifier")
   | Token.Minus_eql ->
     (match left with
      | Ast.Additive_val (Ast.Multiplicative_val (Ast.Unary_val (Ast.Ident name))) ->
        advance p;
-       let right = parse_additive_expr p |> get_ok_or_fail in
+       let right = parse_additive_expr p |> get_ok_or_fail p in
        Ok (Ast.Assignment_expr (Ast.Sub_assign (name, right)))
      | _ -> failf p "Assignment target must be an identifier")
   | Token.Star_eql ->
     (match left with
      | Ast.Additive_val (Ast.Multiplicative_val (Ast.Unary_val (Ast.Ident name))) ->
        advance p;
-       let right = parse_additive_expr p |> get_ok_or_fail in
+       let right = parse_additive_expr p |> get_ok_or_fail p in
        Ok (Ast.Assignment_expr (Ast.Mul_assign (name, right)))
      | _ -> failf p "Assignment target must be an identifier")
   | Token.Slash_eql ->
     (match left with
      | Ast.Additive_val (Ast.Multiplicative_val (Ast.Unary_val (Ast.Ident name))) ->
        advance p;
-       let right = parse_additive_expr p |> get_ok_or_fail in
+       let right = parse_additive_expr p |> get_ok_or_fail p in
        Ok (Ast.Assignment_expr (Ast.Div_assign (name, right)))
      | _ -> failf p "Assignment target must be an identifier")
   | _ -> Ok (Ast.Relational_expr (Ast.Relational_val left))
@@ -808,41 +815,41 @@ and parse_additive_expr p =
     match peek p with
     | Token.Plus ->
       advance p;
-      aux (Ast.Add (left, parse_multiplicative_expr p |> get_ok_or_fail))
+      aux (Ast.Add (left, parse_multiplicative_expr p |> get_ok_or_fail p))
     | Token.Dash ->
       advance p;
-      aux (Ast.Sub (left, parse_multiplicative_expr p |> get_ok_or_fail))
+      aux (Ast.Sub (left, parse_multiplicative_expr p |> get_ok_or_fail p))
     | _ -> left
   in
-  Ok (aux (Ast.Additive_val (parse_multiplicative_expr p |> get_ok_or_fail)))
+  Ok (aux (Ast.Additive_val (parse_multiplicative_expr p |> get_ok_or_fail p)))
 
 and parse_multiplicative_expr p =
   let rec aux left =
     match peek p with
     | Token.Star ->
       advance p;
-      aux (Ast.Mul (left, parse_unary_expr p |> get_ok_or_fail))
+      aux (Ast.Mul (left, parse_unary_expr p |> get_ok_or_fail p))
     | Token.Forward_slash ->
       advance p;
-      aux (Ast.Div (left, parse_unary_expr p |> get_ok_or_fail))
+      aux (Ast.Div (left, parse_unary_expr p |> get_ok_or_fail p))
     | Token.Mod ->
       advance p;
-      aux (Ast.Mod (left, parse_unary_expr p |> get_ok_or_fail))
+      aux (Ast.Mod (left, parse_unary_expr p |> get_ok_or_fail p))
     | Token.Carrot ->
       advance p;
-      aux (Ast.Pow (left, parse_unary_expr p |> get_ok_or_fail))
+      aux (Ast.Pow (left, parse_unary_expr p |> get_ok_or_fail p))
     | _ -> left
   in
-  Ok (aux (Ast.Multiplicative_val (parse_unary_expr p |> get_ok_or_fail)))
+  Ok (aux (Ast.Multiplicative_val (parse_unary_expr p |> get_ok_or_fail p)))
 
 and parse_unary_expr p =
   match peek p with
   | Token.Dash ->
     advance p;
-    Ok (Ast.Neg (parse_unary_expr p |> get_ok_or_fail))
+    Ok (Ast.Neg (parse_unary_expr p |> get_ok_or_fail p))
   | Token.Bang ->
     advance p;
-    Ok (Ast.Not (parse_unary_expr p |> get_ok_or_fail))
+    Ok (Ast.Not (parse_unary_expr p |> get_ok_or_fail p))
   | _ -> parse_primary p
 
 and parse_primary p =
@@ -884,7 +891,7 @@ and parse_primary p =
     | _ ->
       (match parse_atom p with
        | Ok atom -> Ast.Unary_val atom
-       | Error err -> failwith err)
+       | Error err -> get_ok_or_fail p (Error err))
   in
   Ok (aux res)
 
@@ -909,10 +916,10 @@ and parse_call_param p =
       | _ -> failf p "Expected identifier for named parameter"
     in
     expect p Token.Eql |> ignore;
-    let expr = parse_expression p |> get_ok_or_fail in
+    let expr = parse_expression p |> get_ok_or_fail p in
     Ast.Named (name, expr))
   else (
-    let expr = parse_expression p |> get_ok_or_fail in
+    let expr = parse_expression p |> get_ok_or_fail p in
     Ast.Positional expr)
 
 and parse_atom p =
@@ -929,7 +936,7 @@ and parse_atom p =
       advance p;
       Ok Ast.Unit_val)
     else (
-      let expr = parse_expression p |> get_ok_or_fail in
+      let expr = parse_expression p |> get_ok_or_fail p in
       expect p Token.Close_paren |> ignore;
       Ok (Ast.Grouping expr))
   | t ->

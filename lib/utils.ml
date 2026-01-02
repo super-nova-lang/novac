@@ -1,3 +1,26 @@
+type novac_phase =
+  | Lexer
+  | Parser
+  | Analyzer
+  | Preprocessor
+  | Optimizer
+  | Codegen
+  | Io
+
+type error_msg =
+  { file : string
+  ; row : int
+  ; col : int
+  ; msg : string
+  }
+
+exception Novac_error of novac_phase * error_msg
+
+(* Helper to raise errors consistently *)
+let raise_error ?(phase = Parser) ?(file = "<unknown>") ?(row = 0) ?(col = 0) msg =
+  raise (Novac_error (phase, { file; row; col; msg }))
+;;
+
 let explode s = s |> String.to_seq |> List.of_seq
 
 let rec skip_whitespace input =
@@ -29,19 +52,19 @@ let rec consume_string acc = function
   | '"' :: xs -> acc, xs
   | '\\' :: c :: xs -> consume_string (acc ^ String.make 1 (map_escape c)) xs
   | c :: xs -> consume_string (acc ^ String.make 1 c) xs
-  | [] -> failwith "Unclosed string"
+  | [] -> raise_error ~phase:Lexer "Unclosed string"
 ;;
 
 let consume_char = function
   | '\\' :: c :: '\'' :: xs -> map_escape c, xs
   | c :: '\'' :: xs -> c, xs
-  | _ -> failwith "Invalid char literal"
+  | _ -> raise_error ~phase:Lexer "Invalid char literal"
 ;;
 
 let rec consume_comment depth = function
   | '(' :: '*' :: xs -> consume_comment (depth + 1) xs
   | '*' :: ')' :: xs -> if depth = 1 then xs else consume_comment (depth - 1) xs
-  | [] -> failwith "Unclosed comment"
+  | [] -> raise_error ~phase:Lexer "Unclosed comment"
   | _ :: xs -> consume_comment depth xs
 ;;
 
