@@ -106,6 +106,7 @@ type value_type =
   | Type_bool
   | Type_char
   | Type_unit
+  | Type_string
   | Type_struct of string
   | Type_enum of string
   | Type_list of value_type
@@ -208,7 +209,7 @@ let rec type_of_typ = function
   | Ast.User "i32" | Ast.Generic ("i32", _) -> Type_int
   | Ast.User "bool" | Ast.Generic ("bool", _) -> Type_bool
   | Ast.User "char" | Ast.Generic ("char", _) -> Type_char
-  | Ast.User "string" | Ast.Generic ("string", _) -> Type_list Type_char
+  | Ast.User "string" | Ast.Generic ("string", _) -> Type_string
   | Ast.Unit_typ -> Type_unit
   | Ast.List_typ t -> Type_list (type_of_typ t)
   | Ast.Type_var _ -> Type_unknown
@@ -637,23 +638,23 @@ let rec emit_expression emitter env expr =
       emit_instr emitter (Printf.sprintf "mov rax, %d" i);
       Result.Ok Type_int
     | Ast.String s ->
-      let chars = s |> String.to_seq |> List.of_seq |> List.map Char.code in
-      emit_instr emitter "mov r12, 0";
-      let rec build = function
+      let bytes = s |> String.to_seq |> List.of_seq |> List.map Char.code in
+      let len = List.length bytes in
+      (* Allocate null-terminated buffer for C-string semantics. *)
+      Emitter.add_extern emitter "malloc";
+      emit_instr emitter (Printf.sprintf "mov rdi, %d" (len + 1));
+      emit_instr emitter "call malloc";
+      emit_instr emitter "mov r12, rax";
+      let rec store i = function
         | [] -> ()
-        | c :: rest ->
-          emit_instr emitter (Printf.sprintf "mov rbx, %d" c);
-          Emitter.add_extern emitter "malloc";
-          emit_instr emitter (Printf.sprintf "mov rdi, %d" list_node_size);
-          emit_instr emitter "call malloc";
-          emit_instr emitter "mov [rax], rbx";
-          emit_instr emitter "mov [rax+8], r12";
-          emit_instr emitter "mov r12, rax";
-          build rest
+        | b :: rest ->
+          emit_instr emitter (Printf.sprintf "mov byte [r12+%d], %d" i b);
+          store (i + 1) rest
       in
-      build (List.rev chars);
+      store 0 bytes;
+      emit_instr emitter (Printf.sprintf "mov byte [r12+%d], 0" len);
       emit_instr emitter "mov rax, r12";
-      Result.Ok (Type_list Type_char)
+      Result.Ok Type_string
     | Ast.Unit_val ->
       emit_instr emitter "mov rax, 0";
       Result.Ok Type_unit
@@ -925,38 +926,29 @@ let rec emit_expression emitter env expr =
       emit_instr emitter "mov rax, r13";
       Result.Ok ()
     in
-    let save_args count =
-      for i = 0 to count - 1 do
-        emit_instr emitter (Printf.sprintf "push %s" arg_registers.(i))
-      done
-    in
-    let restore_args count =
-      for i = count - 1 downto 0 do
-        emit_instr emitter (Printf.sprintf "pop %s" arg_registers.(i))
-      done
-    in
+    (* No conversion needed for Type_string (already a C string). *)
     match params with
     | [] -> Result.Ok ()
     | Ast.Named _ :: _ -> unsupported emitter "named call parameters are not supported"
     | Ast.Positional e :: rest ->
       if idx >= Array.length arg_registers
       then unsupported emitter "more than 6 call arguments are not supported"
-      else
+      else (
+        let padded = idx land 1 = 1 in
+        if padded then emit_instr emitter "push rax";
         let* vtype = emit_expression emitter env e in
         let* () =
           match convert_string, vtype with
-          | true, Type_list Type_char ->
-            let padded = idx land 1 = 1 in
-            if padded then emit_instr emitter "push rax";
-            save_args idx;
-            let* () = emit_list_to_cstring () in
-            restore_args idx;
-            if padded then emit_instr emitter "pop rax";
-            Result.Ok ()
+          | true, Type_list Type_char -> emit_list_to_cstring ()
+          | true, Type_string -> Result.Ok ()
           | _ -> Result.Ok ()
         in
+        if padded then emit_instr emitter "add rsp, 8";
+        emit_instr emitter "push rax";
+        let* () = emit_params emitter env convert_string rest (idx + 1) in
+        emit_instr emitter "pop rax";
         emit_instr emitter (Printf.sprintf "mov %s, rax" arg_registers.(idx));
-        emit_params emitter env convert_string rest (idx + 1)
+        Result.Ok ())
   and emit_callee emitter env callee =
     match callee with
     | Ast.Relational_expr

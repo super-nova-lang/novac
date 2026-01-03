@@ -209,7 +209,7 @@ and infer_unary_type ctx = function
   | A.Unary_val atom -> infer_atom_type ctx atom
 
 and infer_atom_type ctx = function
-  | A.String _ -> A.List_typ (A.User "char")
+  | A.String _ -> A.User "string"
   | A.Bool _ -> A.User "bool"
   | A.Char _ -> A.User "char"
   | A.Int _ -> A.User "i32"

@@ -54,6 +54,7 @@
   - [ ] **Optional/variadic parameters** - AST exists, needs codegen
   - [ ] **Implicit member lookups** - Full support for `.field` syntax
   - [ ] **Better error handling** - Replace unsupported placeholders with proper errors
+  - [ ] **Fat-pointer strings** - Reintroduce length-tracked strings (fat pointers) with consistent ABI and runtime helpers; currently using null-terminated C strings for stability.
 
 ### Build System
   - [ ] **LLVM integration** - Better optimization and portability
