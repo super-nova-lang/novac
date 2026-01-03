@@ -445,6 +445,20 @@ let collect_snapshot file =
   }
 ;;
 
+let truncate ?(limit = 120) s =
+  if String.length s <= limit then s else String.sub s 0 limit ^ "…"
+;;
+
+let pp_field label value = Printf.sprintf "%s: %s" label (truncate value)
+
+let pp_snapshot snap =
+  [ pp_field "parse" snap.parse
+  ; pp_field "codegen" snap.codegen
+  ; pp_field "run" snap.run
+  ]
+  |> String.concat "\n"
+;;
+
 let read_expected_snapshots () =
   if Sys.file_exists expected_file
   then (
@@ -465,7 +479,12 @@ let read_expected_snapshots () =
 
 let write_expected_snapshots snapshots =
   let json = `List (List.map test_snapshot_to_json snapshots) in
-  Json.to_file expected_file json
+  let oc = open_out expected_file in
+  Fun.protect
+    (fun () ->
+       Json.pretty_to_channel oc json;
+       output_char oc '\n')
+    ~finally:(fun () -> close_out oc)
 ;;
 
 let snapshot_map snapshots =
@@ -478,28 +497,63 @@ let snapshot_map snapshots =
 let diff_snapshots expected actual =
   let expected_map = snapshot_map expected in
   let actual_map = snapshot_map actual in
-  let failures = ref [] in
-  String_map.iter
-    (fun file snapshot ->
-       match String_map.find_opt file expected_map with
-       | None -> failures := ("Unexpected test file: " ^ file) :: !failures
-       | Some exp ->
-         let check label proj =
-           let lhs = proj exp in
-           let rhs = proj snapshot in
-           if not (String.equal lhs rhs)
-           then failures := Printf.sprintf "%s mismatch for %s" label file :: !failures
-         in
-         check "parse" (fun s -> s.parse);
-         check "codegen" (fun s -> s.codegen);
-         check "run" (fun s -> s.run))
-    actual_map;
-  String_map.iter
-    (fun file _ ->
-       if not (String_map.mem file actual_map)
-       then failures := ("Missing expected test file: " ^ file) :: !failures)
-    expected_map;
-  List.rev !failures
+  let keys m = String_map.fold (fun k _ acc -> k :: acc) m [] in
+  let all_files = keys expected_map @ keys actual_map |> List.sort_uniq String.compare in
+  let results =
+    List.map
+      (fun file ->
+         match
+           String_map.find_opt file expected_map, String_map.find_opt file actual_map
+         with
+         | None, Some _ -> `Unexpected file
+         | Some _, None -> `Missing file
+         | None, None -> `Missing file
+         | Some exp, Some act ->
+           let diffs =
+             [ "parse", exp.parse, act.parse
+             ; "codegen", exp.codegen, act.codegen
+             ; "run", exp.run, act.run
+             ]
+             |> List.filter (fun (_, a, b) -> not (String.equal a b))
+           in
+           if diffs = [] then `Pass file else `Diff (file, diffs))
+      all_files
+  in
+  let failures =
+    List.filter
+      (function
+        | `Pass _ -> false
+        | _ -> true)
+      results
+  in
+  results, failures
+;;
+
+let pp_diff (label, expected, actual) =
+  Printf.sprintf
+    "  - %s\n    expected: %s\n    actual:   %s"
+    label
+    (truncate expected)
+    (truncate actual)
+;;
+
+let pp_result = function
+  | `Pass file -> Printf.sprintf "[PASS] %s" file
+  | `Missing file -> Printf.sprintf "[MISS] %s (expected but not generated)" file
+  | `Unexpected file -> Printf.sprintf "[UNEXPECTED] %s" file
+  | `Diff (file, diffs) ->
+    let header = Printf.sprintf "[DIFF] %s" file in
+    let body = diffs |> List.map pp_diff |> String.concat "\n" in
+    header ^ "\n" ^ body
+;;
+
+let print_results results failures total =
+  List.iter (fun r -> Printf.printf "%s\n" (pp_result r)) results;
+  if failures = []
+  then Printf.printf "\nAll %d tests passed\n" total
+  else (
+    Printf.printf "\n%d/%d tests failed\n" (List.length failures) total;
+    exit 1)
 ;;
 
 let process_test_compiler () =
@@ -516,12 +570,8 @@ let process_test_compiler () =
         expected_file;
       exit 1)
     else (
-      let failures = diff_snapshots expected actual in
-      if failures = []
-      then Printf.printf "All %d tests passed\n" (List.length files)
-      else (
-        List.iter (fun msg -> Printf.eprintf "%s\n" msg) failures;
-        exit 1)))
+      let results, failures = diff_snapshots expected actual in
+      print_results results failures (List.length files)))
 ;;
 
 let process_test_compiler_promote () =
