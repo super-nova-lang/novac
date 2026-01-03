@@ -286,6 +286,21 @@ and parse_decl_stmt p tags =
     | Token.Ident s -> s
     | t -> failf p "Expected identifier for declaration, got %s" (Token.show t)
   in
+  let generics =
+    if peek p = Token.Open_square
+    then (
+      advance p;
+      let gens =
+        parse_list p [ Token.Close_square ] (fun p ->
+          match consume p with
+          | Token.Ident s -> s
+          | t ->
+            failf p "Expected identifier in generic parameter list, got %s" (Token.show t))
+      in
+      expect p Token.Close_square |> ignore;
+      gens)
+    else []
+  in
   match peek p with
   | Token.Double_colon ->
     (* Declaration or Currying or Import *)
@@ -358,7 +373,7 @@ and parse_decl_stmt p tags =
             parse_body p)
           else [], None
         in
-        Ok (Ast.Decl_stmt (Ast.Decl { tags; name; params; explicit_ret; body }))))
+        Ok (Ast.Decl_stmt (Ast.Decl { tags; name; generics; params; explicit_ret; body }))))
   | Token.Back_arrow ->
     advance p;
     let curried =
@@ -382,12 +397,16 @@ and parse_decl_stmt p tags =
         parse_body p)
       else [], None
     in
-    Ok (Ast.Decl_stmt (Ast.Decl { tags; name; params = []; explicit_ret; body }))
+    Ok
+      (Ast.Decl_stmt
+         (Ast.Decl { tags; name; generics = []; params = []; explicit_ret; body }))
   | Token.Eql | Token.Walrus ->
     (* Inferred variable, e.g. let x = 5 *)
     advance p;
     let body = parse_body p in
-    Ok (Ast.Decl_stmt (Ast.Decl { tags; name; params = []; explicit_ret = None; body }))
+    Ok
+      (Ast.Decl_stmt
+         (Ast.Decl { tags; name; generics = []; params = []; explicit_ret = None; body }))
   | _ -> Error (Printf.sprintf "Unexpected token %s in declaration" (Token.show (peek p)))
 
 and parse_decl_param p =
@@ -435,7 +454,18 @@ and parse_decl_param p =
 
 and parse_type p =
   match consume p with
-  | Token.Ident s -> Ast.User s
+  | Token.Ident s when String.length s > 0 && String.get s 0 = '\'' -> Ast.Type_var s
+  | Token.Ident s ->
+    let generics =
+      if peek p = Token.Open_square
+      then (
+        advance p;
+        let args = parse_list p [ Token.Close_square ] parse_type in
+        expect p Token.Close_square |> ignore;
+        args)
+      else []
+    in
+    if List.length generics = 0 then Ast.User s else Ast.Generic (s, generics)
   | Token.Open_square ->
     let inner = parse_type p in
     expect p Token.Close_square |> ignore;

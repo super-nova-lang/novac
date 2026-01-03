@@ -154,15 +154,15 @@ let rec infer_expression_type ctx expr =
     A.List_typ elem_typ
   | A.Match_expr match_expr -> infer_match_type ctx match_expr
   | A.Struct_expr _ -> A.User "struct" (* TODO: proper struct types *)
-  | A.Enum_expr _ -> A.User "enum" (* TODO: proper enum types *)
+  | A.Enum_expr _ -> A.User "enum" (* TODO: proper struct types *)
   | A.Macro_expr _ -> A.Unit_typ (* Macros don't have types *)
   | A.Derive_expr _ -> A.Unit_typ (* Derive doesn't have types *)
 
 and infer_call_type ctx = function
-  | A.Decl_call (_expr, params) ->
-    (* For now, assume function call returns unit *)
+  | A.Decl_call (expr, params) ->
+    (* Infer return type from the callee's symbol (functions, structs, enums). *)
     List.iter (infer_call_param_type ctx) params;
-    A.Unit_typ
+    infer_expression_type ctx expr
   | A.Macro_call (_expr, params) ->
     List.iter (infer_call_param_type ctx) params;
     A.Unit_typ
@@ -430,7 +430,9 @@ and analyze_open ctx { A.mods; elements = _elements } =
     _elements
 
 and analyze_decl ctx = function
-  | A.Decl { tags = _tags; name; params; explicit_ret; body = stmts, expr_opt } ->
+  | A.Decl
+      { tags = _tags; generics = _; name; params; explicit_ret; body = stmts, expr_opt }
+    ->
     (* Add function to symbol table *)
     add_symbol ctx name explicit_ret (0, 0);
     (* TODO: get actual location *)
@@ -455,6 +457,14 @@ and analyze_decl ctx = function
       | Some expr ->
         analyze_expression ctx' expr;
         let inferred = infer_expression_type ctx' expr in
+        let inferred =
+          match inferred, expr with
+          | A.User n, _ ->
+            (match explicit_ret with
+             | Some (A.Generic (m, _) as t) when m = n -> t
+             | _ -> inferred)
+          | _ -> inferred
+        in
         (match expr with
          | A.Struct_expr _ -> A.User name
          | A.Enum_expr _ -> A.User name

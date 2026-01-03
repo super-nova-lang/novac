@@ -120,6 +120,7 @@ and decl_stmt =
   | Decl of
       { tags : tag list
       ; name : ident
+      ; generics : ident list
       ; params : decl_param list
       ; explicit_ret : typ option
       ; body : decl_body
@@ -291,6 +292,8 @@ and ident = string
 
 and typ =
   | User of ident
+  | Generic of ident * typ list
+  | Type_var of ident
   | Builtin of ident
   | Unit_typ
   | List_typ of typ

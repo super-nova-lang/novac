@@ -136,22 +136,122 @@ type enum_layout =
 let struct_layouts : struct_layout StringMap.t ref = ref StringMap.empty
 let enum_layouts : enum_layout StringMap.t ref = ref StringMap.empty
 
-let rec type_of_typ = function
-  | Ast.User "i32" -> Type_int
-  | Ast.User "bool" -> Type_bool
-  | Ast.User "char" -> Type_char
-  | Ast.User "string" -> Type_list Type_char
-  | Ast.Unit_typ -> Type_unit
-  | Ast.List_typ t -> Type_list (type_of_typ t)
-  | Ast.Builtin _ -> Type_unknown
-  | Ast.User n when StringMap.mem n !struct_layouts -> Type_struct n
-  | Ast.User n when StringMap.mem n !enum_layouts -> Type_enum n
-  | Ast.User n -> Type_struct n
+let generic_struct_templates : (string list * Ast.struct_field list) StringMap.t ref =
+  ref StringMap.empty
+;;
+
+let generic_enum_templates
+  : (string list * Ast.decl_param list * Ast.enum_variant list) StringMap.t ref
+  =
+  ref StringMap.empty
+;;
+
+let rec substitute_typ subst = function
+  | Ast.Type_var v -> Option.value ~default:(Ast.Type_var v) (List.assoc_opt v subst)
+  | Ast.User _ as t -> t
+  | Ast.Builtin _ as t -> t
+  | Ast.Unit_typ as t -> t
+  | Ast.List_typ t -> Ast.List_typ (substitute_typ subst t)
+  | Ast.Generic (n, args) -> Ast.Generic (n, List.map (substitute_typ subst) args)
+;;
+
+let substitute_struct_fields subst fields =
+  List.map
+    (fun (fname, ftyp, expr_opt) -> fname, substitute_typ subst ftyp, expr_opt)
+    fields
+;;
+
+let substitute_decl_param subst = function
+  | Ast.Typed (id, t) -> Ast.Typed (id, substitute_typ subst t)
+  | Ast.OptionalTyped (id, t, e) -> Ast.OptionalTyped (id, substitute_typ subst t, e)
+  | Ast.OptionalUntyped _ as p -> p
+  | Ast.Untyped _ as p -> p
+  | Ast.Variadic _ as p -> p
+;;
+
+let substitute_enum_variants subst variants =
+  List.map
+    (fun (vname, body) ->
+       let body' =
+         match body with
+         | None -> None
+         | Some (Ast.Struct_body fields) ->
+           Some (Ast.Struct_body (substitute_struct_fields subst fields))
+         | Some (Ast.Type_body t) -> Some (Ast.Type_body (substitute_typ subst t))
+       in
+       vname, body')
+    variants
+;;
+
+let rec typ_mangle = function
+  | Ast.User n -> n
+  | Ast.Builtin n -> n
+  | Ast.Type_var v ->
+    let v' =
+      if String.length v > 0 && v.[0] = '\''
+      then String.sub v 1 (String.length v - 1)
+      else v
+    in
+    "t" ^ v'
+  | Ast.Unit_typ -> "unit"
+  | Ast.List_typ t -> "list_" ^ typ_mangle t
+  | Ast.Generic (n, args) -> n ^ "_" ^ String.concat "_" (List.map typ_mangle args)
+;;
+
+let mangle_generic_name base args =
+  if args = [] then base else base ^ "_" ^ String.concat "_" (List.map typ_mangle args)
 ;;
 
 let field_offset idx = (idx + 1) * Target.ptr_size
 
-let build_struct_layout _name fields =
+let rec type_of_typ = function
+  | Ast.User "i32" | Ast.Generic ("i32", _) -> Type_int
+  | Ast.User "bool" | Ast.Generic ("bool", _) -> Type_bool
+  | Ast.User "char" | Ast.Generic ("char", _) -> Type_char
+  | Ast.User "string" | Ast.Generic ("string", _) -> Type_list Type_char
+  | Ast.Unit_typ -> Type_unit
+  | Ast.List_typ t -> Type_list (type_of_typ t)
+  | Ast.Type_var _ -> Type_unknown
+  | Ast.Builtin _ -> Type_unknown
+  | Ast.Generic (n, args) ->
+    (match instantiate_generic_layout n args with
+     | Some vt -> vt
+     | None when StringMap.mem n !struct_layouts -> Type_struct n
+     | None when StringMap.mem n !enum_layouts -> Type_enum n
+     | None -> Type_struct (mangle_generic_name n args))
+  | Ast.User n when StringMap.mem n !struct_layouts -> Type_struct n
+  | Ast.User n when StringMap.mem n !enum_layouts -> Type_enum n
+  | Ast.User n -> Type_struct n
+
+and instantiate_generic_layout name args =
+  let instantiated_name = mangle_generic_name name args in
+  if StringMap.mem instantiated_name !struct_layouts
+  then Some (Type_struct instantiated_name)
+  else if StringMap.mem instantiated_name !enum_layouts
+  then Some (Type_enum instantiated_name)
+  else (
+    match StringMap.find_opt name !generic_struct_templates with
+    | Some (params, fields) when List.length params = List.length args ->
+      let subst = List.combine params args in
+      let fields' = substitute_struct_fields subst fields in
+      let layout = build_struct_layout instantiated_name fields' in
+      struct_layouts := StringMap.add instantiated_name layout !struct_layouts;
+      Some (Type_struct instantiated_name)
+    | Some _ -> None
+    | None ->
+      (match StringMap.find_opt name !generic_enum_templates with
+       | Some (params, shared_params, variants) when List.length params = List.length args
+         ->
+         let subst = List.combine params args in
+         let shared_params' = List.map (substitute_decl_param subst) shared_params in
+         let variants' = substitute_enum_variants subst variants in
+         let layout = build_enum_layout instantiated_name shared_params' variants' in
+         enum_layouts := StringMap.add instantiated_name layout !enum_layouts;
+         Some (Type_enum instantiated_name)
+       | Some _ -> None
+       | None -> None))
+
+and build_struct_layout _name fields =
   let rec fold idx acc = function
     | [] -> List.rev acc
     | (fname, ftyp, _expr_opt) :: rest ->
@@ -162,9 +262,8 @@ let build_struct_layout _name fields =
   let s_fields = fold 0 [] fields in
   let s_size = List.length s_fields * Target.ptr_size in
   { s_fields; s_size }
-;;
 
-let build_enum_layout _name params variants =
+and build_enum_layout _name params variants =
   let shared_fields =
     List.mapi
       (fun idx -> function
@@ -216,15 +315,36 @@ let collect_layouts nodes =
     | [] -> ()
     | Ast.Statement stmt :: rest ->
       (match stmt with
-       | Ast.Decl_stmt (Ast.Decl { name; params; body = _, expr_opt; _ }) ->
+       | Ast.Decl_stmt (Ast.Decl { name; generics; params; body = _, expr_opt; _ }) ->
          let symbol = String.concat "_" (prefix @ [ name ]) in
          (match expr_opt with
           | Some (Ast.Struct_expr (fields, _)) ->
-            let layout = build_struct_layout symbol fields in
-            struct_layouts := StringMap.add symbol layout !struct_layouts
+            if generics = []
+            then (
+              let layout = build_struct_layout symbol fields in
+              struct_layouts := StringMap.add symbol layout !struct_layouts)
+            else (
+              (* Keep a generic template for later instantiation, but also register a
+                   base layout so member calls can resolve to a concrete symbol (e.g.,
+                   Box_get) even when the struct is generic. The layout size/offsets are
+                   stable because field offsets are uniform pointer slots regardless of
+                   the type variable. *)
+              let layout = build_struct_layout symbol fields in
+              struct_layouts := StringMap.add symbol layout !struct_layouts;
+              generic_struct_templates
+              := StringMap.add symbol (generics, fields) !generic_struct_templates)
           | Some (Ast.Enum_expr (variants, _)) ->
-            let layout = build_enum_layout symbol params variants in
-            enum_layouts := StringMap.add symbol layout !enum_layouts
+            if generics = []
+            then (
+              let layout = build_enum_layout symbol params variants in
+              enum_layouts := StringMap.add symbol layout !enum_layouts)
+            else (
+              (* Same approach as structs: keep a base layout to enable ctor/member
+                   resolution while still storing the template for specialization. *)
+              let layout = build_enum_layout symbol params variants in
+              enum_layouts := StringMap.add symbol layout !enum_layouts;
+              generic_enum_templates
+              := StringMap.add symbol (generics, params, variants) !generic_enum_templates)
           | _ -> ());
          visit prefix rest
        | Ast.Decl_stmt (Ast.Module_decl { name; body; _ }) ->
@@ -235,6 +355,8 @@ let collect_layouts nodes =
   in
   struct_layouts := StringMap.empty;
   enum_layouts := StringMap.empty;
+  generic_struct_templates := StringMap.empty;
+  generic_enum_templates := StringMap.empty;
   visit [] nodes
 ;;
 
@@ -706,7 +828,20 @@ let rec emit_expression emitter env expr =
             let* btype = emit_unary base in
             let symbol =
               match btype with
-              | Type_struct s | Type_enum s -> String.concat "_" [ s; field ]
+              | Type_struct s | Type_enum s ->
+                let primary = String.concat "_" [ s; field ] in
+                if StringSet.mem primary !defined_functions
+                then primary
+                else (
+                  match String.split_on_char '_' s with
+                  | base :: _
+                    when StringMap.mem base !generic_struct_templates
+                         || StringMap.mem base !generic_enum_templates ->
+                    let fallback = String.concat "_" [ base; field ] in
+                    if StringSet.mem fallback !defined_functions
+                    then fallback
+                    else primary
+                  | _ -> primary)
               | _ -> field
             in
             let convert_string =
@@ -718,7 +853,16 @@ let rec emit_expression emitter env expr =
             if not (StringSet.mem symbol !defined_functions)
             then Emitter.add_extern emitter symbol;
             emit_instr emitter ("call " ^ symbol);
-            Result.Ok Type_unknown)
+            let ret_type =
+              match btype with
+              | Type_struct s ->
+                (match StringMap.find_opt s !struct_layouts with
+                 | Some layout when field = "get" && layout.s_fields <> [] ->
+                   (List.hd layout.s_fields).ftype
+                 | _ -> Type_unknown)
+              | _ -> Type_unknown
+            in
+            Result.Ok ret_type)
        | None ->
          let* ctyp = emit_callee emitter env callee in
          let convert_string =
@@ -860,7 +1004,9 @@ let rec emit_expression emitter env expr =
           match p, fs with
           | [], [] -> Result.Ok ()
           | Ast.Positional e :: prest, f :: frest ->
+            emit_instr emitter "push r12";
             let* _ = emit_expression emitter env e in
+            emit_instr emitter "pop r12";
             emit_instr
               emitter
               (Printf.sprintf "mov [r12+%d], rax" (f.foffset - Target.ptr_size));
@@ -1164,7 +1310,7 @@ let emit_function_stub emitter symbol =
 ;;
 
 let rec emit_decl emitter prefix = function
-  | Ast.Decl { name; params; body; explicit_ret; _ } ->
+  | Ast.Decl { name; generics = _; params; body; explicit_ret; _ } ->
     let symbol = mangle prefix name in
     (match snd body with
      | Some (Ast.Struct_expr (_, Some w)) | Some (Ast.Enum_expr (_, Some w)) ->
@@ -1389,13 +1535,20 @@ and emit_statement_in_fn emitter prefix env end_label locals_ref = function
        emit_instr emitter ("jmp " ^ start_label);
        emit_label emitter end_label;
        Result.Ok env)
-  | Ast.Decl_stmt (Ast.Decl { name; params = []; body = stmts, expr_opt; _ })
+  | Ast.Decl_stmt
+      (Ast.Decl
+         { name; generics = _; params = []; body = stmts, expr_opt; explicit_ret; _ })
     when stmts = [] ->
     (* local let binding *)
-    let* vtype =
+    let* vtype_expr =
       match expr_opt with
       | Some e -> emit_expression emitter env e
       | None -> Result.Ok Type_unit
+    in
+    let vtype =
+      match explicit_ret with
+      | Some t -> type_of_typ t
+      | None -> vtype_expr
     in
     let offset = (!locals_ref + 1) * Target.ptr_size in
     emit_instr emitter (Printf.sprintf "mov [rbp-%d], rax" offset);
@@ -1414,8 +1567,8 @@ and emit_function emitter prefix name params explicit_ret symbol (stmts, expr_op
     | Ast.Statement s :: rest -> count_locals_in_t (count_locals_in_stmt acc s) rest
     | _ :: rest -> count_locals_in_t acc rest
   and count_locals_in_stmt acc = function
-    | Ast.Decl_stmt (Ast.Decl { params = []; body = stmts, _; _ }) when stmts = [] ->
-      acc + 1
+    | Ast.Decl_stmt (Ast.Decl { generics = _; params = []; body = stmts, _; _ })
+      when stmts = [] -> acc + 1
     | Ast.If_stmt { body; elif; _ } ->
       count_locals_in_else (count_locals_in_t acc body) elif
     | Ast.While_stmt { body; _ } -> count_locals_in_t acc body
@@ -1532,13 +1685,14 @@ and emit_function emitter prefix name params explicit_ret symbol (stmts, expr_op
     | Some Ast.Unit_typ -> true
     | _ -> false
   in
-  let is_unit_expr = match ret_type with Some Type_unit -> true | _ -> false in
+  let is_unit_expr =
+    match ret_type with
+    | Some Type_unit -> true
+    | _ -> false
+  in
   let is_main = symbol = "main" in
   let should_zero =
-    expr_opt = None
-    || is_unit_decl
-    || is_unit_expr
-    || (is_main && explicit_ret = None)
+    expr_opt = None || is_unit_decl || is_unit_expr || (is_main && explicit_ret = None)
   in
   if should_zero then emit_instr emitter "xor rax, rax";
   emit_label emitter end_label;
@@ -1575,7 +1729,7 @@ and collect_from_body prefix acc (stmts, expr_opt) =
   | _ -> acc
 
 and collect_from_statement prefix acc = function
-  | Ast.Decl_stmt (Ast.Decl { name; body; _ }) ->
+  | Ast.Decl_stmt (Ast.Decl { name; generics = _; body; _ }) ->
     let symbol = mangle prefix name in
     let acc' = StringSet.add symbol acc in
     let nested_prefix = prefix @ [ name ] in
@@ -1618,7 +1772,7 @@ and collect_import_from_statement prefix acc = function
   | Ast.Decl_stmt (Ast.Import_decl { name; _ }) -> StringSet.add (mangle prefix name) acc
   | Ast.Decl_stmt (Ast.Module_decl { name; body; _ }) ->
     collect_imports (prefix @ [ name ]) acc body
-  | Ast.Decl_stmt (Ast.Decl { name; body; _ }) ->
+  | Ast.Decl_stmt (Ast.Decl { name; generics = _; body; _ }) ->
     let nested_prefix = prefix @ [ name ] in
     collect_import_from_body nested_prefix acc body
   | Ast.Decl_stmt (Ast.Curry_decl _)

@@ -23,9 +23,15 @@ let lex file input =
       let new_col = col + String.length s + 2 in
       (String s, loc) :: loop rest row new_col
     (* Consume char *)
-    | '\'' :: cs ->
-      let c, rest = consume_char cs in
-      (Char c, loc) :: loop rest row (col + 3)
+    | '\'' :: '\\' :: c :: '\'' :: cs ->
+      let mapped = map_escape c in
+      (Char mapped, loc) :: loop cs row (col + 4)
+    | '\'' :: c :: '\'' :: cs -> (Char c, loc) :: loop cs row (col + 3)
+    | '\'' :: c :: cs when is_alpha c || c = '_' ->
+      let ident, rest = consume ~f:is_ident (String.make 1 c) cs in
+      let full = "'" ^ ident in
+      (Token.from_string full, loc) :: loop rest row (col + String.length full)
+    | '\'' :: _ -> raise_error ~phase:Lexer "Invalid char or type variable literal"
     (* Read Comment *)
     (* | '(' :: '*' :: cs -> loop (consume_comment 1 cs) *)
     (* Read ident *)

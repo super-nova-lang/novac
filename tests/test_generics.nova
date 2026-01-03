@@ -1,0 +1,22 @@
+open std.c with { stdio.printf }
+
+let Box[T] :: value: T = struct {
+    value: T = value,
+} with {
+    let get :: self = self.value
+}
+
+let Pair[A, B] :: first: A, second: B = struct {
+    first: A = first,
+    second: B = second,
+}
+
+let main :: () = {
+    let int_box: Box[i32] = Box(123)
+    let str_box: Box[string] = Box("generic")
+    let pair: Pair[i32, string] = Pair(7, "pair")
+
+    printf("int: %d, str: %s\n", int_box.get(), str_box.get())
+    printf("pair: %d, %s\n", pair.first, pair.second)
+    ()
+}
