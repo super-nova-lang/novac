@@ -77,6 +77,7 @@ type t =
   (* Literals *)
   | String of string
   | Char of char
+  | Doc_comment of string
   | Ident of string
   | Number of int
   | Eof

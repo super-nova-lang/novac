@@ -177,6 +177,90 @@ let string_of_parse stdlib_flag files =
   Buffer.contents buf
 ;;
 
+let string_of_doc stdlib_flag files =
+  let param_to_string = function
+    | Ast.Untyped id -> id
+    | Ast.Typed (id, t) -> Printf.sprintf "%s: %s" id (Ast.show_typ t)
+    | Ast.OptionalTyped (id, t, _) -> Printf.sprintf "?%s: %s" id (Ast.show_typ t)
+    | Ast.OptionalUntyped (id, _) -> Printf.sprintf "?%s" id
+    | Ast.Variadic id -> Printf.sprintf "...%s" id
+  in
+  let signature_of_decl = function
+    | Ast.Decl { name; generics; params; explicit_ret; _ } ->
+      let gens = if generics = [] then "" else "[" ^ String.concat ", " generics ^ "]" in
+      let params_s = params |> List.map param_to_string |> String.concat ", " in
+      let ret_s =
+        match explicit_ret with
+        | Some t -> Ast.show_typ t
+        | None -> "?"
+      in
+      Printf.sprintf "%s%s(%s) -> %s" name gens params_s ret_s
+    | Ast.Curry_decl { name; curried; _ } -> Printf.sprintf "%s := %s" name curried
+    | Ast.Import_decl { name; link_name; _ } ->
+      Printf.sprintf "%s (import \"%s\")" name link_name
+    | Ast.Module_decl { name; _ } -> Printf.sprintf "module %s" name
+    | Ast.Export_stmt (Ast.Export_ident id) -> Printf.sprintf "export %s" id
+    | Ast.Export_stmt (Ast.Export_rename (src, dst)) ->
+      Printf.sprintf "export %s as %s" src dst
+  in
+  let collect_signatures nodes =
+    let rec collect acc = function
+      | [] -> List.rev acc
+      | Ast.Statement (Ast.Decl_stmt decl) :: rest ->
+        collect (signature_of_decl decl :: acc) rest
+      | _ :: rest -> collect acc rest
+    in
+    collect [] nodes
+  in
+  let collect_top_level_docs tokens =
+    let rec loop depth acc = function
+      | [] -> List.rev acc
+      | (tok, loc) :: rest ->
+        let acc' =
+          match tok, depth with
+          | Token.Doc_comment s, 0 -> (loc, s) :: acc
+          | _ -> acc
+        in
+        let depth' =
+          match tok with
+          | Token.Open_brack -> depth + 1
+          | Token.Close_brack -> max 0 (depth - 1)
+          | _ -> depth
+        in
+        loop depth' acc' rest
+    in
+    loop 0 [] tokens
+  in
+  let buf = Buffer.create 256 in
+  let doc_files =
+    if stdlib_flag then List.map fst (get_stdlib_files ()) @ files else files
+  in
+  doc_files
+  |> List.iteri (fun fidx file ->
+    let tokens = Lexer.lex_from_file file in
+    let docs = collect_top_level_docs tokens in
+    let nodes = Parser.parse (Parser.create tokens) in
+    let sigs = collect_signatures nodes in
+    let rec emit docs sigs first =
+      match sigs with
+      | [] -> ()
+      | sigstr :: sr ->
+        let docs', entry =
+          match docs with
+          | (loc, doc) :: dr -> dr, Some (loc, doc, sigstr)
+          | [] -> [], None
+        in
+        if not first then Buffer.add_char buf '\n';
+        (match entry with
+         | Some (loc, doc, sigstr) ->
+           Buffer.add_string buf (Printf.sprintf "%s: %s\n\t%s" (Token.show_loc loc) doc sigstr)
+         | None -> Buffer.add_string buf sigstr);
+        emit docs' sr false
+    in
+    emit docs sigs (fidx = 0));
+  Buffer.contents buf
+;;
+
 let string_of_codegen stdlib_flag files =
   ensure_dir build_dir;
   ensure_dir emit_dir;
@@ -208,6 +292,11 @@ let process_parse stdlib_flag files =
 
 let process_codegen stdlib_flag files =
   let output = string_of_codegen stdlib_flag files in
+  if String.length output > 0 then Printf.printf "%s\n" output
+;;
+
+let process_doc stdlib_flag files =
+  let output = string_of_doc stdlib_flag files in
   if String.length output > 0 then Printf.printf "%s\n" output
 ;;
 
@@ -369,6 +458,7 @@ let process_clean () =
 type test_snapshot =
   { file : string
   ; parse : string
+  ; doc : string
   ; codegen : string
   ; run : string
   ; code : int
@@ -390,6 +480,7 @@ let test_snapshot_to_json t =
   `Assoc
     [ "file", `String t.file
     ; "parse", `String t.parse
+    ; "doc", `String t.doc
     ; "codegen", `String t.codegen
     ; "run", `String t.run
     ; "code", `Int t.code
@@ -423,6 +514,7 @@ let test_snapshot_of_json json =
   | `Assoc props ->
     { file = expect_string "file" props
     ; parse = expect_string "parse" props
+    ; doc = expect_string "doc" props
     ; codegen = expect_string "codegen" props
     ; run = expect_string "run" props
     ; code = expect_int "code" props
@@ -449,6 +541,7 @@ let nova_test_files () =
 
 let collect_snapshot file =
   let parse_r = capture_output (fun () -> string_of_parse false [ file ]) in
+  let doc_r = capture_output (fun () -> string_of_doc false [ file ]) in
   let codegen_r = capture_output (fun () -> string_of_codegen false [ file ]) in
   let run_r = run_with_status false [ file ] in
   let run, code =
@@ -458,6 +551,7 @@ let collect_snapshot file =
   in
   { file
   ; parse = string_of_result parse_r
+  ; doc = string_of_result doc_r
   ; codegen = string_of_result codegen_r
   ; run
   ; code
@@ -472,6 +566,7 @@ let pp_field label value = Printf.sprintf "%s: %s" label (truncate value)
 
 let pp_snapshot snap =
   [ pp_field "parse" snap.parse
+  ; pp_field "doc" snap.doc
   ; pp_field "codegen" snap.codegen
   ; pp_field "run" snap.run
   ; pp_field "code" (string_of_int snap.code)
@@ -531,6 +626,7 @@ let diff_snapshots expected actual =
          | Some exp, Some act ->
            let diffs =
              [ "parse", exp.parse, act.parse
+             ; "doc", exp.doc, act.doc
              ; "codegen", exp.codegen, act.codegen
              ; "run", exp.run, act.run
              ; "code", string_of_int exp.code, string_of_int act.code
@@ -675,6 +771,17 @@ let clean_cmd =
   Cmd.v info Term.(const process_clean $ const ())
 ;;
 
+let doc_cmd =
+  let doc = "Print doc comments with top-level declaration signatures." in
+  let info = Cmd.info "doc" ~doc in
+  Cmd.v
+    info
+    Term.(
+      const (fun stdlib files -> handle_novac_error (fun () -> process_doc stdlib files))
+      $ stdlib_flag
+      $ files_arg)
+;;
+
 let test_compiler_cmd =
   let doc =
     "Run parse/codegen/run on ./tests/*.nova and compare against ./tests/.expected.json"
@@ -716,6 +823,7 @@ let main_cmd =
     ; codegen_cmd
     ; compile_cmd
     ; run_cmd
+    ; doc_cmd
     ; clean_cmd
     ; test_compiler_cmd
     ; tc_cmd

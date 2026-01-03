@@ -2,6 +2,13 @@ open Token
 open Utils
 
 let lex file input =
+  let rec lex_doc_comment cs row col acc =
+    match cs with
+    | [] -> String.concat "" (List.rev acc), [], row, col
+    | '*' :: ')' :: rest -> String.concat "" (List.rev acc), rest, row, col + 2
+    | '\n' :: rest -> lex_doc_comment rest (row + 1) 1 ("\n" :: acc)
+    | c :: rest -> lex_doc_comment rest row (col + 1) (String.make 1 c :: acc)
+  in
   let rec lex_comment cs row col =
     let loc = { file; row; col } in
     match cs with
@@ -12,6 +19,10 @@ let lex file input =
     let loc = { file; row; col } in
     match cs with
     | [] -> [ Eof, loc ]
+    | '(' :: '*' :: '!' :: cs ->
+      let loc = { file; row; col } in
+      let content, rest, row', col' = lex_doc_comment cs row (col + 3) [] in
+      (Doc_comment content, loc) :: loop rest row' col'
     | '(' :: '*' :: cs -> lex_comment cs row (col + 2)
     (* Newline *)
     | '\n' :: cs -> loop cs (row + 1) 1
