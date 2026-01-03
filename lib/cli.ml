@@ -2,6 +2,10 @@ open Cmdliner
 module Json = Yojson.Safe
 module String_map = Map.Make (String)
 
+type doc_out =
+  | Stdout
+  | Html
+
 let stdlib_flag =
   let doc =
     "Use the standard library files from the 'stdlib' directory instead of providing \
@@ -177,7 +181,7 @@ let string_of_parse stdlib_flag files =
   Buffer.contents buf
 ;;
 
-let string_of_doc stdlib_flag files =
+let string_of_doc stdlib_flag out_type files =
   let param_to_string = function
     | Ast.Untyped id -> id
     | Ast.Typed (id, t) -> Printf.sprintf "%s: %s" id (Ast.show_typ t)
@@ -235,29 +239,32 @@ let string_of_doc stdlib_flag files =
   let doc_files =
     if stdlib_flag then List.map fst (get_stdlib_files ()) @ files else files
   in
-  doc_files
-  |> List.iteri (fun fidx file ->
-    let tokens = Lexer.lex_from_file file in
-    let docs = collect_top_level_docs tokens in
-    let nodes = Parser.parse (Parser.create tokens) in
-    let sigs = collect_signatures nodes in
-    let rec emit docs sigs first =
-      match sigs with
-      | [] -> ()
-      | sigstr :: sr ->
-        let docs', entry =
-          match docs with
-          | (loc, doc) :: dr -> dr, Some (loc, doc, sigstr)
-          | [] -> [], None
-        in
-        if not first then Buffer.add_char buf '\n';
-        (match entry with
-         | Some (loc, doc, sigstr) ->
-           Buffer.add_string buf (Printf.sprintf "%s: %s\n\t%s" (Token.show_loc loc) doc sigstr)
-         | None -> Buffer.add_string buf sigstr);
-        emit docs' sr false
-    in
-    emit docs sigs (fidx = 0));
+  (match out_type with
+   | Html -> Buffer.add_string buf "html output not implemented"
+   | Stdout ->
+     doc_files
+     |> List.iteri (fun fidx file ->
+       let tokens = Lexer.lex_from_file file in
+       let docs = collect_top_level_docs tokens in
+       let nodes = Parser.parse (Parser.create tokens) in
+       let sigs = collect_signatures nodes in
+       let rec emit docs sigs first =
+         match sigs with
+         | [] -> ()
+         | sigstr :: sr ->
+           let docs', entry =
+             match docs with
+             | (loc, doc) :: dr -> dr, Some (loc, doc, sigstr)
+             | [] -> [], None
+           in
+           if not first then Buffer.add_char buf '\n';
+           (match entry with
+            | Some (loc, doc, sigstr) ->
+              Buffer.add_string buf (Printf.sprintf "%s: %s\n\t%s" (Token.show_loc loc) doc sigstr)
+            | None -> Buffer.add_string buf sigstr);
+           emit docs' sr false
+       in
+       emit docs sigs (fidx = 0)));
   Buffer.contents buf
 ;;
 
@@ -295,8 +302,8 @@ let process_codegen stdlib_flag files =
   if String.length output > 0 then Printf.printf "%s\n" output
 ;;
 
-let process_doc stdlib_flag files =
-  let output = string_of_doc stdlib_flag files in
+let process_doc stdlib_flag out_type files =
+  let output = string_of_doc stdlib_flag out_type files in
   if String.length output > 0 then Printf.printf "%s\n" output
 ;;
 
@@ -541,7 +548,7 @@ let nova_test_files () =
 
 let collect_snapshot file =
   let parse_r = capture_output (fun () -> string_of_parse false [ file ]) in
-  let doc_r = capture_output (fun () -> string_of_doc false [ file ]) in
+  let doc_r = capture_output (fun () -> string_of_doc false Stdout [ file ]) in
   let codegen_r = capture_output (fun () -> string_of_codegen false [ file ]) in
   let run_r = run_with_status false [ file ] in
   let run, code =
@@ -774,11 +781,22 @@ let clean_cmd =
 let doc_cmd =
   let doc = "Print doc comments with top-level declaration signatures." in
   let info = Cmd.info "doc" ~doc in
+  let out_type_arg =
+    let doc = "Output format: stdout or html (html not yet implemented)." in
+    Arg.(
+      value
+      & opt
+          (enum [ "stdout", Stdout; "html", Html ])
+          Stdout
+      & info [ "out-type" ] ~docv:"OUT_TYPE" ~doc)
+  in
   Cmd.v
     info
     Term.(
-      const (fun stdlib files -> handle_novac_error (fun () -> process_doc stdlib files))
+      const (fun stdlib out_type files ->
+        handle_novac_error (fun () -> process_doc stdlib out_type files))
       $ stdlib_flag
+      $ out_type_arg
       $ files_arg)
 ;;
 
