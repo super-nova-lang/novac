@@ -44,10 +44,12 @@ dune build
 The compiler provides several commands:
 
 *   **Lexing:** `dune exec bin/main.exe -- lex <path_to_nova_file>`
-*   **Parsing:** `dune exec bin/main.exe -- parse <path_to_nova_file>`
+*   **Parsing:** `dune exec bin/main.exe -- parse <path_to_nova_file>` (prints AST nodes)
 *   **Code Generation:** `dune exec bin/main.exe -- codegen <path_to_nova_file>`
 *   **Compilation:** `dune exec bin/main.exe -- compile <path_to_nova_file>`
 *   **Run:** `dune exec bin/main.exe -- run <path_to_nova_files>`
+*   **Test Compiler:** `dune exec bin/main.exe -- test-compiler` (alias: `tc`) — runs parse/codegen/run on `./tests/*.nova` and compares against `./tests/.expected.json`
+*   **Promote Compiler Tests:** `dune exec bin/main.exe -- test-compiler-promote` (alias: `tcp`) — regenerates `./tests/.expected.json` from current outputs
 
 The compiler supports multiple input files. Symbols are automatically mangled with the filename as a prefix (e.g., `file_func`) to avoid conflicts, unless the `#[no_mangle]` tag is used.
 

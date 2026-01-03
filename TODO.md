@@ -1,6 +1,8 @@
 # To-Do
 
 ## Completed ✓
+  - [x] CLI `parse` prints AST nodes to stdout
+  - [x] Added `test-compiler`/`tc` and `test-compiler-promote`/`tcp` commands with JSON expectations in `tests/.expected.json`
   - [x] Basic lexer, parser, and AST
   - [x] If/else statements with elif chains
   - [x] While loops
