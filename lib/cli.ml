@@ -23,6 +23,7 @@ let stdlib_dir = "stdlib"
 let build_dir = "build"
 let emit_dir = Filename.concat build_dir "emit"
 let debug_dir = Filename.concat build_dir "debug"
+let doc_dir = Filename.concat build_dir "doc"
 let tests_dir = "tests"
 let expected_file = Filename.concat tests_dir ".expected.json"
 
@@ -182,23 +183,69 @@ let string_of_parse stdlib_flag files =
 ;;
 
 let string_of_doc stdlib_flag out_type files =
+  let html_escape s =
+    let b = Buffer.create (String.length s) in
+    String.iter
+      (function
+        | '&' -> Buffer.add_string b "&amp;"
+        | '<' -> Buffer.add_string b "&lt;"
+        | '>' -> Buffer.add_string b "&gt;"
+        | '"' -> Buffer.add_string b "&quot;"
+        | '\'' -> Buffer.add_string b "&#39;"
+        | c -> Buffer.add_char b c)
+      s;
+    Buffer.contents b
+  in
+  let rec show_typ = function
+    | Ast.User id -> id
+    | Ast.Generic (id, args) ->
+      let args_s = args |> List.map show_typ |> String.concat ", " in
+      Printf.sprintf "%s[%s]" id args_s
+    | Ast.Type_var id -> id
+    | Ast.Builtin id -> id
+    | Ast.Unit_typ -> "()"
+    | Ast.List_typ t -> Printf.sprintf "[%s]" (show_typ t)
+  in
   let param_to_string = function
     | Ast.Untyped id -> id
-    | Ast.Typed (id, t) -> Printf.sprintf "%s: %s" id (Ast.show_typ t)
-    | Ast.OptionalTyped (id, t, _) -> Printf.sprintf "?%s: %s" id (Ast.show_typ t)
+    | Ast.Typed (id, t) -> Printf.sprintf "%s: %s" id (show_typ t)
+    | Ast.OptionalTyped (id, t, _) -> Printf.sprintf "?%s: %s" id (show_typ t)
     | Ast.OptionalUntyped (id, _) -> Printf.sprintf "?%s" id
     | Ast.Variadic id -> Printf.sprintf "...%s" id
   in
   let signature_of_decl = function
-    | Ast.Decl { name; generics; params; explicit_ret; _ } ->
+    | Ast.Decl { name; generics; params; explicit_ret; body = _, expr_opt; _ } ->
       let gens = if generics = [] then "" else "[" ^ String.concat ", " generics ^ "]" in
-      let params_s = params |> List.map param_to_string |> String.concat ", " in
-      let ret_s =
-        match explicit_ret with
-        | Some t -> Ast.show_typ t
-        | None -> "?"
-      in
-      Printf.sprintf "%s%s(%s) -> %s" name gens params_s ret_s
+      let nameg = name ^ gens in
+      (match expr_opt with
+       | Some (Ast.Struct_expr (fields, _)) ->
+         let payload =
+           fields |> List.map (fun (_, t, _) -> show_typ t) |> String.concat ", "
+         in
+         Printf.sprintf "type %s = struct { %s }" nameg payload
+       | Some (Ast.Enum_expr (variants, _)) ->
+         let variant_s =
+           variants
+           |> List.map (fun (vname, vbody) ->
+             match vbody with
+             | None -> vname
+             | Some (Ast.Struct_body fields) ->
+               let payload =
+                 fields |> List.map (fun (_, t, _) -> show_typ t) |> String.concat ", "
+               in
+               Printf.sprintf "%s (%s)" vname payload
+             | Some (Ast.Type_body t) -> Printf.sprintf "%s (%s)" vname (show_typ t))
+           |> String.concat ", "
+         in
+         Printf.sprintf "type %s = enum { %s }" nameg variant_s
+       | _ ->
+         let params_s = params |> List.map param_to_string |> String.concat ", " in
+         let ret_s =
+           match explicit_ret with
+           | Some ret -> " -> " ^ show_typ ret
+           | None -> ""
+         in
+         Printf.sprintf "%s(%s)%s" nameg params_s ret_s)
     | Ast.Curry_decl { name; curried; _ } -> Printf.sprintf "%s := %s" name curried
     | Ast.Import_decl { name; link_name; _ } ->
       Printf.sprintf "%s (import \"%s\")" name link_name
@@ -239,33 +286,80 @@ let string_of_doc stdlib_flag out_type files =
   let doc_files =
     if stdlib_flag then List.map fst (get_stdlib_files ()) @ files else files
   in
-  (match out_type with
-   | Html -> Buffer.add_string buf "html output not implemented"
-   | Stdout ->
-     doc_files
-     |> List.iteri (fun fidx file ->
-       let tokens = Lexer.lex_from_file file in
-       let docs = collect_top_level_docs tokens in
-       let nodes = Parser.parse (Parser.create tokens) in
-       let sigs = collect_signatures nodes in
-       let rec emit docs sigs first =
-         match sigs with
-         | [] -> ()
-         | sigstr :: sr ->
-           let docs', entry =
-             match docs with
-             | (loc, doc) :: dr -> dr, Some (loc, doc, sigstr)
-             | [] -> [], None
-           in
-           if not first then Buffer.add_char buf '\n';
-           (match entry with
-            | Some (loc, doc, sigstr) ->
-              Buffer.add_string buf (Printf.sprintf "%s: %s\n\t%s" (Token.show_loc loc) doc sigstr)
-            | None -> Buffer.add_string buf sigstr);
-           emit docs' sr false
-       in
-       emit docs sigs (fidx = 0)));
-  Buffer.contents buf
+  let entries =
+    doc_files
+    |> List.concat_map (fun file ->
+      let tokens = Lexer.lex_from_file file in
+      let docs = collect_top_level_docs tokens in
+      let nodes = Parser.parse (Parser.create tokens) in
+      let sigs = collect_signatures nodes in
+      let rec pair acc docs sigs =
+        match sigs with
+        | [] -> List.rev acc
+        | sigstr :: sr ->
+          let docs', entry =
+            match docs with
+            | (loc, doc) :: dr -> dr, Some (loc, doc, sigstr)
+            | [] -> [], None
+          in
+          let acc' =
+            match entry with
+            | Some e -> e :: acc
+            | None -> (Token.{ file; row = 0; col = 0 }, "", sigstr) :: acc
+          in
+          pair acc' docs' sr
+      in
+      pair [] docs sigs)
+  in
+  match out_type with
+  | Stdout ->
+    entries
+    |> List.iteri (fun idx (loc, doc, sigstr) ->
+      if idx > 0 then Buffer.add_char buf '\n';
+      let doc_part = if String.length doc = 0 then "" else doc in
+      if doc_part = ""
+      then Buffer.add_string buf sigstr
+      else
+        Buffer.add_string
+          buf
+          (Printf.sprintf "%s: %s\n\t%s" (Token.show_loc loc) doc_part sigstr));
+    Buffer.contents buf
+  | Html ->
+    ensure_dir build_dir;
+    ensure_dir doc_dir;
+    let doc_path = Filename.concat doc_dir "index.html" in
+    let oc = open_out doc_path in
+    Fun.protect
+      (fun () ->
+         output_string oc "<!DOCTYPE html><html><head><meta charset=\"utf-8\">";
+         output_string oc "<title>Supernova Docs</title>";
+         output_string
+           oc
+           "<style>body{font-family:sans-serif;max-width:960px;margin:40px \
+            auto;padding:0 \
+            16px;}h2{margin-bottom:4px;}pre{background:#f5f5f5;padding:8px;border-radius:4px;white-space:pre-wrap;} \
+            .loc{color:#666;font-size:0.9em;margin:0 0 8px 0;} \
+            section{margin-bottom:24px;border-bottom:1px solid \
+            #ddd;padding-bottom:16px;} code{white-space:pre-wrap;}</style>";
+         output_string oc "</head><body><h1>Documentation</h1>";
+         List.iter
+           (fun (loc, doc, sigstr) ->
+              output_string oc "<section>";
+              output_string
+                oc
+                (Printf.sprintf
+                   "<p class=\"loc\">%s</p>"
+                   (html_escape (Token.show_loc loc)));
+              output_string
+                oc
+                (Printf.sprintf "<h2><code>%s</code></h2>" (html_escape sigstr));
+              if String.length doc > 0
+              then output_string oc (Printf.sprintf "<pre>%s</pre>" (html_escape doc));
+              output_string oc "</section>")
+           entries;
+         output_string oc "</body></html>")
+      ~finally:(fun () -> close_out oc);
+    Printf.sprintf "Wrote %s" doc_path
 ;;
 
 let string_of_codegen stdlib_flag files =
@@ -785,9 +879,7 @@ let doc_cmd =
     let doc = "Output format: stdout or html (html not yet implemented)." in
     Arg.(
       value
-      & opt
-          (enum [ "stdout", Stdout; "html", Html ])
-          Stdout
+      & opt (enum [ "stdout", Stdout; "html", Html ]) Stdout
       & info [ "out-type" ] ~docv:"OUT_TYPE" ~doc)
   in
   Cmd.v
