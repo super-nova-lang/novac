@@ -45,7 +45,6 @@ let string_of_doc ~doc_files ~out_type =
       let gens = if generics = [] then "" else "[" ^ String.concat ", " generics ^ "]" in
       let nameg = name ^ gens in
       (match expr_opt with
-       | Some (Ast.Macro_expr _) -> Printf.sprintf "%s!()" nameg
        | Some (Ast.Struct_expr (fields, _)) ->
          let payload =
            fields |> List.map (fun (_, t, _) -> show_typ t) |> String.concat ", "

@@ -1095,9 +1095,6 @@ let rec emit_expression emitter env expr =
             if stack_bytes > 0
             then emit_instr emitter (Printf.sprintf "add rsp, %d" stack_bytes);
             Result.Ok Type_unknown))
-    | Ast.Macro_call _ ->
-      let* () = unsupported emitter "macro calls are not supported yet" in
-      Result.Ok Type_unknown
   and reorder_named_params emitter callee_name params =
     let has_named =
       List.exists
@@ -1538,9 +1535,6 @@ let rec emit_expression emitter env expr =
   | Ast.Match_expr m -> emit_match_expr emitter env m
   | Ast.Struct_expr (fields, with_block) -> emit_struct_literal (fields, with_block)
   | Ast.Enum_expr (variants, with_block) -> emit_enum_literal (variants, with_block)
-  | Ast.Macro_expr _ ->
-    let* () = unsupported emitter "macro expressions are not supported yet" in
-    Result.Ok Type_unknown
   | Ast.Derive_expr _ ->
     let* () = unsupported emitter "derive expressions are not supported yet" in
     Result.Ok Type_unknown
@@ -1595,21 +1589,13 @@ let register_function_params symbol name params =
 let rec emit_decl emitter prefix = function
   | Ast.Decl { name; generics = _; params; body; explicit_ret; _ } ->
     let symbol = mangle prefix name in
-    let is_macro_decl =
-      match snd body with
-      | Some (Ast.Macro_expr _) -> true
-      | _ -> false
-    in
-    if is_macro_decl
-    then Result.Ok ()
-    else
-      (match snd body with
-       | Some (Ast.Struct_expr (_, Some w)) | Some (Ast.Enum_expr (_, Some w)) ->
-         emit_nodes emitter (prefix @ [ name ]) w
-       | _ -> Result.Ok ())
-      |> fun _ ->
-      register_function_params symbol name params;
-      emit_function emitter prefix name params explicit_ret symbol body
+    (match snd body with
+     | Some (Ast.Struct_expr (_, Some w)) | Some (Ast.Enum_expr (_, Some w)) ->
+       emit_nodes emitter (prefix @ [ name ]) w
+     | _ -> Result.Ok ())
+    |> fun _ ->
+    register_function_params symbol name params;
+    emit_function emitter prefix name params explicit_ret symbol body
   | Ast.Module_decl { name; body; _ } -> emit_nodes emitter (prefix @ [ name ]) body
   | Ast.Curry_decl { name; _ } ->
     let symbol = mangle prefix name in
@@ -1936,9 +1922,9 @@ and emit_function emitter prefix name params explicit_ret symbol (stmts, expr_op
     | Ast.Call_expr call -> count_match_locals_call call
     | Ast.Relational_expr rel -> count_match_locals_rel rel
     | Ast.Assignment_expr assign -> count_match_locals_assign assign
-    | Ast.Macro_expr nodes | Ast.Derive_expr nodes -> count_locals_in_t 0 nodes
+    | Ast.Derive_expr nodes -> count_locals_in_t 0 nodes
   and count_match_locals_call = function
-    | Ast.Decl_call (callee, params) | Ast.Macro_call (callee, params) ->
+    | Ast.Decl_call (callee, params) ->
       let callee_binds = count_match_locals_expr callee in
       let param_binds =
         List.fold_left

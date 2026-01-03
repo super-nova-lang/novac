@@ -155,7 +155,6 @@ let rec infer_expression_type ctx expr =
   | A.Match_expr match_expr -> infer_match_type ctx match_expr
   | A.Struct_expr _ -> A.User "struct" (* TODO: proper struct types *)
   | A.Enum_expr _ -> A.User "enum" (* TODO: proper struct types *)
-  | A.Macro_expr _ -> A.Unit_typ (* Macros don't have types *)
   | A.Derive_expr _ -> A.Unit_typ (* Derive doesn't have types *)
 
 and infer_call_type ctx = function
@@ -163,9 +162,6 @@ and infer_call_type ctx = function
     (* Infer return type from the callee's symbol (functions, structs, enums). *)
     List.iter (infer_call_param_type ctx) params;
     infer_expression_type ctx expr
-  | A.Macro_call (_expr, params) ->
-    List.iter (infer_call_param_type ctx) params;
-    A.Unit_typ
 
 and infer_call_param_type ctx = function
   | A.Named (_, expr) -> ignore (infer_expression_type ctx expr)
@@ -258,14 +254,10 @@ let rec analyze_expression ctx expr =
   | A.Match_expr match_expr -> analyze_match ctx match_expr
   | A.Struct_expr (fields, with_block) -> analyze_struct ctx fields with_block
   | A.Enum_expr (variants, with_block) -> analyze_enum ctx variants with_block
-  | A.Macro_expr body -> analyze_macro ctx body
   | A.Derive_expr body -> analyze_derive ctx body
 
 and analyze_call ctx = function
   | A.Decl_call (expr, params) ->
-    analyze_expression ctx expr;
-    List.iter (analyze_call_param ctx) params
-  | A.Macro_call (expr, params) ->
     analyze_expression ctx expr;
     List.iter (analyze_call_param ctx) params
 
@@ -401,7 +393,6 @@ and analyze_enum ctx variants with_block =
     ignore (exit_scope ctx')
   | None -> ()
 
-and analyze_macro ctx body = List.iter (analyze_ast ctx) body
 and analyze_derive ctx body = List.iter (analyze_ast ctx) body
 
 (** Analyze a statement *)

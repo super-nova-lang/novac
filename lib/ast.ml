@@ -186,7 +186,6 @@ and expression =
   | Match_expr of match_expr
   | Struct_expr of struct_field list * with_block option
   | Enum_expr of enum_variant list * with_block option
-  | Macro_expr of t list
   | Derive_expr of t list
 
 and assignment_expr =
@@ -235,9 +234,7 @@ and unary_expr =
   expression(call_param, ...)
   expression!(call_param, ...)
 *)
-and call_expr =
-  | Decl_call of expression * call_param list
-  | Macro_call of expression * call_param list
+and call_expr = Decl_call of expression * call_param list
 
 (**
   ~x = expression

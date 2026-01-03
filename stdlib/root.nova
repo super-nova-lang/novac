@@ -11,8 +11,3 @@ let Result[T, E] :: = enum {
 	ok :: struct { value: T },
 	err :: struct { error: E },
 }
-
-(*! Rust-style println! macro. Rewritten by the preprocessor to call printf. 
-    TODO: Actually implement the println macro
-*)
-let println = macro { () }

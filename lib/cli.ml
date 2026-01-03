@@ -159,7 +159,6 @@ let parse_and_validate file =
 
 let generate_asm_for_file file =
   let nodes = parse_and_validate file in
-  let nodes = Preprocessor.preprocess nodes in
   match Codegen.generate_code nodes with
   | Ok asm -> asm
   | Error err ->
@@ -262,7 +261,6 @@ let compile_to_exe stdlib_flag files exe_file =
                Printf.eprintf "Skipping compilation due to parse errors in %s\n" file;
                failed := true)
              else (
-               let nodes = Preprocessor.preprocess nodes in
                match Codegen.generate_code nodes with
                | Error err ->
                  Printf.eprintf
@@ -700,7 +698,6 @@ let handle_novac_error f =
       | Utils.Lexer -> "Lexer"
       | Utils.Parser -> "Parser"
       | Utils.Analyzer -> "Analyzer"
-      | Utils.Preprocessor -> "Preprocessor"
       | Utils.Optimizer -> "Optimizer"
       | Utils.Codegen -> "Codegen"
       | Utils.Io -> "IO"

@@ -632,7 +632,6 @@ and parse_expression p =
   match peek p with
   | Token.Struct -> parse_struct_expr p
   | Token.Enum -> parse_enum_expr p
-  | Token.Macro -> parse_macro_expr p
   | Token.Derive -> parse_derive_expr p
   | Token.Match -> parse_match_expr p
   | Token.Open_square -> parse_list_expr p
@@ -815,20 +814,6 @@ and parse_enum_variant p =
   in
   name, body
 
-and parse_macro_expr p =
-  expect p Token.Macro |> ignore;
-  expect p Token.Open_brack |> ignore;
-  let stmts = ref [] in
-  while peek p <> Token.Close_brack && not (is_at_end p) do
-    match parse_toplevel p with
-    | Ok stmt ->
-      stmts := stmt :: !stmts;
-      if peek p = Token.Semi_colon then advance p
-    | Error err -> get_ok_or_fail p (Error err)
-  done;
-  expect p Token.Close_brack |> ignore;
-  Ok (Ast.Macro_expr (List.rev !stmts))
-
 and parse_derive_expr p =
   expect p Token.Derive |> ignore;
   expect p Token.Open_brack |> ignore;
@@ -941,16 +926,6 @@ and parse_primary p =
       (match consume p with
        | Token.Ident member -> aux (Ast.Unary_member (left, member))
        | _ -> failf p "Expected identifier after .")
-    | Token.Bang ->
-      advance p;
-      if peek p = Token.Open_paren
-      then (
-        advance p;
-        let params = parse_list p [ Token.Close_paren ] parse_call_param in
-        expect p Token.Close_paren |> ignore;
-        let call = Ast.Macro_call (wrap_unary left, params) in
-        aux (Ast.Unary_call call))
-      else Ast.Not (aux left) (* This is a bit weird but Bang can be Not or Macro *)
     | Token.Open_paren ->
       advance p;
       let params = parse_list p [ Token.Close_paren ] parse_call_param in
@@ -977,15 +952,11 @@ and parse_primary p =
   Ok (aux res)
 
 and parse_call_expr_with_name name p =
-  let is_macro = peek p = Token.Bang in
-  if is_macro then advance p;
   expect p Token.Open_paren |> ignore;
   let params = parse_list p [ Token.Close_paren ] parse_call_param in
   expect p Token.Close_paren |> ignore;
   let target = Ast.Unary_val (Ast.Ident name) in
-  if is_macro
-  then Ast.Macro_call (wrap_unary target, params)
-  else Ast.Decl_call (wrap_unary target, params)
+  Ast.Decl_call (wrap_unary target, params)
 
 and parse_call_param p =
   if peek p = Token.Tilde

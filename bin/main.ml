@@ -10,7 +10,6 @@ let () =
         | Novac.Utils.Lexer -> "Lexer"
         | Novac.Utils.Parser -> "Parser"
         | Novac.Utils.Analyzer -> "Analyzer"
-        | Novac.Utils.Preprocessor -> "Preprocessor"
         | Novac.Utils.Optimizer -> "Optimizer"
         | Novac.Utils.Codegen -> "Codegen"
         | Novac.Utils.Io -> "IO"

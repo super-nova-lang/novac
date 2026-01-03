@@ -2,7 +2,6 @@ type novac_phase =
   | Lexer
   | Parser
   | Analyzer
-  | Preprocessor
   | Optimizer
   | Codegen
   | Io

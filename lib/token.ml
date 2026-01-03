@@ -16,7 +16,6 @@ type t =
   | Else
   | Struct
   | Enum
-  | Macro
   | Derive
   | Mut
   | Defer
@@ -109,7 +108,6 @@ let from_string = function
   | "else" -> Else
   | "struct" -> Struct
   | "enum" -> Enum
-  | "macro" -> Macro
   | "derive" -> Derive
   | "mut" -> Mut
   | "defer" -> Defer
