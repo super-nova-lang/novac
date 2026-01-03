@@ -260,19 +260,16 @@ and match_arm = match_param * match_if option * match_arm_body
 
 and match_arm_body = statement list * expression option
 
-(**
-  Single:
-    x
-  Touple:
-    (x, y, z, ...)
-    x, y, z, ...
-  Item:
-    x :: y :: z :: ...
-*)
+(** Patterns used in match arms. *)
 and match_param =
-  | Single of expression
-  | Touple of expression list
-  | Item of expression list
+  | Pat_wildcard
+  | Pat_int of int
+  | Pat_bool of bool
+  | Pat_string of string
+  | Pat_ident of ident
+  | Pat_enum of ident * ident * match_param list
+  | Pat_tuple of match_param list
+  | Pat_struct of (ident * match_param) list
 
 (** if expression *)
 and match_if = expression

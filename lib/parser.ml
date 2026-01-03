@@ -677,22 +677,64 @@ and parse_match_expr p =
   Ok (Ast.Match_expr (target, List.rev !arms))
 
 and parse_match_param p =
-  (* Try to parse a pattern. For now, we'll reuse primary expression parsing. *)
-  let e = parse_primary p |> get_ok_or_fail p in
-  match e with
-  | Ast.Unary_val (Ast.Implicit_member _) ->
-    (match peek p with
-     | Token.Ident _ ->
-       let var = parse_primary p |> get_ok_or_fail p in
-       Ast.Single
-         (wrap_unary
-            (Ast.Unary_call
-               (Ast.Decl_call (wrap_unary e, [ Ast.Positional (wrap_unary var) ]))))
-     | _ -> Ast.Single (wrap_unary e))
-  | Ast.Unary_call (Ast.Decl_call (target, params)) ->
-    (* Check if it's .Variant(x) *)
-    Ast.Single (wrap_unary (Ast.Unary_call (Ast.Decl_call (target, params))))
-  | _ -> Ast.Single (wrap_unary e)
+  let rec pattern_of_atom = function
+    | Ast.Int n -> Ast.Pat_int n
+    | Ast.Bool b -> Ast.Pat_bool b
+    | Ast.String s -> Ast.Pat_string s
+    | Ast.Ident "_" -> Ast.Pat_wildcard
+    | Ast.Ident id -> Ast.Pat_ident id
+    | Ast.Grouping e -> pattern_of_expr e
+    | _ -> failf p "Unsupported pattern"
+  and pattern_of_unary = function
+    | Ast.Unary_val atom -> pattern_of_atom atom
+    | Ast.Unary_call (Ast.Decl_call (callee, params)) ->
+      let rec extract_member = function
+        | Ast.Relational_expr (Ast.Relational_val add) -> extract_member_add add
+        | _ -> None
+      and extract_member_add = function
+        | Ast.Additive_val m -> extract_member_mul m
+        | _ -> None
+      and extract_member_mul = function
+        | Ast.Multiplicative_val u -> extract_member_unary u
+        | _ -> None
+      and extract_member_unary = function
+        | Ast.Unary_member (Ast.Unary_val (Ast.Ident base), field) -> Some (base, field)
+        | _ -> None
+      in
+      (match extract_member callee with
+       | Some (ename, vname) ->
+         let payload =
+           params
+           |> List.map (function
+             | Ast.Positional expr -> pattern_of_expr expr
+             | Ast.Named _ -> failf p "Named parameters not supported in match patterns")
+         in
+         Ast.Pat_enum (ename, vname, payload)
+       | None -> failf p "Unsupported call pattern")
+    | Ast.Unary_member (Ast.Unary_val (Ast.Ident ename), vname) ->
+      Ast.Pat_enum (ename, vname, [])
+    | _ -> failf p "Unsupported pattern"
+  and pattern_of_expr = function
+    | Ast.Relational_expr (Ast.Relational_val add) -> pattern_of_add add
+    | _ -> failf p "Unsupported pattern"
+  and pattern_of_add = function
+    | Ast.Additive_val mul -> pattern_of_mul mul
+    | _ -> failf p "Unsupported pattern"
+  and pattern_of_mul = function
+    | Ast.Multiplicative_val unary -> pattern_of_unary unary
+    | _ -> failf p "Unsupported pattern"
+  in
+  if peek p = Token.Open_paren
+  then (
+    advance p;
+    let pats = parse_list p [ Token.Close_paren ] parse_match_param in
+    expect p Token.Close_paren |> ignore;
+    match pats with
+    | [ single ] -> single
+    | ps -> Ast.Pat_tuple ps)
+  else (
+    let expr = parse_expression p |> get_ok_or_fail p in
+    pattern_of_expr expr)
 
 and parse_match_arm_body p =
   if peek p = Token.Open_brack

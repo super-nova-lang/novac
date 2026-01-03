@@ -97,6 +97,7 @@ let gensym prefix =
   Printf.sprintf "__%s_%d" prefix n
 ;;
 
+let current_locals_ref : int ref option ref = ref None
 let list_node_size = Target.ptr_size * 2
 
 (* --- Value typing and layouts --- *)
@@ -459,81 +460,197 @@ let rec emit_expression emitter env expr =
       emit_instr emitter "movzx rax, al";
       Result.Ok Type_int
   and emit_match_expr emitter env (target, arms) =
-    let rec extract_atom = function
-      | Ast.Relational_expr (Ast.Relational_val a) -> extract_add a
-      | _ -> None
-    and extract_add = function
-      | Ast.Additive_val m -> extract_mul m
-      | _ -> None
-    and extract_mul = function
-      | Ast.Multiplicative_val u -> extract_unary u
-      | _ -> None
-    and extract_unary = function
-      | Ast.Unary_val a -> Some a
-      | _ -> None
-    in
-    let* _ = emit_expression emitter env target in
+    let locals_ref = Option.value ~default:(ref 0) !current_locals_ref in
+    let* target_type = emit_expression emitter env target in
     emit_instr emitter "mov r13, rax";
     let end_label = gensym "match_end" in
-    let rec emit_arms = function
+    let find_enum_layout name = StringMap.find_opt name !enum_layouts in
+    let find_struct_layout name = StringMap.find_opt name !struct_layouts in
+    let rec bind_struct_fields env fields layout base_reg next_label =
+      let rec bind_named env = function
+        | [] -> Result.Ok env
+        | (fname, pat) :: rest ->
+          (match List.find_opt (fun f -> f.fname = fname) layout.s_fields with
+           | None ->
+             emit_instr emitter (Printf.sprintf "jmp %s" next_label);
+             Result.Ok env
+           | Some fl ->
+             emit_instr
+               emitter
+               (Printf.sprintf "mov rax, [%s+%d]" base_reg (fl.foffset - Target.ptr_size));
+             let* env' = bind_pattern env pat fl.ftype "rax" next_label in
+             bind_named env' rest)
+      in
+      bind_named env fields
+    and bind_tuple env pats layout base_reg next_label =
+      let fields = layout.s_fields in
+      if List.length pats <> List.length fields
+      then (
+        emit_instr emitter (Printf.sprintf "jmp %s" next_label);
+        Result.Ok env)
+      else (
+        let rec bind_pos env pats fields =
+          match pats, fields with
+          | [], [] -> Result.Ok env
+          | p :: prest, f :: frest ->
+            emit_instr
+              emitter
+              (Printf.sprintf "mov rax, [%s+%d]" base_reg (f.foffset - Target.ptr_size));
+            let* env' = bind_pattern env p f.ftype "rax" next_label in
+            bind_pos env' prest frest
+          | _ -> Result.Ok env
+        in
+        bind_pos env pats fields)
+    and bind_enum env ename vname payloads base_reg next_label =
+      match find_enum_layout ename with
+      | None ->
+        let* () = unsupported emitter ("unknown enum layout: " ^ ename) in
+        Result.Ok env
+      | Some layout ->
+        let rec find_variant idx = function
+          | [] -> None
+          | v :: rest ->
+            if v.vname = vname then Some (idx, v) else find_variant (idx + 1) rest
+        in
+        (match find_variant 0 layout.e_variants with
+         | None ->
+           let* () = unsupported emitter ("unknown variant: " ^ vname) in
+           Result.Ok env
+         | Some (tag, vlayout) ->
+           emit_instr emitter (Printf.sprintf "mov rax, [%s]" base_reg);
+           emit_instr emitter (Printf.sprintf "cmp rax, %d" tag);
+           emit_instr emitter (Printf.sprintf "jne %s" next_label);
+           let payload_fields = vlayout.v_payload in
+           let bind_named env fields =
+             let rec aux env = function
+               | [] -> Result.Ok env
+               | (fname, pat) :: rest ->
+                 (match List.find_opt (fun f -> f.fname = fname) payload_fields with
+                  | None ->
+                    emit_instr emitter (Printf.sprintf "jmp %s" next_label);
+                    Result.Ok env
+                  | Some fl ->
+                    emit_instr
+                      emitter
+                      (Printf.sprintf "mov rax, [%s+%d]" base_reg fl.foffset);
+                    let* env' = bind_pattern env pat fl.ftype "rax" next_label in
+                    aux env' rest)
+             in
+             aux env fields
+           in
+           let bind_positional env pats fields =
+             if List.length pats <> List.length fields
+             then (
+               emit_instr emitter (Printf.sprintf "jmp %s" next_label);
+               Result.Ok env)
+             else (
+               let rec aux env pats fields =
+                 match pats, fields with
+                 | [], [] -> Result.Ok env
+                 | p :: prest, f :: frest ->
+                   emit_instr
+                     emitter
+                     (Printf.sprintf "mov rax, [%s+%d]" base_reg f.foffset);
+                   let* env' = bind_pattern env p f.ftype "rax" next_label in
+                   aux env' prest frest
+                 | _ -> Result.Ok env
+               in
+               aux env pats fields)
+           in
+           (match payloads with
+            | [ Ast.Pat_struct fields ] -> bind_named env fields
+            | _ -> bind_positional env payloads payload_fields))
+    and bind_pattern env pat vtype value_reg next_label =
+      match pat with
+      | Ast.Pat_wildcard -> Result.Ok env
+      | Ast.Pat_int n ->
+        emit_instr emitter (Printf.sprintf "cmp %s, %d" value_reg n);
+        emit_instr emitter (Printf.sprintf "jne %s" next_label);
+        Result.Ok env
+      | Ast.Pat_bool b ->
+        let iv = if b then 1 else 0 in
+        emit_instr emitter (Printf.sprintf "cmp %s, %d" value_reg iv);
+        emit_instr emitter (Printf.sprintf "jne %s" next_label);
+        Result.Ok env
+      | Ast.Pat_string _ ->
+        let* () = unsupported emitter "string patterns not supported yet" in
+        Result.Ok env
+      | Ast.Pat_ident name ->
+        let offset = (!locals_ref + 1) * Target.ptr_size in
+        emit_instr emitter (Printf.sprintf "mov [rbp-%d], %s" offset value_reg);
+        locals_ref := !locals_ref + 1;
+        let env = env_add name { offset; vtype } env in
+        Result.Ok env
+      | Ast.Pat_tuple pats ->
+        (match vtype with
+         | Type_struct sname ->
+           (match find_struct_layout sname with
+            | Some layout -> bind_tuple env pats layout value_reg next_label
+            | None ->
+              let* () = unsupported emitter "tuple pattern layout missing" in
+              Result.Ok env)
+         | _ ->
+           let* () = unsupported emitter "tuple pattern requires struct value" in
+           Result.Ok env)
+      | Ast.Pat_struct fields ->
+        (match vtype with
+         | Type_struct sname ->
+           (match find_struct_layout sname with
+            | Some layout -> bind_struct_fields env fields layout value_reg next_label
+            | None ->
+              let* () = unsupported emitter "struct pattern layout missing" in
+              Result.Ok env)
+         | _ ->
+           let* () = unsupported emitter "struct pattern requires struct value" in
+           Result.Ok env)
+      | Ast.Pat_enum (ename, vname, payloads) ->
+        bind_enum env ename vname payloads value_reg next_label
+    and emit_match_arm env (pat, guard_opt, (stmts, expr_opt)) rest =
+      let next_label = gensym "match_next" in
+      let* env_after_pattern = bind_pattern env pat target_type "r13" next_label in
+      let* () =
+        match guard_opt with
+        | Some g ->
+          let* _ = emit_expression emitter env_after_pattern g in
+          emit_instr emitter "test rax, rax";
+          emit_instr emitter (Printf.sprintf "jz %s" next_label);
+          Result.Ok ()
+        | None -> Result.Ok ()
+      in
+      let rec emit_stmts env = function
+        | [] -> Result.Ok env
+        | stmt :: rest ->
+          let* env' =
+            match stmt with
+            | Ast.Expression_stmt e ->
+              let* _ = emit_expression emitter env e in
+              Result.Ok env
+            | _ ->
+              let* () = unsupported emitter "stmt in match arm not supported" in
+              Result.Ok env
+          in
+          emit_stmts env' rest
+      in
+      let* env_after_stmts = emit_stmts env_after_pattern stmts in
+      let* () =
+        match expr_opt with
+        | Some e ->
+          let* _ = emit_expression emitter env_after_stmts e in
+          Result.Ok ()
+        | None -> Result.Ok ()
+      in
+      emit_instr emitter (Printf.sprintf "jmp %s" end_label);
+      emit_label emitter next_label;
+      emit_match_arms env rest
+    and emit_match_arms env = function
       | [] ->
-        (* no match *)
         emit_instr emitter "mov rax, 60";
         emit_instr emitter "mov rdi, 1";
         emit_instr emitter "syscall";
         Result.Ok ()
-      | (param, guard_opt, (stmts, expr_opt)) :: rest ->
-        let next_label = gensym "match_next" in
-        let* () =
-          match param with
-          | Ast.Single expr ->
-            (match extract_atom expr with
-             | Some (Ast.Int n) ->
-               emit_instr emitter (Printf.sprintf "cmp r13, %d" n);
-               emit_instr emitter (Printf.sprintf "jne %s" next_label);
-               Result.Ok ()
-             | Some (Ast.Ident "_") -> Result.Ok ()
-             | _ ->
-               let* () = unsupported emitter "pattern not supported" in
-               Result.Ok ())
-          | _ ->
-            let* () = unsupported emitter "pattern not supported" in
-            Result.Ok ()
-        in
-        let* () =
-          match guard_opt with
-          | Some g ->
-            let* _ = emit_expression emitter env g in
-            emit_instr emitter "test rax, rax";
-            emit_instr emitter (Printf.sprintf "jz %s" next_label);
-            Result.Ok ()
-          | None -> Result.Ok ()
-        in
-        let rec emit_stmts = function
-          | [] -> Result.Ok ()
-          | stmt :: rest ->
-            let* () =
-              match stmt with
-              | Ast.Expression_stmt e ->
-                let* _ = emit_expression emitter env e in
-                Result.Ok ()
-              | _ -> unsupported emitter "stmt in match arm not supported"
-            in
-            emit_stmts rest
-        in
-        let* () = emit_stmts stmts in
-        let* () =
-          match expr_opt with
-          | Some e ->
-            let* _ = emit_expression emitter env e in
-            Result.Ok ()
-          | None -> Result.Ok ()
-        in
-        emit_instr emitter (Printf.sprintf "jmp %s" end_label);
-        emit_label emitter next_label;
-        emit_arms rest
+      | arm :: rest -> emit_match_arm env arm rest
     in
-    let* () = emit_arms arms in
+    let* () = emit_match_arms env arms in
     emit_label emitter end_label;
     Result.Ok Type_unknown
   and emit_additive = function
@@ -1554,22 +1671,156 @@ and emit_statement_in_fn emitter prefix env end_label locals_ref = function
 
 and emit_function emitter prefix name params explicit_ret symbol (stmts, expr_opt) =
   let nested_prefix = prefix @ [ name ] in
-  let rec count_locals_in_t acc = function
+  let rec count_pattern_binds = function
+    | Ast.Pat_ident _ -> 1
+    | Ast.Pat_enum (_, _, payloads) ->
+      List.fold_left (fun acc p -> acc + count_pattern_binds p) 0 payloads
+    | Ast.Pat_tuple pats ->
+      List.fold_left (fun acc p -> acc + count_pattern_binds p) 0 pats
+    | Ast.Pat_struct fields ->
+      List.fold_left (fun acc (_, p) -> acc + count_pattern_binds p) 0 fields
+    | _ -> 0
+  and count_locals_in_t acc = function
     | [] -> acc
     | Ast.Statement s :: rest -> count_locals_in_t (count_locals_in_stmt acc s) rest
     | _ :: rest -> count_locals_in_t acc rest
+  and count_match_locals_expr = function
+    | Ast.Match_expr (target, arms) ->
+      let target_count = count_match_locals_expr target in
+      let arms_count =
+        List.fold_left
+          (fun acc (pat, _guard, (stmts, expr_opt)) ->
+             let pat_binds = count_pattern_binds pat in
+             let stmts_binds = List.fold_left count_locals_in_stmt 0 stmts in
+             let expr_binds =
+               match expr_opt with
+               | Some e -> count_match_locals_expr e
+               | None -> 0
+             in
+             acc + pat_binds + stmts_binds + expr_binds)
+          0
+          arms
+      in
+      target_count + arms_count
+    | Ast.Struct_expr (fields, with_block) ->
+      let field_binds =
+        List.fold_left
+          (fun acc (_, _, expr_opt) ->
+             acc
+             +
+             match expr_opt with
+             | Some e -> count_match_locals_expr e
+             | None -> 0)
+          0
+          fields
+      in
+      let with_binds =
+        match with_block with
+        | Some blk -> count_locals_in_t 0 blk
+        | None -> 0
+      in
+      field_binds + with_binds
+    | Ast.Enum_expr (variants, with_block) ->
+      let variant_binds =
+        List.fold_left
+          (fun acc (_vname, body_opt) ->
+             acc
+             +
+             match body_opt with
+             | Some (Ast.Struct_body sfields) ->
+               List.fold_left
+                 (fun a (_, _, expr_opt) ->
+                    a
+                    +
+                    match expr_opt with
+                    | Some e -> count_match_locals_expr e
+                    | None -> 0)
+                 0
+                 sfields
+             | Some (Ast.Type_body _) | None -> 0)
+          0
+          variants
+      in
+      let with_binds =
+        match with_block with
+        | Some blk -> count_locals_in_t 0 blk
+        | None -> 0
+      in
+      variant_binds + with_binds
+    | Ast.List_expr exprs ->
+      List.fold_left (fun acc e -> acc + count_match_locals_expr e) 0 exprs
+    | Ast.Call_expr call -> count_match_locals_call call
+    | Ast.Relational_expr rel -> count_match_locals_rel rel
+    | Ast.Assignment_expr assign -> count_match_locals_assign assign
+    | Ast.Macro_expr nodes | Ast.Derive_expr nodes -> count_locals_in_t 0 nodes
+  and count_match_locals_call = function
+    | Ast.Decl_call (callee, params) | Ast.Macro_call (callee, params) ->
+      let callee_binds = count_match_locals_expr callee in
+      let param_binds =
+        List.fold_left
+          (fun acc -> function
+             | Ast.Named (_, e) | Ast.Positional e -> acc + count_match_locals_expr e)
+          0
+          params
+      in
+      callee_binds + param_binds
+  and count_match_locals_assign = function
+    | Ast.Add_assign (_, expr)
+    | Ast.Sub_assign (_, expr)
+    | Ast.Mul_assign (_, expr)
+    | Ast.Div_assign (_, expr) -> count_match_locals_add expr
+  and count_match_locals_rel = function
+    | Ast.Relational_val add -> count_match_locals_add add
+    | Ast.Eql (l, r)
+    | Ast.Neq (l, r)
+    | Ast.Lt (l, r)
+    | Ast.Gt (l, r)
+    | Ast.Leq (l, r)
+    | Ast.Geq (l, r) -> count_match_locals_add l + count_match_locals_add r
+  and count_match_locals_add = function
+    | Ast.Add (l, r) | Ast.Sub (l, r) ->
+      count_match_locals_add l + count_match_locals_mul r
+    | Ast.Additive_val m -> count_match_locals_mul m
+  and count_match_locals_mul = function
+    | Ast.Mul (l, r) | Ast.Div (l, r) | Ast.Mod (l, r) | Ast.Pow (l, r) ->
+      count_match_locals_mul l + count_match_locals_unary r
+    | Ast.Multiplicative_val u -> count_match_locals_unary u
+  and count_match_locals_unary = function
+    | Ast.Neg u | Ast.Not u -> count_match_locals_unary u
+    | Ast.Unary_member (u, _) -> count_match_locals_unary u
+    | Ast.Unary_call call -> count_match_locals_call call
+    | Ast.Unary_val atom -> count_match_locals_atom atom
+  and count_match_locals_atom = function
+    | Ast.Grouping e -> count_match_locals_expr e
+    | _ -> 0
   and count_locals_in_stmt acc = function
-    | Ast.Decl_stmt (Ast.Decl { generics = _; params = []; body = stmts, _; _ })
-      when stmts = [] -> acc + 1
-    | Ast.If_stmt { body; elif; _ } ->
-      count_locals_in_else (count_locals_in_t acc body) elif
-    | Ast.While_stmt { body; _ } -> count_locals_in_t acc body
+    | Ast.Decl_stmt (Ast.Decl { generics = _; params = []; body = stmts, expr_opt; _ })
+      when stmts = [] ->
+      let expr_binds =
+        match expr_opt with
+        | Some e -> count_match_locals_expr e
+        | None -> 0
+      in
+      acc + 1 + expr_binds
+    | Ast.If_stmt { cond; body; elif } ->
+      let cond_binds = count_match_locals_expr cond in
+      count_locals_in_else (count_locals_in_t (acc + cond_binds) body) elif
+    | Ast.While_stmt { cond; body } ->
+      let cond_binds = count_match_locals_expr cond in
+      count_locals_in_t (acc + cond_binds) body
     | Ast.For_stmt for_kind ->
       (match for_kind with
        | Ast.For_iter { body; _ } -> acc + 2 + count_locals_in_t 0 body
-       | Ast.For_c { body; _ } -> acc + 1 + count_locals_in_t 0 body
+       | Ast.For_c { var = _; init; cond; update; body } ->
+         let init_binds = count_match_locals_expr init in
+         let cond_binds = count_match_locals_expr cond in
+         let update_binds = count_match_locals_expr update in
+         acc + 1 + init_binds + cond_binds + update_binds + count_locals_in_t 0 body
        | Ast.For_tuple { vars; body; _ } ->
          acc + List.length vars + count_locals_in_t 0 body)
+    | Ast.Return_stmt (Ast.With_expr e) -> acc + count_match_locals_expr e
+    | Ast.Return_stmt Ast.Naked -> acc
+    | Ast.Expression_stmt e -> acc + count_match_locals_expr e
     | _ -> acc
   and count_locals_in_else acc = function
     | Ast.Nope -> acc
@@ -1664,7 +1915,10 @@ and emit_function emitter prefix name params explicit_ret symbol (stmts, expr_op
       in
       emit_body env' rest
   in
-  let* env = emit_body env stmts in
+  current_locals_ref := Some local_slots;
+  let result_env = emit_body env stmts in
+  current_locals_ref := None;
+  let* env = result_env in
   let* ret_type =
     match expr_opt with
     | Some expr ->

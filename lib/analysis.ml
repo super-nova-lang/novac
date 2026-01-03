@@ -340,9 +340,12 @@ and analyze_match_arm ctx (param, match_if, body) =
   ignore (exit_scope ctx')
 
 and analyze_match_param ctx = function
-  | A.Single expr -> analyze_expression ctx expr
-  | A.Touple exprs -> List.iter (analyze_expression ctx) exprs
-  | A.Item exprs -> List.iter (analyze_expression ctx) exprs
+  | A.Pat_wildcard -> ()
+  | A.Pat_int _ | A.Pat_bool _ | A.Pat_string _ -> ()
+  | A.Pat_ident name -> add_symbol ctx name None (0, 0)
+  | A.Pat_enum (_, _, payloads) -> List.iter (analyze_match_param ctx) payloads
+  | A.Pat_tuple pats -> List.iter (analyze_match_param ctx) pats
+  | A.Pat_struct fields -> List.iter (fun (_, pat) -> analyze_match_param ctx pat) fields
 
 and analyze_match_arm_body ctx (stmts, expr_opt) =
   List.iter (analyze_statement ctx) stmts;
