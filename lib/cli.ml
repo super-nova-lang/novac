@@ -1,4 +1,6 @@
 open Cmdliner
+module Json = Yojson.Safe
+module String_map = Map.Make (String)
 
 let stdlib_flag =
   let doc =
@@ -17,6 +19,8 @@ let stdlib_dir = "stdlib"
 let build_dir = "build"
 let emit_dir = Filename.concat build_dir "emit"
 let debug_dir = Filename.concat build_dir "debug"
+let tests_dir = "tests"
+let expected_file = Filename.concat tests_dir ".expected.json"
 
 let ensure_dir dir =
   if not (Sys.file_exists dir && Sys.is_directory dir) then Unix.mkdir dir 0o755
@@ -90,6 +94,27 @@ let get_files_for_backend stdlib_flag provided_files =
       std_lib_files, provided_files)
 ;;
 
+let all_files_for_backend stdlib_flag provided_files =
+  let std_lib_files, user_files = get_files_for_backend stdlib_flag provided_files in
+  List.map fst std_lib_files @ if user_files = [] then [] else user_files
+;;
+
+let ast_to_string nodes = nodes |> List.map Ast.show |> String.concat "\n"
+
+let read_all_from_channel ic =
+  let buf = Buffer.create 256 in
+  let chunk = Bytes.create 4096 in
+  let rec loop () =
+    match input ic chunk 0 (Bytes.length chunk) with
+    | 0 -> ()
+    | n ->
+      Buffer.add_subbytes buf chunk 0 n;
+      loop ()
+  in
+  loop ();
+  Buffer.contents buf
+;;
+
 let format_analysis_error = function
   | Analysis.Error (Analysis.Undefined_variable (v, sugg)) ->
     let hint =
@@ -111,6 +136,65 @@ let format_analysis_error = function
   | Analysis.Warning _ -> "Unexpected warning in error list"
 ;;
 
+let parse_and_validate file =
+  let tokens = Lexer.lex_from_file file in
+  let nodes = Parser.parse (Parser.create tokens) in
+  if has_parse_errors nodes
+  then (
+    report_parse_errors file nodes;
+    let msg =
+      nodes
+      |> List.find_map (function
+        | Ast.Error m -> Some m
+        | _ -> None)
+      |> Option.value ~default:"Parse failed"
+    in
+    Utils.raise_error ~phase:Utils.Parser ~file ~row:0 ~col:0 msg)
+  else nodes
+;;
+
+let generate_asm_for_file file =
+  let nodes = parse_and_validate file in
+  let nodes = Preprocessor.preprocess nodes in
+  match Codegen.generate_code nodes with
+  | Ok asm -> asm
+  | Error err ->
+    Utils.raise_error
+      ~phase:Utils.Codegen
+      ~file
+      ~row:0
+      ~col:0
+      (format_analysis_error (Analysis.Error err))
+;;
+
+let string_of_parse stdlib_flag files =
+  let buf = Buffer.create 256 in
+  all_files_for_backend stdlib_flag files
+  |> List.iteri (fun idx file ->
+    let nodes = parse_and_validate file in
+    if idx > 0 then Buffer.add_char buf '\n';
+    Buffer.add_string buf (ast_to_string nodes));
+  Buffer.contents buf
+;;
+
+let string_of_codegen stdlib_flag files =
+  ensure_dir build_dir;
+  ensure_dir emit_dir;
+  let buf = Buffer.create 256 in
+  all_files_for_backend stdlib_flag files
+  |> List.iteri (fun idx file ->
+    let asm = generate_asm_for_file file in
+    let base = Filename.remove_extension (Filename.basename file) in
+    let output = Filename.concat emit_dir (base ^ ".asm") in
+    let oc = open_out output in
+    output_string oc asm;
+    close_out oc;
+    if idx > 0 then Buffer.add_char buf '\n';
+    Buffer.add_string buf (Printf.sprintf "  Wrote %s\n" output);
+    Buffer.add_string buf (Printf.sprintf "===== %s (generated) =====\n%s\n" output asm));
+  Buffer.contents buf |> String.trim
+;;
+
 let run_cmd command =
   let code = Sys.command command in
   if code <> 0 then Printf.eprintf "Command failed (%d): %s\n" code command;
@@ -118,55 +202,13 @@ let run_cmd command =
 ;;
 
 let process_parse stdlib_flag files =
-  let std_lib_files, user_files = get_files_for_backend stdlib_flag files in
-  let all_files =
-    List.map fst std_lib_files @ if user_files = [] then [] else user_files
-  in
-  List.iter
-    (fun file ->
-       let tokens = Lexer.lex_from_file file in
-       let nodes = Parser.parse (Parser.create tokens) in
-       if has_parse_errors nodes
-       then (
-         report_parse_errors file nodes;
-         Printf.eprintf "Parse failed for %s\n" file)
-       else Printf.printf "parse %s ok\n" (Filename.basename file))
-    all_files
+  let output = string_of_parse stdlib_flag files in
+  if String.length output > 0 then Printf.printf "%s\n" output
 ;;
 
 let process_codegen stdlib_flag files =
-  ensure_dir build_dir;
-  ensure_dir emit_dir;
-  let std_lib_files, user_files = get_files_for_backend stdlib_flag files in
-  let all_files =
-    List.map fst std_lib_files @ if user_files = [] then [] else user_files
-  in
-  List.iter
-    (fun file ->
-       (* Printf.printf "Generating code for: %s\n" file; *)
-       let tokens = Lexer.lex_from_file file in
-       let nodes = Parser.parse (Parser.create tokens) in
-       if has_parse_errors nodes
-       then (
-         report_parse_errors file nodes;
-         Printf.eprintf "Skipping code generation due to parse errors in %s\n" file)
-       else (
-         let nodes = Preprocessor.preprocess nodes in
-         match Codegen.generate_code nodes with
-         | Ok asm ->
-           let base = Filename.remove_extension (Filename.basename file) in
-           let output = Filename.concat emit_dir (base ^ ".asm") in
-           let oc = open_out output in
-           output_string oc asm;
-           close_out oc;
-           Printf.printf "  Wrote %s\n" output;
-           Printf.printf "===== %s (generated) =====\n%s\n" output asm
-         | Error err ->
-           Printf.eprintf
-             "  Code generation error in %s: %s\n"
-             file
-             (format_analysis_error (Analysis.Error err))))
-    all_files
+  let output = string_of_codegen stdlib_flag files in
+  if String.length output > 0 then Printf.printf "%s\n" output
 ;;
 
 let compile_to_exe stdlib_flag files exe_file =
@@ -262,6 +304,53 @@ let compile_to_exe stdlib_flag files exe_file =
           link_code))))
 ;;
 
+let string_of_run stdlib_flag files =
+  let exe_file =
+    match files with
+    | [ file ] ->
+      let base = Filename.remove_extension (Filename.basename file) in
+      Filename.concat debug_dir base
+    | _ -> Filename.concat debug_dir "main"
+  in
+  let exit_code = compile_to_exe stdlib_flag files exe_file in
+  if exit_code <> 0
+  then
+    Utils.raise_error
+      ~phase:Utils.Codegen
+      ~file:"<compile>"
+      ~row:0
+      ~col:0
+      "Compilation failed";
+  let run_cmd =
+    if Filename.is_relative exe_file then Printf.sprintf "./%s" exe_file else exe_file
+  in
+  let ic = Unix.open_process_in run_cmd in
+  let output = read_all_from_channel ic in
+  match Unix.close_process_in ic with
+  | Unix.WEXITED 0 -> String.trim output
+  | Unix.WEXITED code ->
+    Utils.raise_error
+      ~phase:Utils.Io
+      ~file:"<run>"
+      ~row:0
+      ~col:0
+      (Printf.sprintf "Program exited with code %d" code)
+  | Unix.WSIGNALED signal ->
+    Utils.raise_error
+      ~phase:Utils.Io
+      ~file:"<run>"
+      ~row:0
+      ~col:0
+      (Printf.sprintf "Program terminated by signal %d" signal)
+  | Unix.WSTOPPED signal ->
+    Utils.raise_error
+      ~phase:Utils.Io
+      ~file:"<run>"
+      ~row:0
+      ~col:0
+      (Printf.sprintf "Program stopped by signal %d" signal)
+;;
+
 let process_compile stdlib_flag files =
   let exe_file = Filename.concat debug_dir "main" in
   let exit_code = compile_to_exe stdlib_flag files exe_file in
@@ -269,19 +358,180 @@ let process_compile stdlib_flag files =
 ;;
 
 let process_run stdlib_flag files =
-  let exe_file = Filename.concat debug_dir "main" in
-  let exit_code = compile_to_exe stdlib_flag files exe_file in
-  if exit_code <> 0 then exit exit_code;
-  let run_cmd =
-    if Filename.is_relative exe_file then Printf.sprintf "./%s" exe_file else exe_file
-  in
-  let run_exit_code = Sys.command run_cmd in
-  if run_exit_code <> 0 then exit run_exit_code
+  let output = string_of_run stdlib_flag files in
+  if String.length output > 0 then Printf.printf "%s\n" output
 ;;
 
 let process_clean () =
   let _ = Sys.command (Printf.sprintf "rm -rf %s/* %s/*" debug_dir emit_dir) in
   ()
+;;
+
+type test_snapshot =
+  { file : string
+  ; parse : string
+  ; codegen : string
+  ; run : string
+  }
+
+let capture_output thunk =
+  try Ok (thunk ()) with
+  | Utils.Novac_error (_, err) ->
+    Error (Printf.sprintf "%s:%d:%d: %s" err.file err.row err.col err.msg)
+  | exn -> Error (Printexc.to_string exn)
+;;
+
+let string_of_result = function
+  | Ok s -> s
+  | Error msg -> "ERROR: " ^ msg
+;;
+
+let test_snapshot_to_json t =
+  `Assoc
+    [ "file", `String t.file
+    ; "parse", `String t.parse
+    ; "codegen", `String t.codegen
+    ; "run", `String t.run
+    ]
+;;
+
+let test_snapshot_of_json json =
+  let expect_string key props =
+    match List.assoc_opt key props with
+    | Some (`String v) -> v
+    | _ ->
+      Utils.raise_error
+        ~phase:Utils.Io
+        ~file:expected_file
+        ~row:0
+        ~col:0
+        (Printf.sprintf "Missing or invalid '%s' entry" key)
+  in
+  match json with
+  | `Assoc props ->
+    { file = expect_string "file" props
+    ; parse = expect_string "parse" props
+    ; codegen = expect_string "codegen" props
+    ; run = expect_string "run" props
+    }
+  | _ ->
+    Utils.raise_error
+      ~phase:Utils.Io
+      ~file:expected_file
+      ~row:0
+      ~col:0
+      "Expected JSON object for snapshot"
+;;
+
+let nova_test_files () =
+  if Sys.file_exists tests_dir && Sys.is_directory tests_dir
+  then
+    Sys.readdir tests_dir
+    |> Array.to_list
+    |> List.filter (fun f -> Filename.check_suffix f ".nova")
+    |> List.map (Filename.concat tests_dir)
+    |> List.sort String.compare
+  else []
+;;
+
+let collect_snapshot file =
+  let parse_r = capture_output (fun () -> string_of_parse false [ file ]) in
+  let codegen_r = capture_output (fun () -> string_of_codegen false [ file ]) in
+  let run_r = capture_output (fun () -> string_of_run false [ file ]) in
+  { file
+  ; parse = string_of_result parse_r
+  ; codegen = string_of_result codegen_r
+  ; run = string_of_result run_r
+  }
+;;
+
+let read_expected_snapshots () =
+  if Sys.file_exists expected_file
+  then (
+    match Json.from_file expected_file with
+    | `List items ->
+      items
+      |> List.map test_snapshot_of_json
+      |> List.sort (fun a b -> String.compare a.file b.file)
+    | _ ->
+      Utils.raise_error
+        ~phase:Utils.Io
+        ~file:expected_file
+        ~row:0
+        ~col:0
+        "Expected a JSON list in .expected.json")
+  else []
+;;
+
+let write_expected_snapshots snapshots =
+  let json = `List (List.map test_snapshot_to_json snapshots) in
+  Json.to_file expected_file json
+;;
+
+let snapshot_map snapshots =
+  List.fold_left
+    (fun acc snap -> String_map.add snap.file snap acc)
+    String_map.empty
+    snapshots
+;;
+
+let diff_snapshots expected actual =
+  let expected_map = snapshot_map expected in
+  let actual_map = snapshot_map actual in
+  let failures = ref [] in
+  String_map.iter
+    (fun file snapshot ->
+       match String_map.find_opt file expected_map with
+       | None -> failures := ("Unexpected test file: " ^ file) :: !failures
+       | Some exp ->
+         let check label proj =
+           let lhs = proj exp in
+           let rhs = proj snapshot in
+           if not (String.equal lhs rhs)
+           then failures := Printf.sprintf "%s mismatch for %s" label file :: !failures
+         in
+         check "parse" (fun s -> s.parse);
+         check "codegen" (fun s -> s.codegen);
+         check "run" (fun s -> s.run))
+    actual_map;
+  String_map.iter
+    (fun file _ ->
+       if not (String_map.mem file actual_map)
+       then failures := ("Missing expected test file: " ^ file) :: !failures)
+    expected_map;
+  List.rev !failures
+;;
+
+let process_test_compiler () =
+  let files = nova_test_files () in
+  if files = []
+  then Printf.printf "No test files found in %s\n" tests_dir
+  else (
+    let actual = List.map collect_snapshot files in
+    let expected = read_expected_snapshots () in
+    if expected = []
+    then (
+      Printf.eprintf
+        "No expectations found at %s. Run test-compiler-promote first.\n"
+        expected_file;
+      exit 1)
+    else (
+      let failures = diff_snapshots expected actual in
+      if failures = []
+      then Printf.printf "All %d tests passed\n" (List.length files)
+      else (
+        List.iter (fun msg -> Printf.eprintf "%s\n" msg) failures;
+        exit 1)))
+;;
+
+let process_test_compiler_promote () =
+  let files = nova_test_files () in
+  if files = []
+  then Printf.printf "No test files found in %s\n" tests_dir
+  else (
+    let snapshots = List.map collect_snapshot files in
+    write_expected_snapshots snapshots;
+    Printf.printf "Updated expectations at %s\n" expected_file)
 ;;
 
 let handle_novac_error f =
@@ -304,25 +554,48 @@ let handle_novac_error f =
 let parse_cmd =
   let doc = "Parse the input files." in
   let info = Cmd.info "parse" ~doc in
-  Cmd.v info Term.(const (fun stdlib files -> handle_novac_error (fun () -> process_parse stdlib files)) $ stdlib_flag $ files_arg)
+  Cmd.v
+    info
+    Term.(
+      const (fun stdlib files ->
+        handle_novac_error (fun () -> process_parse stdlib files))
+      $ stdlib_flag
+      $ files_arg)
 ;;
 
 let codegen_cmd =
   let doc = "Generate code for the input files." in
   let info = Cmd.info "codegen" ~doc in
-  Cmd.v info Term.(const (fun stdlib files -> handle_novac_error (fun () -> process_codegen stdlib files)) $ stdlib_flag $ files_arg)
+  Cmd.v
+    info
+    Term.(
+      const (fun stdlib files ->
+        handle_novac_error (fun () -> process_codegen stdlib files))
+      $ stdlib_flag
+      $ files_arg)
 ;;
 
 let compile_cmd =
   let doc = "Compile the input files to an executable." in
   let info = Cmd.info "compile" ~doc in
-  Cmd.v info Term.(const (fun stdlib files -> handle_novac_error (fun () -> process_compile stdlib files)) $ stdlib_flag $ files_arg)
+  Cmd.v
+    info
+    Term.(
+      const (fun stdlib files ->
+        handle_novac_error (fun () -> process_compile stdlib files))
+      $ stdlib_flag
+      $ files_arg)
 ;;
 
 let run_cmd =
   let doc = "Compile and run the input files." in
   let info = Cmd.info "run" ~doc in
-  Cmd.v info Term.(const (fun stdlib files -> handle_novac_error (fun () -> process_run stdlib files)) $ stdlib_flag $ files_arg)
+  Cmd.v
+    info
+    Term.(
+      const (fun stdlib files -> handle_novac_error (fun () -> process_run stdlib files))
+      $ stdlib_flag
+      $ files_arg)
 ;;
 
 let clean_cmd =
@@ -331,8 +604,51 @@ let clean_cmd =
   Cmd.v info Term.(const process_clean $ const ())
 ;;
 
+let test_compiler_cmd =
+  let doc =
+    "Run parse/codegen/run on ./tests/*.nova and compare against ./tests/.expected.json"
+  in
+  let info = Cmd.info "test-compiler" ~doc in
+  Cmd.v info Term.(const (fun () -> handle_novac_error process_test_compiler) $ const ())
+;;
+
+let tc_cmd =
+  let doc = "Alias for test-compiler" in
+  let info = Cmd.info "tc" ~doc in
+  Cmd.v info Term.(const (fun () -> handle_novac_error process_test_compiler) $ const ())
+;;
+
+let test_compiler_promote_cmd =
+  let doc =
+    "Capture parse/codegen/run outputs for ./tests/*.nova into ./tests/.expected.json"
+  in
+  let info = Cmd.info "test-compiler-promote" ~doc in
+  Cmd.v
+    info
+    Term.(const (fun () -> handle_novac_error process_test_compiler_promote) $ const ())
+;;
+
+let tcp_cmd =
+  let doc = "Alias for test-compiler-promote" in
+  let info = Cmd.info "tcp" ~doc in
+  Cmd.v
+    info
+    Term.(const (fun () -> handle_novac_error process_test_compiler_promote) $ const ())
+;;
+
 let main_cmd =
   let doc = "Supernova compiler." in
   let info = Cmd.info "novac" ~doc in
-  Cmd.group info [ parse_cmd; codegen_cmd; compile_cmd; run_cmd; clean_cmd ]
+  Cmd.group
+    info
+    [ parse_cmd
+    ; codegen_cmd
+    ; compile_cmd
+    ; run_cmd
+    ; clean_cmd
+    ; test_compiler_cmd
+    ; tc_cmd
+    ; test_compiler_promote_cmd
+    ; tcp_cmd
+    ]
 ;;
