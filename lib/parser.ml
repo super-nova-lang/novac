@@ -3,7 +3,16 @@ type t =
   ; mutable pos : int
   }
 
-let create tokens = { tokens; pos = 0 }
+let filter_doc_comments tokens =
+  List.filter
+    (fun (t, _) ->
+       match t with
+       | Token.Doc_comment _ -> false
+       | _ -> true)
+    tokens
+;;
+
+let create tokens = { tokens = filter_doc_comments tokens; pos = 0 }
 let peek p = fst (List.nth p.tokens p.pos)
 let loc p = snd (List.nth p.tokens p.pos)
 let advance p = p.pos <- p.pos + 1
