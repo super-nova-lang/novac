@@ -692,11 +692,14 @@ let rec emit_expression emitter env expr =
              | `Direct name ->
                if not (StringSet.mem name !defined_functions)
                then Emitter.add_extern emitter name;
+               emit_instr emitter "xor rax, rax";
+               (* SysV varargs: rax = #xmm args *)
                emit_instr emitter ("call " ^ name);
                Result.Ok Type_unknown
              | `Struct_ctor sname -> emit_struct_ctor emitter sname params env
              | `Enum_ctor (ename, vname) -> emit_enum_ctor emitter ename vname params env
              | `Indirect ->
+               emit_instr emitter "xor rax, rax";
                emit_instr emitter "call r11";
                Result.Ok Type_unknown)
           | _ ->
@@ -730,11 +733,13 @@ let rec emit_expression emitter env expr =
           | `Direct name ->
             if not (StringSet.mem name !defined_functions)
             then Emitter.add_extern emitter name;
+            emit_instr emitter "xor rax, rax";
             emit_instr emitter ("call " ^ name);
             Result.Ok Type_unknown
           | `Struct_ctor sname -> emit_struct_ctor emitter sname params env
           | `Enum_ctor (ename, vname) -> emit_enum_ctor emitter ename vname params env
           | `Indirect ->
+            emit_instr emitter "xor rax, rax";
             emit_instr emitter "call r11";
             Result.Ok Type_unknown))
     | Ast.Macro_call _ ->
@@ -797,9 +802,12 @@ let rec emit_expression emitter env expr =
         let* () =
           match convert_string, vtype with
           | true, Type_list Type_char ->
+            let padded = idx land 1 = 1 in
+            if padded then emit_instr emitter "push rax";
             save_args idx;
             let* () = emit_list_to_cstring () in
             restore_args idx;
+            if padded then emit_instr emitter "pop rax";
             Result.Ok ()
           | _ -> Result.Ok ()
         in
@@ -825,9 +833,8 @@ let rec emit_expression emitter env expr =
       (match StringMap.find_opt base !enum_layouts with
        | Some _ -> Result.Ok (`Enum_ctor (base, field))
        | None ->
-         let* _ = emit_expression emitter env callee in
-         emit_instr emitter "mov r11, rax";
-         Result.Ok `Indirect)
+         (* Treat module-style member access (e.g., stdio.printf) as a direct symbol. *)
+         Result.Ok (`Direct field))
     | _ ->
       let* _ = emit_expression emitter env callee in
       emit_instr emitter "mov r11, rax";
@@ -918,7 +925,10 @@ let rec emit_expression emitter env expr =
              match ps, fs with
              | [], [] -> Result.Ok ()
              | Ast.Positional e :: prest, f :: frest ->
+               emit_instr emitter "push r12";
+               (* preserve base pointer *)
                let* _ = emit_expression emitter env e in
+               emit_instr emitter "pop r12";
                emit_instr emitter (Printf.sprintf "mov [r12+%d], rax" f.foffset);
                store_shared prest frest
              | _ -> unsupported emitter "shared field mismatch"
@@ -927,7 +937,9 @@ let rec emit_expression emitter env expr =
              match ps, payload with
              | [], [] -> Result.Ok ()
              | Ast.Positional e :: prest, f :: frest ->
+               emit_instr emitter "push r12";
                let* _ = emit_expression emitter env e in
+               emit_instr emitter "pop r12";
                emit_instr emitter (Printf.sprintf "mov [r12+%d], rax" f.foffset);
                store_payload prest frest
              | _ -> unsupported emitter "payload field mismatch"
@@ -966,7 +978,10 @@ let rec emit_expression emitter env expr =
         let* () =
           match find_field_expr f.fname with
           | Some e ->
+            emit_instr emitter "push r12";
+            (* preserve base pointer across expression *)
             let* _ = emit_expression emitter env e in
+            emit_instr emitter "pop r12";
             Result.Ok ()
           | None ->
             emit_instr emitter "mov rax, 0";
@@ -1068,8 +1083,10 @@ let rec emit_expression emitter env expr =
       (match env_lookup name env with
        | Some var_info ->
          let offset = var_info.offset in
-         emit_instr emitter (Printf.sprintf "mov rbx, [rbp - %d]" offset);
-         emit_instr emitter "mov rax, rbx";
+         emit_instr emitter "mov rcx, rax";
+         (* move divisor to rcx *)
+         emit_instr emitter (Printf.sprintf "mov rax, [rbp - %d]" offset);
+         (* load dividend into rax *)
          emit_instr emitter "cqo";
          (* sign extend rax into rdx:rax *)
          emit_instr emitter "idiv rcx";
@@ -1510,7 +1527,14 @@ and emit_function emitter prefix name params symbol (stmts, expr_opt) =
       Result.Ok ()
     | None -> Result.Ok ()
   in
+  (match expr_opt, symbol with
+   | None, s when s <> "main" ->
+     emit_instr emitter "xor rax, rax" (* default return 0 when no tail expr *)
+   | _ -> ());
   emit_label emitter end_label;
+  (match symbol with
+   | "main" -> emit_instr emitter "xor rax, rax" (* force exit code 0 *)
+   | _ -> ());
   emit_instr emitter "mov rsp, rbp";
   emit_instr emitter "pop rbp";
   emit_instr emitter "ret";

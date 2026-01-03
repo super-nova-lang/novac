@@ -107,11 +107,11 @@ let add_symbol ctx name typ location =
     ; location
     }
   in
-  (match Hashtbl.find_opt ctx.symbols name with
-   | Some stack ->
-     ctx.warnings := Warning (Shadowed_variable name) :: !(ctx.warnings);
-     Hashtbl.replace ctx.symbols name (info :: stack)
-   | None -> Hashtbl.add ctx.symbols name [ info ])
+  match Hashtbl.find_opt ctx.symbols name with
+  | Some stack ->
+    ctx.warnings := Warning (Shadowed_variable name) :: !(ctx.warnings);
+    Hashtbl.replace ctx.symbols name (info :: stack)
+  | None -> Hashtbl.add ctx.symbols name [ info ]
 ;;
 
 (** Look up a symbol (find the one with highest scope level) *)
@@ -119,6 +119,7 @@ let lookup_symbol ctx name =
   match Hashtbl.find_opt ctx.symbols name with
   | Some (info :: _) -> Some info
   | _ -> None
+;;
 
 (** Set inferred type for a symbol *)
 let set_inferred_type ctx name typ =
