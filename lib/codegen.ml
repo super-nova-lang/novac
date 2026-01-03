@@ -988,7 +988,9 @@ let rec emit_expression emitter env expr =
                 || not (StringSet.mem name !defined_functions)
               | None -> false
             in
-            let* () = emit_params emitter env convert_string callee_name params 0 in
+            let* stack_bytes =
+              emit_params emitter env convert_string callee_name params 0
+            in
             (match ctyp with
              | `Direct name ->
                if not (StringSet.mem name !defined_functions)
@@ -996,12 +998,16 @@ let rec emit_expression emitter env expr =
                emit_instr emitter "xor rax, rax";
                (* SysV varargs: rax = #xmm args *)
                emit_instr emitter ("call " ^ name);
+               if stack_bytes > 0
+               then emit_instr emitter (Printf.sprintf "add rsp, %d" stack_bytes);
                Result.Ok Type_unknown
              | `Struct_ctor sname -> emit_struct_ctor emitter sname params env
              | `Enum_ctor (ename, vname) -> emit_enum_ctor emitter ename vname params env
              | `Indirect ->
                emit_instr emitter "xor rax, rax";
                emit_instr emitter "call r11";
+               if stack_bytes > 0
+               then emit_instr emitter (Printf.sprintf "add rsp, %d" stack_bytes);
                Result.Ok Type_unknown)
           | _ ->
             let* btype = emit_unary base in
@@ -1028,10 +1034,14 @@ let rec emit_expression emitter env expr =
               || not (StringSet.mem symbol !defined_functions)
             in
             emit_instr emitter "mov rdi, rax";
-            let* () = emit_params emitter env convert_string (Some symbol) params 1 in
+            let* stack_bytes =
+              emit_params emitter env convert_string (Some symbol) params 1
+            in
             if not (StringSet.mem symbol !defined_functions)
             then Emitter.add_extern emitter symbol;
             emit_instr emitter ("call " ^ symbol);
+            if stack_bytes > 0
+            then emit_instr emitter (Printf.sprintf "add rsp, %d" stack_bytes);
             let ret_type =
               match btype with
               | Type_struct s ->
@@ -1051,7 +1061,7 @@ let rec emit_expression emitter env expr =
              || not (StringSet.mem name !defined_functions)
            | _ -> false
          in
-         let* () =
+         let* stack_bytes =
            emit_params
              emitter
              env
@@ -1068,12 +1078,22 @@ let rec emit_expression emitter env expr =
             then Emitter.add_extern emitter name;
             emit_instr emitter "xor rax, rax";
             emit_instr emitter ("call " ^ name);
+            if stack_bytes > 0
+            then emit_instr emitter (Printf.sprintf "add rsp, %d" stack_bytes);
             Result.Ok Type_unknown
-          | `Struct_ctor sname -> emit_struct_ctor emitter sname params env
-          | `Enum_ctor (ename, vname) -> emit_enum_ctor emitter ename vname params env
+          | `Struct_ctor sname ->
+            if stack_bytes > 0
+            then emit_instr emitter (Printf.sprintf "add rsp, %d" stack_bytes);
+            emit_struct_ctor emitter sname params env
+          | `Enum_ctor (ename, vname) ->
+            if stack_bytes > 0
+            then emit_instr emitter (Printf.sprintf "add rsp, %d" stack_bytes);
+            emit_enum_ctor emitter ename vname params env
           | `Indirect ->
             emit_instr emitter "xor rax, rax";
             emit_instr emitter "call r11";
+            if stack_bytes > 0
+            then emit_instr emitter (Printf.sprintf "add rsp, %d" stack_bytes);
             Result.Ok Type_unknown))
     | Ast.Macro_call _ ->
       let* () = unsupported emitter "macro calls are not supported yet" in
@@ -1172,10 +1192,20 @@ let rec emit_expression emitter env expr =
     in
     (* No conversion needed for Type_string (already a C string). *)
     match params with
-    | [] -> Result.Ok ()
+    | [] -> Result.Ok 0
     | Ast.Positional e :: rest ->
       if idx >= Array.length arg_registers
-      then unsupported emitter "more than 6 call arguments are not supported"
+      then (
+        let* stack_bytes = emit_params emitter env convert_string callee rest (idx + 1) in
+        let* vtype = emit_expression emitter env e in
+        let* () =
+          match convert_string, vtype with
+          | true, Type_list Type_char -> emit_list_to_cstring ()
+          | true, Type_string -> Result.Ok ()
+          | _ -> Result.Ok ()
+        in
+        emit_instr emitter "push rax";
+        Result.Ok (stack_bytes + 8))
       else (
         let padded = idx land 1 = 1 in
         if padded then emit_instr emitter "push rax";
@@ -1188,11 +1218,13 @@ let rec emit_expression emitter env expr =
         in
         if padded then emit_instr emitter "add rsp, 8";
         emit_instr emitter "push rax";
-        let* () = emit_params emitter env convert_string callee rest (idx + 1) in
+        let* stack_bytes = emit_params emitter env convert_string callee rest (idx + 1) in
         emit_instr emitter "pop rax";
         emit_instr emitter (Printf.sprintf "mov %s, rax" arg_registers.(idx));
-        Result.Ok ())
-    | Ast.Named _ :: _ -> unsupported emitter "named parameters not reordered"
+        Result.Ok stack_bytes)
+    | Ast.Named _ :: _ ->
+      let* () = unsupported emitter "named parameters not reordered" in
+      Result.Ok 0
   and emit_callee emitter env callee =
     match callee with
     | Ast.Relational_expr

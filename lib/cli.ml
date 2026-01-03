@@ -497,11 +497,13 @@ let supports_color () =
 ;;
 
 let colorize use code s = if use then code ^ s ^ "\027[0m" else s
-;;
 
 let nth_opt lst idx =
-  if idx < 0 then None else try Some (List.nth lst idx) with
-  | _ -> None
+  if idx < 0
+  then None
+  else (
+    try Some (List.nth lst idx) with
+    | _ -> None)
 ;;
 
 let pretty_diff ?(context = 2) ?(line_limit = 200) ?(color = true) expected actual =
@@ -515,7 +517,8 @@ let pretty_diff ?(context = 2) ?(line_limit = 200) ?(color = true) expected actu
   let rec first_diff i e a =
     match e, a with
     | [], [] -> None
-    | eh :: et, ah :: at -> if String.equal eh ah then first_diff (i + 1) et at else Some i
+    | eh :: et, ah :: at ->
+      if String.equal eh ah then first_diff (i + 1) et at else Some i
     | _ -> Some i
   in
   match first_diff 0 elines alines with
@@ -531,7 +534,9 @@ let pretty_diff ?(context = 2) ?(line_limit = 200) ?(color = true) expected actu
       , fun () -> Buffer.contents buf )
     in
     let render_line tag i line =
-      let base = Printf.sprintf "    %s %4d | %s" tag (i + 1) (truncate ~limit:line_limit line) in
+      let base =
+        Printf.sprintf "    %s %4d | %s" tag (i + 1) (truncate ~limit:line_limit line)
+      in
       match tag with
       | "-" -> colorize use_color c_red base
       | "+" -> colorize use_color c_green base
@@ -636,7 +641,9 @@ let diff_snapshots expected actual =
   results, failures
 ;;
 
-let pp_diff (label, expected, actual) = Printf.sprintf "  - %s\n%s" label (pretty_diff expected actual)
+let pp_diff (label, expected, actual) =
+  Printf.sprintf "  - %s\n%s" label (pretty_diff expected actual)
+;;
 
 let pp_result = function
   | `Pass file -> Printf.sprintf "[PASS] %s" file

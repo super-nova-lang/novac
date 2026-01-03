@@ -3,7 +3,6 @@
 ## High Priority
 
 ### Language Features
-  - [ ] **Enum payload access** - Access fields in enum variant payloads
   - [ ] **Macro system** - PARTIAL (preprocessor in place, needs pattern matching)
     - [x] Macro definitions parsing
     - [x] Preprocessor infrastructure
@@ -28,14 +27,12 @@
 ### Codegen Improvements
   - [ ] **More than 6 parameters** - Stack-based parameter passing
   - [ ] **Optional/variadic parameters** - AST exists, needs codegen
-  - [ ] **Implicit member lookups** - Full support for `.field` syntax
   - [ ] **Better error handling** - Replace unsupported placeholders with proper errors
   - [ ] **Fat-pointer strings** - Reintroduce length-tracked strings (fat pointers) with consistent ABI and runtime helpers; currently using null-terminated C strings for stability.
 
 ### Build System
   - [ ] **LLVM integration** - Better optimization and portability
   - [ ] **Linking improvements** - External library support
-  - [ ] Refresh `tests/.expected.json` after parser/prelude and named-arg changes
 
 ## Low Priority
 
@@ -48,6 +45,7 @@
   - [ ] **Debugging support** - Source maps, debug symbols
 
 ## Completed ✓
+  - [x] Enum payload access (payload fields on variants)
   - [x] CLI `parse` prints AST nodes to stdout
   - [x] Added `test-compiler`/`tc` and `test-compiler-promote`/`tcp` commands with JSON expectations in `tests/.expected.json`
   - [x] Add `Doc_comment` token to lexer
@@ -64,7 +62,10 @@
   - [x] Enum construction (basic)
   - [x] Function calls (up to 6 params)
   - [x] Named call parameters in codegen (reorders by callee signature)
+  - [x] Implicit member lookups (receiver `.field` plus `.ptr`/`.type` reflection)
+  - [x] Type reflection via `.type` (returns type name value)
   - [x] String literals with proper escaping
   - [x] Preprocessor module for macro expansion
   - [x] Parse command in CLI for syntax validation
   - [x] Match enhancements (enum patterns, destructuring/tuples, guards)
+  - [x] Test harness improvements (line-aware, colorized diffs; expectations refreshed)
