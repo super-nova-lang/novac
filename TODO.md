@@ -1,30 +1,9 @@
 # To-Do
 
-## Completed ✓
-  - [x] CLI `parse` prints AST nodes to stdout
-  - [x] Added `test-compiler`/`tc` and `test-compiler-promote`/`tcp` commands with JSON expectations in `tests/.expected.json`
-  - [x] Add `Doc_comment` token to lexer
-  - [x] Generate docs from source
-  - [x] Basic lexer, parser, and AST
-  - [x] If/else statements with elif chains
-  - [x] While loops
-  - [x] Match expressions (basic - literals and wildcards)
-  - [x] Relational operators (==, !=, <, >, <=, >=)
-  - [x] Arithmetic operators (+, -, *, /, %, ^)
-  - [x] Power operator (^) with integer exponentiation
-  - [x] Struct construction and field access
-  - [x] Enum construction (basic)
-  - [x] Function calls (up to 6 params)
-  - [x] String literals with proper escaping
-  - [x] Preprocessor module for macro expansion
-  - [x] Parse command in CLI for syntax validation
-  - [x] Match enhancements (enum patterns, destructuring/tuples, guards)
-
 ## High Priority
 
 ### Language Features
   - [ ] **Enum payload access** - Access fields in enum variant payloads
-  - [ ] **For loops** - Iteration over collections
   - [ ] **Macro system** - PARTIAL (preprocessor in place, needs pattern matching)
     - [x] Macro definitions parsing
     - [x] Preprocessor infrastructure
@@ -47,7 +26,6 @@
 ## Medium Priority
 
 ### Codegen Improvements
-  - [ ] **Named call parameters** - `func(~name: value)` syntax
   - [ ] **More than 6 parameters** - Stack-based parameter passing
   - [ ] **Optional/variadic parameters** - AST exists, needs codegen
   - [ ] **Implicit member lookups** - Full support for `.field` syntax
@@ -57,6 +35,7 @@
 ### Build System
   - [ ] **LLVM integration** - Better optimization and portability
   - [ ] **Linking improvements** - External library support
+  - [ ] Refresh `tests/.expected.json` after parser/prelude and named-arg changes
 
 ## Low Priority
 
@@ -67,3 +46,25 @@
     - [ ] Progress indicators
   - [ ] **Testing framework** - Expand beyond current examples
   - [ ] **Debugging support** - Source maps, debug symbols
+
+## Completed ✓
+  - [x] CLI `parse` prints AST nodes to stdout
+  - [x] Added `test-compiler`/`tc` and `test-compiler-promote`/`tcp` commands with JSON expectations in `tests/.expected.json`
+  - [x] Add `Doc_comment` token to lexer
+  - [x] Generate docs from source
+  - [x] Basic lexer, parser, and AST
+  - [x] If/else statements with elif chains
+  - [x] While loops
+  - [x] For loops
+  - [x] Match expressions (basic - literals and wildcards)
+  - [x] Relational operators (==, !=, <, >, <=, >=)
+  - [x] Arithmetic operators (+, -, *, /, %, ^)
+  - [x] Power operator (^) with integer exponentiation
+  - [x] Struct construction and field access
+  - [x] Enum construction (basic)
+  - [x] Function calls (up to 6 params)
+  - [x] Named call parameters in codegen (reorders by callee signature)
+  - [x] String literals with proper escaping
+  - [x] Preprocessor module for macro expansion
+  - [x] Parse command in CLI for syntax validation
+  - [x] Match enhancements (enum patterns, destructuring/tuples, guards)

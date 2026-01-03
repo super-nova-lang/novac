@@ -491,6 +491,67 @@ let truncate ?(limit = 120) s =
   if String.length s <= limit then s else String.sub s 0 limit ^ "…"
 ;;
 
+let supports_color () =
+  try Unix.isatty Unix.stdout && not (String.equal (Sys.getenv "TERM") "dumb") with
+  | _ -> false
+;;
+
+let colorize use code s = if use then code ^ s ^ "\027[0m" else s
+;;
+
+let nth_opt lst idx =
+  if idx < 0 then None else try Some (List.nth lst idx) with
+  | _ -> None
+;;
+
+let pretty_diff ?(context = 2) ?(line_limit = 200) ?(color = true) expected actual =
+  let use_color = color && supports_color () in
+  let c_red = "\027[31m" in
+  let c_green = "\027[32m" in
+  let c_yellow = "\027[33m" in
+  let elines = String.split_on_char '\n' expected in
+  let alines = String.split_on_char '\n' actual in
+  let len = max (List.length elines) (List.length alines) in
+  let rec first_diff i e a =
+    match e, a with
+    | [], [] -> None
+    | eh :: et, ah :: at -> if String.equal eh ah then first_diff (i + 1) et at else Some i
+    | _ -> Some i
+  in
+  match first_diff 0 elines alines with
+  | None -> "    (no differences)"
+  | Some idx ->
+    let start = max 0 (idx - context) in
+    let stop = min (len - 1) (idx + context) in
+    let add_line, contents =
+      let buf = Buffer.create 256 in
+      ( (fun line ->
+          if Buffer.length buf > 0 then Buffer.add_char buf '\n';
+          Buffer.add_string buf line)
+      , fun () -> Buffer.contents buf )
+    in
+    let render_line tag i line =
+      let base = Printf.sprintf "    %s %4d | %s" tag (i + 1) (truncate ~limit:line_limit line) in
+      match tag with
+      | "-" -> colorize use_color c_red base
+      | "+" -> colorize use_color c_green base
+      | "@" -> colorize use_color c_yellow base
+      | _ -> base
+    in
+    add_line (render_line "@" idx (Printf.sprintf "diff @ line %d" (idx + 1)));
+    for i = start to stop do
+      match nth_opt elines i, nth_opt alines i with
+      | Some e, Some a when String.equal e a -> add_line (render_line " " i e)
+      | Some e, Some a ->
+        add_line (render_line "-" i e);
+        add_line (render_line "+" i a)
+      | Some e, None -> add_line (render_line "-" i e)
+      | None, Some a -> add_line (render_line "+" i a)
+      | None, None -> ()
+    done;
+    contents ()
+;;
+
 let pp_field label value = Printf.sprintf "%s: %s" label (truncate value)
 
 let pp_snapshot snap =
@@ -575,13 +636,7 @@ let diff_snapshots expected actual =
   results, failures
 ;;
 
-let pp_diff (label, expected, actual) =
-  Printf.sprintf
-    "  - %s\n    expected: %s\n    actual:   %s"
-    label
-    (truncate expected)
-    (truncate actual)
-;;
+let pp_diff (label, expected, actual) = Printf.sprintf "  - %s\n%s" label (pretty_diff expected actual)
 
 let pp_result = function
   | `Pass file -> Printf.sprintf "[PASS] %s" file

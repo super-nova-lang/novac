@@ -89,6 +89,7 @@ let unsupported emitter msg = emit_placeholder emitter msg
 let arg_registers = [| "rdi"; "rsi"; "rdx"; "rcx"; "r8"; "r9" |]
 let defined_functions = ref StringSet.empty
 let imported_functions = ref StringSet.empty
+let function_params : string list StringMap.t ref = ref StringMap.empty
 let gensym_counter = ref 0
 
 let gensym prefix =
@@ -108,6 +109,7 @@ type value_type =
   | Type_char
   | Type_unit
   | Type_string
+  | Type_type
   | Type_struct of string
   | Type_enum of string
   | Type_list of value_type
@@ -744,7 +746,51 @@ let rec emit_expression emitter env expr =
     | Ast.Unary_member (base, field) -> emit_member_access emitter env base field
     | Ast.Unary_call call -> emit_call emitter env call
     | Ast.Unary_val a -> emit_atom a
-  and emit_atom = function
+  and emit_cstring_literal s =
+    let bytes = s |> String.to_seq |> List.of_seq |> List.map Char.code in
+    let len = List.length bytes in
+    (* Allocate null-terminated buffer for C-string semantics. *)
+    Emitter.add_extern emitter "malloc";
+    emit_instr emitter (Printf.sprintf "mov rdi, %d" (len + 1));
+    emit_instr emitter "call malloc";
+    emit_instr emitter "mov r12, rax";
+    let rec store i = function
+      | [] -> ()
+      | b :: rest ->
+        emit_instr emitter (Printf.sprintf "mov byte [r12+%d], %d" i b);
+        store (i + 1) rest
+    in
+    store 0 bytes;
+    emit_instr emitter (Printf.sprintf "mov byte [r12+%d], 0" len);
+    emit_instr emitter "mov rax, r12";
+    Result.Ok Type_string
+  and emit_type_value vtype =
+    let tname =
+      match vtype with
+      | Type_int -> "i32"
+      | Type_bool -> "bool"
+      | Type_char -> "char"
+      | Type_unit -> "unit"
+      | Type_string -> "string"
+      | Type_type -> "type"
+      | Type_struct s | Type_enum s -> s
+      | Type_list _ -> "list"
+      | Type_unknown -> "unknown"
+    in
+    let* _ = emit_cstring_literal tname in
+    Result.Ok Type_type
+  and emit_atom atom =
+    let find_receiver () =
+      env
+      |> StringMap.bindings
+      |> List.find_opt (fun (_, { offset; vtype }) ->
+        offset = field_offset 0
+        &&
+        match vtype with
+        | Type_struct _ | Type_enum _ | Type_unknown -> true
+        | _ -> false)
+    in
+    match atom with
     | Ast.Bool true ->
       emit_instr emitter "mov rax, 1";
       Result.Ok Type_bool
@@ -754,24 +800,7 @@ let rec emit_expression emitter env expr =
     | Ast.Int i ->
       emit_instr emitter (Printf.sprintf "mov rax, %d" i);
       Result.Ok Type_int
-    | Ast.String s ->
-      let bytes = s |> String.to_seq |> List.of_seq |> List.map Char.code in
-      let len = List.length bytes in
-      (* Allocate null-terminated buffer for C-string semantics. *)
-      Emitter.add_extern emitter "malloc";
-      emit_instr emitter (Printf.sprintf "mov rdi, %d" (len + 1));
-      emit_instr emitter "call malloc";
-      emit_instr emitter "mov r12, rax";
-      let rec store i = function
-        | [] -> ()
-        | b :: rest ->
-          emit_instr emitter (Printf.sprintf "mov byte [r12+%d], %d" i b);
-          store (i + 1) rest
-      in
-      store 0 bytes;
-      emit_instr emitter (Printf.sprintf "mov byte [r12+%d], 0" len);
-      emit_instr emitter "mov rax, r12";
-      Result.Ok Type_string
+    | Ast.String s -> emit_cstring_literal s
     | Ast.Unit_val ->
       emit_instr emitter "mov rax, 0";
       Result.Ok Type_unit
@@ -785,17 +814,7 @@ let rec emit_expression emitter env expr =
          emit_instr emitter (Printf.sprintf "mov rax, [rbp-%d]" offset);
          Result.Ok vtype
        | None ->
-         let receiver =
-           env
-           |> StringMap.bindings
-           |> List.find_opt (fun (_, { offset; vtype }) ->
-             offset = field_offset 0
-             &&
-             match vtype with
-             | Type_struct _ | Type_enum _ -> true
-             | _ -> false)
-         in
-         (match receiver with
+         (match find_receiver () with
           | Some (_, { offset; vtype = Type_struct sname }) ->
             (match StringMap.find_opt sname !struct_layouts with
              | Some layout ->
@@ -830,19 +849,56 @@ let rec emit_expression emitter env expr =
             let* () = unsupported emitter ("identifier lookup not supported: " ^ name) in
             Result.Ok Type_unknown))
     | Ast.Implicit_member name ->
-      let* () = unsupported emitter ("implicit member not supported: " ^ name) in
-      Result.Ok Type_unknown
-  and emit_member_access emitter _env base field =
-    let* btype = emit_unary base in
-    match btype with
-    | Type_struct sname when StringMap.mem sname !enum_layouts ->
-      (* Treat struct-typed values whose name matches an enum as enum instances. *)
-      emit_enum_member_access emitter sname field
-    | Type_struct sname -> emit_struct_member_access emitter sname field
-    | Type_enum ename -> emit_enum_member_access emitter ename field
-    | _ ->
-      let* () = unsupported emitter "member access on non-aggregate" in
-      Result.Ok Type_unknown
+      (match find_receiver () with
+       | Some (_, { offset; vtype }) ->
+         (match name with
+          | "ptr" ->
+            emit_instr emitter (Printf.sprintf "lea rax, [rbp-%d]" offset);
+            Result.Ok Type_unknown
+          | "type" -> emit_type_value vtype
+          | _ ->
+            emit_instr emitter (Printf.sprintf "mov rax, [rbp-%d]" offset);
+            (match vtype with
+             | Type_struct s when StringMap.mem s !enum_layouts ->
+               emit_enum_member_access emitter s name
+             | Type_struct s -> emit_struct_member_access emitter s name
+             | Type_enum e -> emit_enum_member_access emitter e name
+             | _ ->
+               let* () = unsupported emitter "implicit member requires aggregate" in
+               Result.Ok Type_unknown))
+       | None ->
+         let* () = unsupported emitter "implicit member requires receiver" in
+         Result.Ok Type_unknown)
+  and emit_member_access emitter env base field =
+    if field = "type"
+    then
+      let* btype = emit_unary base in
+      emit_type_value btype
+    else if field = "ptr"
+    then (
+      match base with
+      | Ast.Unary_val (Ast.Ident name) ->
+        (match env_lookup name env with
+         | Some { offset; _ } ->
+           emit_instr emitter (Printf.sprintf "lea rax, [rbp-%d]" offset);
+           Result.Ok Type_unknown
+         | None ->
+           let* _ = emit_unary base in
+           Result.Ok Type_unknown)
+      | _ ->
+        let* _ = emit_unary base in
+        Result.Ok Type_unknown)
+    else
+      let* btype = emit_unary base in
+      match btype with
+      | Type_struct sname when StringMap.mem sname !enum_layouts ->
+        (* Treat struct-typed values whose name matches an enum as enum instances. *)
+        emit_enum_member_access emitter sname field
+      | Type_struct sname -> emit_struct_member_access emitter sname field
+      | Type_enum ename -> emit_enum_member_access emitter ename field
+      | _ ->
+        let* () = unsupported emitter "member access on non-aggregate" in
+        Result.Ok Type_unknown
   and emit_struct_member_access emitter sname field =
     match StringMap.find_opt sname !struct_layouts with
     | None ->
@@ -920,14 +976,19 @@ let rec emit_expression emitter env expr =
             when StringMap.mem n !struct_layouts || StringMap.mem n !enum_layouts ->
             (* Type-qualified member: let callee logic handle (e.g., enum ctor) *)
             let* ctyp = emit_callee emitter env callee in
-            let convert_string =
+            let callee_name =
               match ctyp with
-              | `Direct name ->
+              | `Direct name -> Some name
+              | _ -> None
+            in
+            let convert_string =
+              match callee_name with
+              | Some name ->
                 StringSet.mem name !imported_functions
                 || not (StringSet.mem name !defined_functions)
-              | _ -> false
+              | None -> false
             in
-            let* () = emit_params emitter env convert_string params 0 in
+            let* () = emit_params emitter env convert_string callee_name params 0 in
             (match ctyp with
              | `Direct name ->
                if not (StringSet.mem name !defined_functions)
@@ -967,7 +1028,7 @@ let rec emit_expression emitter env expr =
               || not (StringSet.mem symbol !defined_functions)
             in
             emit_instr emitter "mov rdi, rax";
-            let* () = emit_params emitter env convert_string params 1 in
+            let* () = emit_params emitter env convert_string (Some symbol) params 1 in
             if not (StringSet.mem symbol !defined_functions)
             then Emitter.add_extern emitter symbol;
             emit_instr emitter ("call " ^ symbol);
@@ -990,7 +1051,17 @@ let rec emit_expression emitter env expr =
              || not (StringSet.mem name !defined_functions)
            | _ -> false
          in
-         let* () = emit_params emitter env convert_string params 0 in
+         let* () =
+           emit_params
+             emitter
+             env
+             convert_string
+             (match ctyp with
+              | `Direct name -> Some name
+              | _ -> None)
+             params
+             0
+         in
          (match ctyp with
           | `Direct name ->
             if not (StringSet.mem name !defined_functions)
@@ -1007,7 +1078,58 @@ let rec emit_expression emitter env expr =
     | Ast.Macro_call _ ->
       let* () = unsupported emitter "macro calls are not supported yet" in
       Result.Ok Type_unknown
-  and emit_params emitter env convert_string params idx =
+  and reorder_named_params emitter callee_name params =
+    let has_named =
+      List.exists
+        (function
+          | Ast.Named _ -> true
+          | _ -> false)
+        params
+    in
+    if not has_named
+    then Result.Ok params
+    else (
+      match StringMap.find_opt callee_name !function_params with
+      | None ->
+        let* () = unsupported emitter "named parameters require known callee signature" in
+        Result.Ok params
+      | Some order ->
+        let total = List.length order in
+        let slots = Array.make total None in
+        let rec find_index target idx = function
+          | [] -> None
+          | x :: xs -> if x = target then Some idx else find_index target (idx + 1) xs
+        in
+        let rec fill next_pos = function
+          | [] -> Result.Ok ()
+          | Ast.Positional e :: rest ->
+            if next_pos >= total
+            then unsupported emitter "too many arguments"
+            else (
+              match slots.(next_pos) with
+              | Some _ -> unsupported emitter "duplicate positional argument"
+              | None ->
+                slots.(next_pos) <- Some e;
+                fill (next_pos + 1) rest)
+          | Ast.Named (n, e) :: rest ->
+            (match find_index n 0 order with
+             | None -> unsupported emitter ("unknown named parameter: " ^ n)
+             | Some idx ->
+               (match slots.(idx) with
+                | Some _ -> unsupported emitter ("duplicate parameter: " ^ n)
+                | None ->
+                  slots.(idx) <- Some e;
+                  fill next_pos rest))
+        in
+        let* () = fill 0 params in
+        if Array.exists Option.is_none slots
+        then
+          let* () = unsupported emitter "missing argument for named call" in
+          Result.Ok params
+        else
+          Result.Ok
+            (Array.to_list slots |> List.map (fun e -> Ast.Positional (Option.get e))))
+  and emit_params emitter env convert_string callee params idx =
     let emit_list_to_cstring () =
       let len_loop = gensym "list_strlen" in
       let len_done = gensym "list_strlen_done" in
@@ -1043,10 +1165,14 @@ let rec emit_expression emitter env expr =
       emit_instr emitter "mov rax, r13";
       Result.Ok ()
     in
+    let* params =
+      match callee with
+      | Some name -> reorder_named_params emitter name params
+      | None -> Result.Ok params
+    in
     (* No conversion needed for Type_string (already a C string). *)
     match params with
     | [] -> Result.Ok ()
-    | Ast.Named _ :: _ -> unsupported emitter "named call parameters are not supported"
     | Ast.Positional e :: rest ->
       if idx >= Array.length arg_registers
       then unsupported emitter "more than 6 call arguments are not supported"
@@ -1062,10 +1188,11 @@ let rec emit_expression emitter env expr =
         in
         if padded then emit_instr emitter "add rsp, 8";
         emit_instr emitter "push rax";
-        let* () = emit_params emitter env convert_string rest (idx + 1) in
+        let* () = emit_params emitter env convert_string callee rest (idx + 1) in
         emit_instr emitter "pop rax";
         emit_instr emitter (Printf.sprintf "mov %s, rax" arg_registers.(idx));
         Result.Ok ())
+    | Ast.Named _ :: _ -> unsupported emitter "named parameters not reordered"
   and emit_callee emitter env callee =
     match callee with
     | Ast.Relational_expr
@@ -1418,14 +1545,39 @@ let emit_function_stub emitter symbol =
   Emitter.emit_text emitter ""
 ;;
 
+let register_function_params symbol name params =
+  let names =
+    params
+    |> List.filter_map (function
+        | Ast.Untyped id
+        | Ast.Typed (id, _)
+        | Ast.OptionalTyped (id, _, _)
+        | Ast.OptionalUntyped (id, _)
+        | Ast.Variadic id
+        -> Some id)
+  in
+  function_params := StringMap.add symbol names !function_params;
+  function_params := StringMap.add name names !function_params
+;;
+
 let rec emit_decl emitter prefix = function
   | Ast.Decl { name; generics = _; params; body; explicit_ret; _ } ->
     let symbol = mangle prefix name in
-    (match snd body with
-     | Some (Ast.Struct_expr (_, Some w)) | Some (Ast.Enum_expr (_, Some w)) ->
-       emit_nodes emitter (prefix @ [ name ]) w
-     | _ -> Result.Ok ())
-    |> fun _ -> emit_function emitter prefix name params explicit_ret symbol body
+    let is_macro_decl =
+      match snd body with
+      | Some (Ast.Macro_expr _) -> true
+      | _ -> false
+    in
+    if is_macro_decl
+    then Result.Ok ()
+    else
+      (match snd body with
+       | Some (Ast.Struct_expr (_, Some w)) | Some (Ast.Enum_expr (_, Some w)) ->
+         emit_nodes emitter (prefix @ [ name ]) w
+       | _ -> Result.Ok ())
+      |> fun _ ->
+      register_function_params symbol name params;
+      emit_function emitter prefix name params explicit_ret symbol body
   | Ast.Module_decl { name; body; _ } -> emit_nodes emitter (prefix @ [ name ]) body
   | Ast.Curry_decl { name; _ } ->
     let symbol = mangle prefix name in

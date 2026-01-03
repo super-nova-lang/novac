@@ -1,0 +1,16 @@
+open std.c with { printf }
+
+let Point :: x: i32, y: i32 = struct {
+    x: i32 = x,
+    y: i32 = y,
+}
+
+let main :: () = {
+    let p = Point(7, 9)
+    let addr = p.ptr
+    if addr == addr { printf("ptr-ok\n") }
+    (* TODO: actual type reflection *)
+
+    let n: i32 = 5
+    printf("n.type=%s\n", n.type)
+}
