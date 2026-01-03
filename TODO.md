@@ -3,6 +3,8 @@
 ## Completed ✓
   - [x] CLI `parse` prints AST nodes to stdout
   - [x] Added `test-compiler`/`tc` and `test-compiler-promote`/`tcp` commands with JSON expectations in `tests/.expected.json`
+  - [x] Add `Doc_comment` token to lexer
+  - [x] Generate docs from source
   - [x] Basic lexer, parser, and AST
   - [x] If/else statements with elif chains
   - [x] While loops
@@ -67,8 +69,5 @@
     - [ ] Descriptive error messages with source locations
     - [ ] Build time estimation
     - [ ] Progress indicators
-  - [ ] **Documentation generation**
-    - [ ] Add `Doc_comment` token to lexer
-    - [ ] Generate docs from source
   - [ ] **Testing framework** - Expand beyond current examples
   - [ ] **Debugging support** - Source maps, debug symbols
