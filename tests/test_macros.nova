@@ -1,0 +1,14 @@
+(* Macro Examples for Supernova *)
+open std.c with { stdio.printf }
+
+(* Example 1: Basic macro that just contains a number *)
+let const_num = macro { 
+    42
+}
+
+(* Using the macros *)
+let main :: () = {
+    printf("Macro test complete\n", 0)
+    ()
+}
+

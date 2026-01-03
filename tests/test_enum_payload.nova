@@ -1,0 +1,20 @@
+open std.c with { stdio.printf }
+
+let Job :: title: string, salary: i32 = enum {
+    programmer :: struct { lang: string },
+    manager    :: struct { team_size: i32 },
+    intern     :: (),
+} with {
+    title: string = title, 
+    salary: i32 = salary,
+}
+
+let main :: () = {
+    let job1 = Job.programmer("Software Engineer", 120000, "Rust")
+    let job2 = Job.manager("Engineering Manager", 150000, 10)
+    
+    printf("Job 1 - Title: %s, Salary: %d, Lang: %s\n", job1.title, job1.salary, job1.lang)
+    printf("Job 2 - Title: %s, Salary: %d, Team: %d\n", job2.title, job2.salary, job2.team_size)
+    
+    ()
+}

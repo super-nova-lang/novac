@@ -1,0 +1,15 @@
+open std.c with { stdio.printf }
+
+let countdown :: n = {
+    let m := n
+    while m > 0 {
+        printf("n = %d\n", m)
+        m -= 1
+    }
+    printf("done!\n")
+}
+
+let main :: () = {
+    countdown(3)
+    ()
+}

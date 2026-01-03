@@ -1,0 +1,10 @@
+open std.c with { stdio.printf }
+
+let main :: () = {
+    let x = 3
+    let result = match x with
+        | 1 -> printf("one\n")
+        | 2 -> printf("two\n")
+        | _ -> printf("other\n")
+    ()
+}
