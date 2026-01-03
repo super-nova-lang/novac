@@ -9,6 +9,7 @@ let const_num = macro {
 (* Using the macros *)
 let main :: () = {
     printf("Macro test complete\n", 0)
+    println!("Hello from println! %d", 123)
     ()
 }
 

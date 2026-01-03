@@ -18,16 +18,12 @@
   - [x] String literals with proper escaping
   - [x] Preprocessor module for macro expansion
   - [x] Parse command in CLI for syntax validation
+  - [x] Match enhancements (enum patterns, destructuring/tuples, guards)
 
 ## High Priority
 
 ### Language Features
   - [ ] **Enum payload access** - Access fields in enum variant payloads
-  - [ ] **Match enhancements**
-    - [x] Enum variant patterns
-    - [x] Destructuring patterns
-    - [x] Tuple patterns
-    - [x] Complex guard expressions
   - [ ] **For loops** - Iteration over collections
   - [ ] **Macro system** - PARTIAL (preprocessor in place, needs pattern matching)
     - [x] Macro definitions parsing
