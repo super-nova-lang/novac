@@ -13,4 +13,4 @@
  (inline_tests)
  (preprocess
   (pps ppx_deriving.show ppx_expect))
- (libraries cmdliner easy_logging spectrum))
+ (libraries cmdliner easy_logging spectrum yojson))

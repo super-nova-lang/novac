@@ -22,6 +22,7 @@
   easy_logging
   spectrum
   cmdliner
+  yojson
   ppx_deriving
   ppx_expect
   ppx_inline_test)
