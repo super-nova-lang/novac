@@ -328,23 +328,102 @@ let string_of_doc stdlib_flag out_type files =
     ensure_dir build_dir;
     ensure_dir doc_dir;
     let doc_path = Filename.concat doc_dir "index.html" in
+    let css_path = Filename.concat doc_dir "style.css" in
+    let js_path = Filename.concat doc_dir "script.js" in
+    let write_file path content =
+      let oc = open_out path in
+      Fun.protect (fun () -> output_string oc content) ~finally:(fun () -> close_out oc)
+    in
+    let style_css =
+      String.concat
+        "\n"
+        [ ":root{--bg:#ffffff;--fg:#111827;--muted:#4b5563;--surface:#f5f5f5;--border:#dddddd;--accent:#2563eb;}"
+        ; "body{font-family:sans-serif;max-width:960px;margin:40px auto;padding:0 \
+           16px;background:var(--bg);color:var(--fg);transition:background 0.2s \
+           ease,color 0.2s ease;}"
+        ; "h1{margin:0 0 12px 0;}"
+        ; ".controls{display:flex;gap:8px;align-items:center;margin:0 0 20px 0;}"
+        ; ".controls label{font-weight:600;}"
+        ; ".controls input{flex:1;padding:8px 10px;border:1px solid \
+           var(--border);border-radius:6px;background:var(--bg);color:var(--fg);}"
+        ; ".controls button{padding:8px 12px;border:1px solid \
+           var(--border);background:var(--surface);color:var(--fg);border-radius:6px;cursor:pointer;}"
+        ; "section{margin-bottom:24px;border-bottom:1px solid \
+           var(--border);padding-bottom:16px;}"
+        ; "h2{margin:0 0 4px 0;font-size:1.1rem;}"
+        ; ".loc{color:var(--muted);font-size:0.9em;margin:0 0 8px 0;}"
+        ; "pre{background:var(--surface);padding:8px;border-radius:4px;white-space:pre-wrap;border:1px \
+           solid var(--border);}"
+        ; "code{white-space:pre-wrap;}"
+        ; "body.dark{--bg:#0f172a;--fg:#e5e7eb;--muted:#94a3b8;--surface:#1f2937;--border:#334155;--accent:#38bdf8;}"
+        ]
+    in
+    let script_js =
+      String.concat
+        "\n"
+        [ "document.addEventListener('DOMContentLoaded', () => {"
+        ; "  const input = document.querySelector('#search');"
+        ; "  const toggle = document.querySelector('#toggle-theme');"
+        ; "  const sections = \
+           Array.from(document.querySelectorAll('section[data-signature]'));"
+        ; "  if (!input) return;"
+        ; "  const normalize = (s) => s.toLowerCase();"
+        ; "  const applyTheme = (mode) => {"
+        ; "    const body = document.body;"
+        ; "    if (mode === 'dark') body.classList.add('dark'); else \
+           body.classList.remove('dark');"
+        ; "    localStorage.setItem('docs-theme', mode);"
+        ; "    if (toggle) toggle.textContent = mode === 'dark' ? 'Light mode' : 'Dark \
+           mode';"
+        ; "  };"
+        ; "  const saved = localStorage.getItem('docs-theme') || 'light';"
+        ; "  applyTheme(saved);"
+        ; "  const filter = () => {"
+        ; "    const term = normalize(input.value.trim());"
+        ; "    sections.forEach((section) => {"
+        ; "      const sig = normalize(section.dataset.signature || '');"
+        ; "      const doc = normalize(section.dataset.doc || '');"
+        ; "      const match = term === '' || sig.includes(term) || doc.includes(term);"
+        ; "      section.style.display = match ? '' : 'none';"
+        ; "    });"
+        ; "  };"
+        ; "  input.addEventListener('input', filter);"
+        ; "  if (toggle) {"
+        ; "    toggle.addEventListener('click', () => {"
+        ; "      const next = document.body.classList.contains('dark') ? 'light' : \
+           'dark';"
+        ; "      applyTheme(next);"
+        ; "    });"
+        ; "  }"
+        ; "  filter();"
+        ; "});"
+        ]
+    in
+    write_file css_path style_css;
+    write_file js_path script_js;
     let oc = open_out doc_path in
     Fun.protect
       (fun () ->
          output_string oc "<!DOCTYPE html><html><head><meta charset=\"utf-8\">";
          output_string oc "<title>Supernova Docs</title>";
+         output_string oc "<link rel=\"stylesheet\" href=\"style.css\">";
+         output_string oc "</head><body><h1>Documentation</h1>";
          output_string
            oc
-           "<style>body{font-family:sans-serif;max-width:960px;margin:40px \
-            auto;padding:0 \
-            16px;}h2{margin-bottom:4px;}pre{background:#f5f5f5;padding:8px;border-radius:4px;white-space:pre-wrap;} \
-            .loc{color:#666;font-size:0.9em;margin:0 0 8px 0;} \
-            section{margin-bottom:24px;border-bottom:1px solid \
-            #ddd;padding-bottom:16px;} code{white-space:pre-wrap;}</style>";
-         output_string oc "</head><body><h1>Documentation</h1>";
+           "<div class=\"controls\"><label for=\"search\">Search</label><input \
+            id=\"search\" type=\"search\" placeholder=\"Filter docs...\"><button \
+            id=\"toggle-theme\" type=\"button\">Dark mode</button></div>";
          List.iter
            (fun (loc, doc, sigstr) ->
-              output_string oc "<section>";
+              let doc_attr =
+                doc |> String.split_on_char '\n' |> String.concat " " |> html_escape
+              in
+              output_string
+                oc
+                (Printf.sprintf
+                   "<section data-signature=\"%s\" data-doc=\"%s\">"
+                   (html_escape sigstr)
+                   doc_attr);
               output_string
                 oc
                 (Printf.sprintf
@@ -357,6 +436,7 @@ let string_of_doc stdlib_flag out_type files =
               then output_string oc (Printf.sprintf "<pre>%s</pre>" (html_escape doc));
               output_string oc "</section>")
            entries;
+         output_string oc "<script src=\"script.js\"></script>";
          output_string oc "</body></html>")
       ~finally:(fun () -> close_out oc);
     Printf.sprintf "Wrote %s" doc_path
