@@ -1,0 +1,30 @@
+(* Novalang Showcase *)
+open std.c with { stdio.printf }
+
+let Job :: title, salary = enum {
+    programmer :: struct { lang: string },
+    other      :: string,
+    sales_man  :: (),
+} with {
+    title: string = title, 
+    salary: i32 = salary,
+}
+
+let Person :: 
+    name, age, job
+= struct {
+    name: string = name,
+    age : i32 = age,
+    job : Job = job
+} with {
+    let greet :: self = printf("Hello! My name is %s and I am %d years old\n", self.name, self.age)
+}
+
+let main :: () = {  
+    let engineer = Job.programmer("Programmer", 120000, "C++")
+    let p1 = Person("Ashton", 19, engineer)
+    p1.greet()
+    printf("Salary: %d\n", p1.job.salary)
+    printf("Role: %s\n", p1.job.title)
+    ()
+}

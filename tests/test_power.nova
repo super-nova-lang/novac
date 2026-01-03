@@ -1,0 +1,12 @@
+open std.c with { stdio.printf }
+
+let main :: () = {
+    let base = 2
+    let exp = 10
+    let result = base ^ exp
+    printf("2 ^ 10 = %d\n", result)
+    printf("3 ^ 3 = %d\n", 3 ^ 3)
+    printf("5 ^ 0 = %d\n", 5 ^ 0)
+    printf("10 ^ 1 = %d\n", 10 ^ 1)
+    ()
+}

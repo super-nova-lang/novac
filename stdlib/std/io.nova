@@ -1,0 +1,5 @@
+export println
+export print
+
+let println :: import <- "c", "puts"
+let print :: import <- "c", "printf"

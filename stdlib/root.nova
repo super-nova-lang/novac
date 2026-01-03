@@ -1,0 +1,13 @@
+open std.c with { stdio.printf }
+
+(*! Option represents existance or absence of a value. *)
+let Option[T] :: = enum {
+	some :: struct { value: T },
+	none :: (),
+}
+
+(*! Result represents success (ok) or failure (err). *)
+let Result[T, E] :: = enum {
+	ok :: struct { value: T },
+	err :: struct { error: E },
+}
