@@ -167,7 +167,7 @@ and decl_param =
   | Typed of ident * typ
   | OptionalTyped of ident * typ * expression
   | OptionalUntyped of ident * expression
-  | Variadic of ident
+  | Variadic of ident * typ option
 
 (**
   #[ident]

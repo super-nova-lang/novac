@@ -435,7 +435,8 @@ and analyze_decl ctx = function
     List.iter
       (fun param ->
          match param with
-         | A.Untyped name | A.Variadic name -> add_symbol ctx' name None (0, 0)
+         | A.Untyped name -> add_symbol ctx' name None (0, 0)
+         | A.Variadic (name, typ_opt) -> add_symbol ctx' name typ_opt (0, 0)
          | A.Typed (name, typ) -> add_symbol ctx' name (Some typ) (0, 0)
          | A.OptionalTyped (name, typ, default) ->
            add_symbol ctx' name (Some typ) (0, 0);

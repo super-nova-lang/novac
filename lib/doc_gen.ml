@@ -38,7 +38,8 @@ let string_of_doc ~doc_files ~out_type =
     | Ast.Typed (id, t) -> Printf.sprintf "%s: %s" id (show_typ t)
     | Ast.OptionalTyped (id, t, _) -> Printf.sprintf "?%s: %s" id (show_typ t)
     | Ast.OptionalUntyped (id, _) -> Printf.sprintf "?%s" id
-    | Ast.Variadic id -> Printf.sprintf "...%s" id
+    | Ast.Variadic (id, None) -> Printf.sprintf "...%s" id
+    | Ast.Variadic (id, Some t) -> Printf.sprintf "...%s: %s" id (show_typ t)
   in
   let signature_of_decl = function
     | Ast.Decl { name; generics; params; explicit_ret; body = _, expr_opt; _ } ->

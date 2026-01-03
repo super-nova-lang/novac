@@ -89,7 +89,6 @@ let unsupported emitter msg = emit_placeholder emitter msg
 let arg_registers = [| "rdi"; "rsi"; "rdx"; "rcx"; "r8"; "r9" |]
 let defined_functions = ref StringSet.empty
 let imported_functions = ref StringSet.empty
-let function_params : string list StringMap.t ref = ref StringMap.empty
 let gensym_counter = ref 0
 
 let gensym prefix =
@@ -114,6 +113,15 @@ type value_type =
   | Type_enum of string
   | Type_list of value_type
   | Type_unknown
+
+type param_signature =
+  { names : string list
+  ; variadic : bool
+  ; vararg_name : string option
+  ; vararg_type : value_type option
+  }
+
+let function_params : param_signature StringMap.t ref = ref StringMap.empty
 
 type field_layout =
   { fname : string
@@ -956,6 +964,7 @@ let rec emit_expression emitter env expr =
                (Ast.Additive_val (Ast.Multiplicative_val (Ast.Unary_call inner_call))))
         , [] ) -> emit_call emitter env inner_call
     | Ast.Decl_call (callee, params) ->
+      flush stderr;
       let rec extract_member = function
         | Ast.Relational_expr (Ast.Relational_val a) -> extract_member_add a
         | _ -> None
@@ -1033,6 +1042,7 @@ let rec emit_expression emitter env expr =
               StringSet.mem symbol !imported_functions
               || not (StringSet.mem symbol !defined_functions)
             in
+            flush stderr;
             emit_instr emitter "mov rdi, rax";
             let* stack_bytes =
               emit_params emitter env convert_string (Some symbol) params 1
@@ -1061,6 +1071,7 @@ let rec emit_expression emitter env expr =
              || not (StringSet.mem name !defined_functions)
            | _ -> false
          in
+         flush stderr;
          let* stack_bytes =
            emit_params
              emitter
@@ -1096,57 +1107,85 @@ let rec emit_expression emitter env expr =
             then emit_instr emitter (Printf.sprintf "add rsp, %d" stack_bytes);
             Result.Ok Type_unknown))
   and reorder_named_params emitter callee_name params =
-    let has_named =
-      List.exists
-        (function
-          | Ast.Named _ -> true
-          | _ -> false)
-        params
-    in
-    if not has_named
-    then Result.Ok params
-    else (
-      match StringMap.find_opt callee_name !function_params with
-      | None ->
-        let* () = unsupported emitter "named parameters require known callee signature" in
+    match StringMap.find_opt callee_name !function_params with
+    | None -> Result.Ok params
+    | Some { names; variadic; vararg_name; _ } ->
+      let fixed_count = List.length names in
+      let slots = Array.make fixed_count None in
+      let rec find_index target idx = function
+        | [] -> None
+        | x :: xs -> if x = target then Some idx else find_index target (idx + 1) xs
+      in
+      let extras = ref [] in
+      let vararg_explicit = ref None in
+      let rec fill next_pos = function
+        | [] -> Result.Ok ()
+        | Ast.Positional e :: rest ->
+          if next_pos < fixed_count
+          then (
+            match slots.(next_pos) with
+            | Some _ -> unsupported emitter "duplicate positional argument"
+            | None ->
+              slots.(next_pos) <- Some e;
+              fill (next_pos + 1) rest)
+          else if variadic
+          then (
+            extras := e :: !extras;
+            fill next_pos rest)
+          else unsupported emitter "too many positional arguments"
+        | Ast.Named (n, e) :: rest ->
+          let is_vararg =
+            match vararg_name with
+            | Some v -> v = n
+            | None -> false
+          in
+          if is_vararg
+          then (
+            match !vararg_explicit with
+            | Some _ -> unsupported emitter ("duplicate parameter: " ^ n)
+            | None ->
+              vararg_explicit := Some e;
+              fill next_pos rest)
+          else (
+            match find_index n 0 names with
+            | None -> unsupported emitter ("unknown named parameter: " ^ n)
+            | Some idx ->
+              (match slots.(idx) with
+               | Some _ -> unsupported emitter ("duplicate parameter: " ^ n)
+               | None ->
+                 slots.(idx) <- Some e;
+                 fill next_pos rest))
+      in
+      let* () = fill 0 params in
+      if Array.exists Option.is_none slots
+      then
+        let* () = unsupported emitter "missing argument for named call" in
         Result.Ok params
-      | Some order ->
-        let total = List.length order in
-        let slots = Array.make total None in
-        let rec find_index target idx = function
-          | [] -> None
-          | x :: xs -> if x = target then Some idx else find_index target (idx + 1) xs
+      else (
+        let fixed =
+          Array.to_list slots |> List.map (fun e -> Ast.Positional (Option.get e))
         in
-        let rec fill next_pos = function
-          | [] -> Result.Ok ()
-          | Ast.Positional e :: rest ->
-            if next_pos >= total
-            then unsupported emitter "too many arguments"
-            else (
-              match slots.(next_pos) with
-              | Some _ -> unsupported emitter "duplicate positional argument"
-              | None ->
-                slots.(next_pos) <- Some e;
-                fill (next_pos + 1) rest)
-          | Ast.Named (n, e) :: rest ->
-            (match find_index n 0 order with
-             | None -> unsupported emitter ("unknown named parameter: " ^ n)
-             | Some idx ->
-               (match slots.(idx) with
-                | Some _ -> unsupported emitter ("duplicate parameter: " ^ n)
-                | None ->
-                  slots.(idx) <- Some e;
-                  fill next_pos rest))
-        in
-        let* () = fill 0 params in
-        if Array.exists Option.is_none slots
+        if variadic
+        then (
+          match !vararg_explicit, !extras with
+          | Some v, [] -> Result.Ok (fixed @ [ Ast.Positional v ])
+          | Some _, _ :: _ ->
+            let* () =
+              unsupported
+                emitter
+                "variadic arguments provided both positionally and by name"
+            in
+            Result.Ok params
+          | None, extras_list ->
+            let vararg_expr = Ast.List_expr (List.rev extras_list) in
+            Result.Ok (fixed @ [ Ast.Positional vararg_expr ]))
+        else if !extras <> []
         then
-          let* () = unsupported emitter "missing argument for named call" in
+          let* () = unsupported emitter "too many positional arguments" in
           Result.Ok params
-        else
-          Result.Ok
-            (Array.to_list slots |> List.map (fun e -> Ast.Positional (Option.get e))))
+        else Result.Ok fixed)
   and emit_params emitter env convert_string callee params idx =
+    if idx < 10 || idx mod 250 = 0 then flush stderr;
     let emit_list_to_cstring () =
       let len_loop = gensym "list_strlen" in
       let len_done = gensym "list_strlen_done" in
@@ -1183,14 +1222,20 @@ let rec emit_expression emitter env expr =
       Result.Ok ()
     in
     let* params =
-      match callee with
-      | Some name -> reorder_named_params emitter name params
-      | None -> Result.Ok params
+      (* Only reorder on the first invocation to avoid repeatedly wrapping varargs
+         during the recursive descent. *)
+      if idx = 0
+      then (
+        match callee with
+        | Some name -> reorder_named_params emitter name params
+        | None -> Result.Ok params)
+      else Result.Ok params
     in
     (* No conversion needed for Type_string (already a C string). *)
     match params with
     | [] -> Result.Ok 0
     | Ast.Positional e :: rest ->
+      if idx < 10 || idx mod 250 = 0 then flush stderr;
       if idx >= Array.length arg_registers
       then (
         let* stack_bytes = emit_params emitter env convert_string callee rest (idx + 1) in
@@ -1572,18 +1617,25 @@ let emit_function_stub emitter symbol =
 ;;
 
 let register_function_params symbol name params =
-  let names =
-    params
-    |> List.filter_map (function
+  let rec fold names = function
+    | [] -> names, false, None, None
+    | Ast.Variadic (id, typ_opt) :: _ ->
+      names, true, Some id, Option.map type_of_typ typ_opt
+    | p :: rest ->
+      let id =
+        match p with
         | Ast.Untyped id
         | Ast.Typed (id, _)
         | Ast.OptionalTyped (id, _, _)
-        | Ast.OptionalUntyped (id, _)
-        | Ast.Variadic id
-        -> Some id)
+        | Ast.OptionalUntyped (id, _) -> id
+        | Ast.Variadic _ -> ""
+      in
+      fold (id :: names) rest
   in
-  function_params := StringMap.add symbol names !function_params;
-  function_params := StringMap.add name names !function_params
+  let names_rev, variadic, vararg_name, vararg_type = fold [] params in
+  let signature = { names = List.rev names_rev; variadic; vararg_name; vararg_type } in
+  function_params := StringMap.add symbol signature !function_params;
+  function_params := StringMap.add name signature !function_params
 ;;
 
 let rec emit_decl emitter prefix = function
@@ -2031,8 +2083,23 @@ and emit_function emitter prefix name params explicit_ret symbol (stmts, expr_op
       else (
         let entry = { offset = field_offset idx; vtype = type_of_typ t } in
         build_params (idx + 1) (env_add id entry env) rest)
-    | Ast.OptionalTyped _ :: _ | Ast.OptionalUntyped _ :: _ | Ast.Variadic _ :: _ ->
-      let* () = unsupported emitter "optional/variadic parameters are not supported" in
+    | Ast.Variadic (id, typ_opt) :: rest ->
+      if rest <> []
+      then
+        let* () = unsupported emitter "variadic parameter must be last" in
+        Result.Ok (idx, env)
+      else if idx >= Array.length arg_registers
+      then
+        let* () = unsupported emitter "more than 6 parameters are not supported" in
+        Result.Ok (idx, env)
+      else (
+        let elem_type =
+          Option.map type_of_typ typ_opt |> Option.value ~default:Type_unknown
+        in
+        let entry = { offset = field_offset idx; vtype = Type_list elem_type } in
+        build_params (idx + 1) (env_add id entry env) rest)
+    | Ast.OptionalTyped _ :: _ | Ast.OptionalUntyped _ :: _ ->
+      let* () = unsupported emitter "optional parameters are not supported" in
       Result.Ok (idx, env)
   in
   let receiver_type prefix =
@@ -2059,12 +2126,6 @@ and emit_function emitter prefix name params explicit_ret symbol (stmts, expr_op
   in
   let stack_bytes = (param_count + estimated_locals) * Target.ptr_size in
   let stack_alloc = if stack_bytes = 0 then 0 else (stack_bytes + 15) / 16 * 16 in
-  (* Printf.eprintf
-    "[codegen] %s locals=%d params=%d stack_alloc=%d\n"
-    symbol
-    estimated_locals
-    param_count
-    stack_alloc; *)
   Emitter.add_global emitter symbol;
   emit_label emitter symbol;
   emit_instr emitter "push rbp";

@@ -426,33 +426,27 @@ and parse_decl_param p =
     | Token.Ident s -> s
     | t -> failf p "Expected identifier for parameter, got %s" (Token.show t)
   in
-  if peek p = Token.Ellipsis
+  let param_type =
+    if peek p = Token.Colon
+    then (
+      advance p;
+      Some (parse_type p))
+    else None
+  in
+  let is_variadic = peek p = Token.Ellipsis in
+  if is_variadic
   then (
     advance p;
-    Ast.Variadic name)
+    if is_optional
+    then failf p "Optional variadic parameters are not supported"
+    else Ast.Variadic (name, param_type))
   else (
-    let param_type, default_value =
-      if peek p = Token.Colon
+    let default_value =
+      if is_optional && peek p = Token.Eql
       then (
         advance p;
-        let t = parse_type p in
-        let default =
-          if is_optional && peek p = Token.Eql
-          then (
-            advance p;
-            Some (parse_expression p |> get_ok_or_fail p))
-          else None
-        in
-        Some t, default)
-      else (
-        let default =
-          if is_optional && peek p = Token.Eql
-          then (
-            advance p;
-            Some (parse_expression p |> get_ok_or_fail p))
-          else None
-        in
-        None, default)
+        Some (parse_expression p |> get_ok_or_fail p))
+      else None
     in
     match is_optional, param_type, default_value with
     | false, Some t, None -> Ast.Typed (name, t)

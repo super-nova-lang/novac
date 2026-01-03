@@ -1,0 +1,10 @@
+open std.c with { printf }
+
+let log_i32s :: label: string, args: i32... = {
+    printf("%s\n", label)
+}
+
+let main :: () = {
+    log_i32s("no extras")
+    log_i32s("three extras", 1, 2, 3)
+}
