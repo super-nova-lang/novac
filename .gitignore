@@ -1,4 +1,6 @@
 _build/
 build/
 
+tests/.expected.json
+
 scratch

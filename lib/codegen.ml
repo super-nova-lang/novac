@@ -1164,13 +1164,13 @@ let emit_function_stub emitter symbol =
 ;;
 
 let rec emit_decl emitter prefix = function
-  | Ast.Decl { name; params; body; _ } ->
+  | Ast.Decl { name; params; body; explicit_ret; _ } ->
     let symbol = mangle prefix name in
     (match snd body with
      | Some (Ast.Struct_expr (_, Some w)) | Some (Ast.Enum_expr (_, Some w)) ->
        emit_nodes emitter (prefix @ [ name ]) w
      | _ -> Result.Ok ())
-    |> fun _ -> emit_function emitter prefix name params symbol body
+    |> fun _ -> emit_function emitter prefix name params explicit_ret symbol body
   | Ast.Module_decl { name; body; _ } -> emit_nodes emitter (prefix @ [ name ]) body
   | Ast.Curry_decl { name; _ } ->
     let symbol = mangle prefix name in
@@ -1407,7 +1407,7 @@ and emit_statement_in_fn emitter prefix env end_label locals_ref = function
     let* () = emit_decl emitter nested_prefix decl in
     Result.Ok env
 
-and emit_function emitter prefix name params symbol (stmts, expr_opt) =
+and emit_function emitter prefix name params explicit_ret symbol (stmts, expr_opt) =
   let nested_prefix = prefix @ [ name ] in
   let rec count_locals_in_t acc = function
     | [] -> acc
@@ -1520,21 +1520,28 @@ and emit_function emitter prefix name params symbol (stmts, expr_opt) =
       emit_body env' rest
   in
   let* env = emit_body env stmts in
-  let* () =
+  let* ret_type =
     match expr_opt with
     | Some expr ->
-      let* _ = emit_expression emitter env expr in
-      Result.Ok ()
-    | None -> Result.Ok ()
+      let* t = emit_expression emitter env expr in
+      Result.Ok (Some t)
+    | None -> Result.Ok None
   in
-  (match expr_opt, symbol with
-   | None, s when s <> "main" ->
-     emit_instr emitter "xor rax, rax" (* default return 0 when no tail expr *)
-   | _ -> ());
+  let is_unit_decl =
+    match explicit_ret with
+    | Some Ast.Unit_typ -> true
+    | _ -> false
+  in
+  let is_unit_expr = match ret_type with Some Type_unit -> true | _ -> false in
+  let is_main = symbol = "main" in
+  let should_zero =
+    expr_opt = None
+    || is_unit_decl
+    || is_unit_expr
+    || (is_main && explicit_ret = None)
+  in
+  if should_zero then emit_instr emitter "xor rax, rax";
   emit_label emitter end_label;
-  (match symbol with
-   | "main" -> emit_instr emitter "xor rax, rax" (* force exit code 0 *)
-   | _ -> ());
   emit_instr emitter "mov rsp, rbp";
   emit_instr emitter "pop rbp";
   emit_instr emitter "ret";

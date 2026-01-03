@@ -304,7 +304,11 @@ let compile_to_exe stdlib_flag files exe_file =
           link_code))))
 ;;
 
-let string_of_run stdlib_flag files =
+type run_status =
+  | Run_ok of int * string
+  | Run_error of Utils.novac_phase * int * string
+
+let run_with_status stdlib_flag files =
   let exe_file =
     match files with
     | [ file ] ->
@@ -314,41 +318,36 @@ let string_of_run stdlib_flag files =
   in
   let exit_code = compile_to_exe stdlib_flag files exe_file in
   if exit_code <> 0
-  then
-    Utils.raise_error
-      ~phase:Utils.Codegen
-      ~file:"<compile>"
-      ~row:0
-      ~col:0
-      "Compilation failed";
-  let run_cmd =
-    if Filename.is_relative exe_file then Printf.sprintf "./%s" exe_file else exe_file
-  in
-  let ic = Unix.open_process_in run_cmd in
-  let output = read_all_from_channel ic in
-  match Unix.close_process_in ic with
-  | Unix.WEXITED 0 -> String.trim output
-  | Unix.WEXITED code ->
+  then Run_error (Utils.Codegen, exit_code, "Compilation failed")
+  else (
+    let run_cmd =
+      if Filename.is_relative exe_file then Printf.sprintf "./%s" exe_file else exe_file
+    in
+    let ic = Unix.open_process_in run_cmd in
+    let output = read_all_from_channel ic in
+    match Unix.close_process_in ic with
+    | Unix.WEXITED code -> Run_ok (code, String.trim output)
+    | Unix.WSIGNALED signal ->
+      Run_error
+        (Utils.Io, 128 + signal, Printf.sprintf "Program stopped by signal %d" signal)
+    | Unix.WSTOPPED signal ->
+      Run_error
+        (Utils.Io, 128 + signal, Printf.sprintf "Program stopped by signal %d" signal))
+;;
+
+let string_of_run stdlib_flag files =
+  match run_with_status stdlib_flag files with
+  | Run_ok (0, output) -> output
+  | Run_ok (code, _) ->
     Utils.raise_error
       ~phase:Utils.Io
       ~file:"<run>"
       ~row:0
       ~col:0
       (Printf.sprintf "Program exited with code %d" code)
-  | Unix.WSIGNALED signal ->
-    Utils.raise_error
-      ~phase:Utils.Io
-      ~file:"<run>"
-      ~row:0
-      ~col:0
-      (Printf.sprintf "Program terminated by signal %d" signal)
-  | Unix.WSTOPPED signal ->
-    Utils.raise_error
-      ~phase:Utils.Io
-      ~file:"<run>"
-      ~row:0
-      ~col:0
-      (Printf.sprintf "Program stopped by signal %d" signal)
+  | Run_error (Utils.Codegen, _, msg) ->
+    Utils.raise_error ~phase:Utils.Codegen ~file:"<compile>" ~row:0 ~col:0 msg
+  | Run_error (phase, _, msg) -> Utils.raise_error ~phase ~file:"<run>" ~row:0 ~col:0 msg
 ;;
 
 let process_compile stdlib_flag files =
@@ -372,6 +371,7 @@ type test_snapshot =
   ; parse : string
   ; codegen : string
   ; run : string
+  ; code : int
   }
 
 let capture_output thunk =
@@ -392,6 +392,7 @@ let test_snapshot_to_json t =
     ; "parse", `String t.parse
     ; "codegen", `String t.codegen
     ; "run", `String t.run
+    ; "code", `Int t.code
     ]
 ;;
 
@@ -407,12 +408,24 @@ let test_snapshot_of_json json =
         ~col:0
         (Printf.sprintf "Missing or invalid '%s' entry" key)
   in
+  let expect_int key props =
+    match List.assoc_opt key props with
+    | Some (`Int v) -> v
+    | _ ->
+      Utils.raise_error
+        ~phase:Utils.Io
+        ~file:expected_file
+        ~row:0
+        ~col:0
+        (Printf.sprintf "Missing or invalid '%s' entry" key)
+  in
   match json with
   | `Assoc props ->
     { file = expect_string "file" props
     ; parse = expect_string "parse" props
     ; codegen = expect_string "codegen" props
     ; run = expect_string "run" props
+    ; code = expect_int "code" props
     }
   | _ ->
     Utils.raise_error
@@ -437,11 +450,17 @@ let nova_test_files () =
 let collect_snapshot file =
   let parse_r = capture_output (fun () -> string_of_parse false [ file ]) in
   let codegen_r = capture_output (fun () -> string_of_codegen false [ file ]) in
-  let run_r = capture_output (fun () -> string_of_run false [ file ]) in
+  let run_r = run_with_status false [ file ] in
+  let run, code =
+    match run_r with
+    | Run_ok (code, output) -> output, code
+    | Run_error (_, code, msg) -> "ERROR: " ^ msg, code
+  in
   { file
   ; parse = string_of_result parse_r
   ; codegen = string_of_result codegen_r
-  ; run = string_of_result run_r
+  ; run
+  ; code
   }
 ;;
 
@@ -455,6 +474,7 @@ let pp_snapshot snap =
   [ pp_field "parse" snap.parse
   ; pp_field "codegen" snap.codegen
   ; pp_field "run" snap.run
+  ; pp_field "code" (string_of_int snap.code)
   ]
   |> String.concat "\n"
 ;;
@@ -513,6 +533,7 @@ let diff_snapshots expected actual =
              [ "parse", exp.parse, act.parse
              ; "codegen", exp.codegen, act.codegen
              ; "run", exp.run, act.run
+             ; "code", string_of_int exp.code, string_of_int act.code
              ]
              |> List.filter (fun (_, a, b) -> not (String.equal a b))
            in
