@@ -1,0 +1,39 @@
+   Compiling proc-macro2 v1.0.104
+   Compiling quote v1.0.42
+   Compiling unicode-ident v1.0.22
+   Compiling anyhow v1.0.100
+   Compiling shlex v1.3.0
+   Compiling find-msvc-tools v0.1.6
+   Compiling semver v1.0.27
+   Compiling regex-lite v0.1.8
+   Compiling lazy_static v1.5.0
+   Compiling libc v0.2.179
+   Compiling thiserror v2.0.17
+   Compiling utf8parse v0.2.2
+   Compiling anstyle-query v1.1.5
+   Compiling thiserror v1.0.69
+   Compiling lexer v0.1.0 (/home/mew/Work/novac-rust/lexer)
+   Compiling colorchoice v1.0.4
+   Compiling anstyle-parse v0.2.7
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstyle v1.0.13
+   Compiling inkwell v0.7.1
+   Compiling heck v0.5.0
+   Compiling strsim v0.11.1
+   Compiling parser v0.1.0 (/home/mew/Work/novac-rust/parser)
+   Compiling cc v1.2.51
+   Compiling clap_lex v0.7.6
+   Compiling anstream v0.6.21
+   Compiling once_cell v1.21.3
+   Compiling clap_builder v4.5.54
+   Compiling analysis v0.1.0 (/home/mew/Work/novac-rust/analysis)
+   Compiling syn v2.0.112
+   Compiling llvm-sys v211.0.0
+   Compiling thiserror-impl v2.0.17
+   Compiling inkwell_internals v0.12.0
+   Compiling thiserror-impl v1.0.69
+   Compiling clap_derive v4.5.49
+   Compiling clap v4.5.54
+   Compiling codegen v0.1.0 (/home/mew/Work/novac-rust/codegen)
+   Compiling novac v0.1.0 (/home/mew/Work/novac-rust)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 10.42s

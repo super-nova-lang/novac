@@ -1,10 +1,12 @@
 #![allow(dead_code)]
 
+use lexer::token::Span;
+
 #[derive(Clone, Debug)]
 pub enum Node {
     Statement(Statement),
     Expression(Box<Expression>),
-    Error(String),
+    Error(String, Span),
 }
 
 /* STATEMENT */

@@ -55,7 +55,7 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn compile(mut self, nodes: &[Node]) -> Result<Module<'ctx>, CodegenError> {
-        let mut decls: Vec<&DeclStmt> = Vec::new();
+        let mut decls: Vec<DeclStmt> = Vec::new();
         for node in nodes {
             if let Node::Statement(stmt) = node {
                 match stmt {
@@ -65,12 +65,65 @@ impl<'ctx> Codegen<'ctx> {
                         } => {
                             self.declare_import(name, link_name);
                         }
-                        DeclStmt::Decl { body, .. } if Self::is_type_decl(body) => {
-                            // Skip type-like declarations (struct/enum/derive) for now.
+                        DeclStmt::Decl { body, params: parent_params, .. } if Self::is_type_decl(body) => {
+                            // For type-like declarations (struct/enum/derive), declare functions defined in their `with`/derive blocks
+                            if let Some(expr) = &body.1 {
+                                match expr.as_ref() {
+                                    Expression::StructExpr(_, Some(with_block)) | Expression::EnumExpr(_, Some(with_block)) => {
+                                        // collect parent params to prepend to inner decls
+                                        let parent_params_clone = parent_params.clone();
+                                        for node in with_block {
+                                            if let Node::Statement(Statement::Decl(inner)) = node {
+                                                if let DeclStmt::Decl { tags, name, generics, params: inner_params, explicit_ret, body } = inner {
+                                                    // Only hoist inner decls that take parameters (methods like `self`); skip simple field accessors
+                                                    if inner_params.is_empty() {
+                                                        continue;
+                                                    }
+                                                    // create a new decl with parent params prepended
+                                                    let mut combined_params = parent_params_clone.clone();
+                                                    combined_params.extend(inner_params.clone());
+                                                    let new_decl = DeclStmt::Decl {
+                                                        tags: tags.clone(),
+                                                        name: name.clone(),
+                                                        generics: generics.clone(),
+                                                        params: combined_params,
+                                                        explicit_ret: explicit_ret.clone(),
+                                                        body: body.clone(),
+                                                    };
+                                                    self.declare_function(&new_decl)?;
+                                                    decls.push(new_decl);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Expression::DeriveExpr(nodes) => {
+                                        let parent_params_clone = parent_params.clone();
+                                        for node in nodes {
+                                            if let Node::Statement(Statement::Decl(inner)) = node {
+                                                if let DeclStmt::Decl { tags, name, generics, params: inner_params, explicit_ret, body } = inner {
+                                                    let mut combined_params = parent_params_clone.clone();
+                                                    combined_params.extend(inner_params.clone());
+                                                    let new_decl = DeclStmt::Decl {
+                                                        tags: tags.clone(),
+                                                        name: name.clone(),
+                                                        generics: generics.clone(),
+                                                        params: combined_params,
+                                                        explicit_ret: explicit_ret.clone(),
+                                                        body: body.clone(),
+                                                    };
+                                                    self.declare_function(&new_decl)?;
+                                                    decls.push(new_decl);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
                         }
                         DeclStmt::Decl { .. } => {
                             self.declare_function(decl)?;
-                            decls.push(decl);
+                            decls.push(decl.clone());
                         }
                         _ => {}
                     },
@@ -79,7 +132,7 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
-        for decl in decls {
+        for decl in &decls {
             if let DeclStmt::Decl { name, .. } = decl {
                 if let Some(func) = self.functions.get(name).copied() {
                     self.define_function(decl, func)?;
@@ -98,7 +151,7 @@ impl<'ctx> Codegen<'ctx> {
             return;
         }
 
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr = self.context.ptr_type(AddressSpace::default());
         let fn_type = self.context.i32_type().fn_type(&[i8_ptr.into()], true);
         let function = self.module.add_function(link_name, fn_type, None);
         self.functions.insert(name.to_string(), function);
@@ -247,6 +300,7 @@ impl<'ctx> Codegen<'ctx> {
                 "i8" | "char" => Ok(self.context.i8_type().into()),
                 "i32" | "int" => Ok(self.context.i32_type().into()),
                 "i64" => Ok(self.context.i64_type().into()),
+                "string" => Ok(self.context.ptr_type(AddressSpace::default()).into()),
                 _ => Err(CodegenError::UnsupportedType(typ.clone())),
             },
             Type::UnitTyp => Err(CodegenError::UnsupportedType(typ.clone())),
@@ -456,7 +510,7 @@ impl<'ctx> Codegen<'ctx> {
             .copied()
             .or_else(|| self.module.get_function(callee_name))
             .unwrap_or_else(|| {
-                let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+                let i8_ptr = self.context.ptr_type(AddressSpace::default());
                 let fn_type = self.context.i32_type().fn_type(&[i8_ptr.into()], true);
                 let f = self.module.add_function(callee_name, fn_type, None);
                 self.functions.insert(callee_name.to_string(), f);

@@ -770,7 +770,7 @@ fn analyze_ast(ctx: &mut Context, node: &Node) {
     match node {
         Node::Statement(stmt) => analyze_statement(ctx, stmt),
         Node::Expression(expr) => analyze_expression(ctx, expr),
-        Node::Error(msg) => {
+        Node::Error(msg, _span) => {
             ctx.errors
                 .push(AnalysisResult::Error(AnalysisError::InvalidOperation(
                     msg.clone(),

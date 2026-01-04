@@ -3,22 +3,35 @@
 pub mod nodes;
 
 use lexer::token::{Span, Token, TokenKind};
-use nodes::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParseError {
     message: String,
+    span: Span,
 }
 
 type ParseResult<T> = Result<T, ParseError>;
 
 impl ParseError {
-    fn new(msg: impl Into<String>) -> Self {
+    fn new(msg: impl Into<String>, span: Span) -> Self {
         ParseError {
             message: msg.into(),
+            span,
         }
     }
 }
+
+impl ParseError {
+    fn message(&self) -> &str {
+        &self.message
+    }
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+
+use nodes::*;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -46,7 +59,7 @@ impl Parser {
             match self.parse_toplevel() {
                 Ok(node) => stmts.push(node),
                 Err(err) => {
-                    stmts.push(Node::Error(err.message.clone()));
+                    stmts.push(Node::Error(err.message.clone(), err.span.clone()));
                     self.breakout();
                 }
             }
@@ -103,7 +116,7 @@ impl Parser {
                         }
                         _ => match self.parse_toplevel() {
                             Ok(stmt) => body.push(stmt),
-                            Err(err) => body.push(Node::Error(err.message)),
+                            Err(err) => body.push(Node::Error(err.message, err.span)),
                         },
                     }
                 }
@@ -686,7 +699,7 @@ impl Parser {
             while !matches!(self.peek().kind, TokenKind::CloseBrack | TokenKind::Eof) {
                 match self.parse_statement() {
                     Ok(stmt) => stmts.push(Node::Statement(stmt)),
-                    Err(err) => stmts.push(Node::Error(err.message)),
+                    Err(err) => stmts.push(Node::Error(err.message, err.span.clone())),
                 }
             }
             let _ = self.expect(TokenKind::CloseBrack);
@@ -694,7 +707,7 @@ impl Parser {
         } else {
             match self.parse_statement() {
                 Ok(stmt) => vec![Node::Statement(stmt)],
-                Err(err) => vec![Node::Error(err.message)],
+                Err(err) => vec![Node::Error(err.message, err.span)],
             }
         }
     }
@@ -890,7 +903,7 @@ impl Parser {
                             self.advance();
                         }
                     }
-                    Err(err) => stmts.push(Node::Error(err.message)),
+                    Err(err) => stmts.push(Node::Error(err.message, err.span.clone())),
                 }
             }
             self.expect(TokenKind::CloseBrack).ok()?;
@@ -969,7 +982,7 @@ impl Parser {
                         self.advance();
                     }
                 }
-                Err(err) => stmts.push(Node::Error(err.message)),
+                Err(err) => stmts.push(Node::Error(err.message, err.span.clone())),
             }
         }
         self.expect(TokenKind::CloseBrack)?;
@@ -1292,6 +1305,6 @@ impl Parser {
     }
 
     fn fail(&self, msg: impl Into<String>) -> ParseError {
-        ParseError::new(msg)
+        ParseError::new(msg, self.peek().span.clone())
     }
 }
