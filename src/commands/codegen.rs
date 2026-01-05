@@ -28,9 +28,10 @@ pub fn run(files: Vec<String>, target: Target) -> Result<()> {
                 Ok(ir) => println!("{}", ir),
                 Err(e) => println!("Codegen failed for {}: {}", file, e),
             },
-            Target::Amd64 => {
-                bail!("target amd64 not implemented yet");
-            }
+            Target::Amd64 => match codegen::target_amd64::gen_target(&file, &ast) {
+                Ok(ir) => println!("{}", ir),
+                Err(e) => println!("Codegen failed for {}: {}", file, e),
+            },
         }
     }
 

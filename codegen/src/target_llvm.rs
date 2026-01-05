@@ -166,7 +166,7 @@ mod __private {
                                 }
                             }
                             DeclStmt::Decl { .. } => {
-                                self.declare_function(decl)?;
+                                self.declare_function(&decl)?;
                                 decls.push(decl.clone());
                             }
                             _ => {}
