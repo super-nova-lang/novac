@@ -14,9 +14,9 @@ fn main() -> Result<()> {
     match cli {
         Cli::Tokenize { files } => commands::tokenize::run(files)?,
         Cli::Parse { files } => commands::parse::run(files)?,
-        Cli::Codegen { files } => commands::codegen::run(files)?,
-        Cli::Compile { files } => commands::compile::run(files)?,
-        Cli::Run { files } => commands::run::run(files)?,
+        Cli::Codegen { files, target } => commands::codegen::run(files, target)?,
+        Cli::Compile { files, target } => commands::compile::run(files, target)?,
+        Cli::Run { files, target } => commands::run::run(files, target)?,
         Cli::Clean => commands::clean::run()?,
         Cli::Doc { files } => commands::doc::run(files)?,
         Cli::TestCompile => commands::test_compile::run()?,

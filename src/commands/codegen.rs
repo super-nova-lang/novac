@@ -1,12 +1,12 @@
-use anyhow::Result;
-use inkwell::context::Context;
+use anyhow::{Result, bail};
 
+use crate::cli::Target;
 use crate::commands::common::{
-    analyze_step, lex_step, parse_step, read_source, report_analysis_errors, report_analysis_warnings,
-    report_parse_errors,
+    analyze_step, lex_step, parse_step, read_source, report_analysis_errors,
+    report_analysis_warnings, report_parse_errors,
 };
 
-pub fn run(files: Vec<String>) -> Result<()> {
+pub fn run(files: Vec<String>, target: Target) -> Result<()> {
     for file in files {
         let source = read_source(&file)?;
         let tokens = lex_step(&file, &source);
@@ -23,14 +23,13 @@ pub fn run(files: Vec<String>) -> Result<()> {
         }
         report_analysis_warnings(&file, &warnings);
 
-        let context = Context::create();
-        let codegen = codegen::Codegen::new(&context, &file);
-        match codegen.compile(&ast) {
-            Ok(module) => {
-                println!("{}", module.print_to_string().to_string());
-            }
-            Err(e) => {
-                println!("Codegen failed for {}: {}", file, e);
+        match target {
+            Target::Llvm => match codegen::target_llvm::gen_target(&file, &ast) {
+                Ok(ir) => println!("{}", ir),
+                Err(e) => println!("Codegen failed for {}: {}", file, e),
+            },
+            Target::Amd64 => {
+                bail!("target amd64 not implemented yet");
             }
         }
     }

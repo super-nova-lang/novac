@@ -120,6 +120,7 @@ name = "codegen"
 version = "0.1.0"
 dependencies = [
  "analysis",
+ "anyhow",
  "inkwell",
  "parser",
  "thiserror 1.0.69",

@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -14,16 +14,28 @@ pub enum Cli {
     /// Parse Nova source code and output the AST
     Parse { files: Vec<String> },
     /// Generate the LLVM source code
-    Codegen { files: Vec<String> },
+    Codegen {
+        #[arg(short, long, value_enum, default_value_t = Target::Llvm)]
+        target: Target,
+        files: Vec<String>,
+    },
     /// Compile the Nova source code
-    Compile { files: Vec<String> },
+    Compile {
+        #[arg(short, long, value_enum, default_value_t = Target::Llvm)]
+        target: Target,
+        files: Vec<String>,
+    },
     // UTILITY COMMANDS
     /// Clean build artifacts
     Clean,
     /// Generate documentation for Nova source code
     Doc { files: Vec<String> },
     /// Run Nova project
-    Run { files: Vec<String> },
+    Run {
+        #[arg(short, long, value_enum, default_value_t = Target::Llvm)]
+        target: Target,
+        files: Vec<String>,
+    },
     // DEVELOPMENT COMMANDS
     /// Test the compiler
     TestCompile,
@@ -45,4 +57,12 @@ impl std::fmt::Display for Cli {
             Cli::TestCompilePromote => write!(f, "test-compile-promote"),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum Target {
+    #[value(name = "llvm")]
+    Llvm,
+    #[value(name = "amd64")]
+    Amd64,
 }
