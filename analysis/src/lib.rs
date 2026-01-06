@@ -51,6 +51,8 @@ pub struct Context {
     warnings: Vec<AnalysisWarning>,
     function_returns: HashMap<String, Type>,
     parent_type: Option<String>,
+    parent_generics: Vec<String>,
+    struct_fields: HashMap<String, Vec<(String, Type)>>,
 }
 
 pub fn analyze(
@@ -75,6 +77,8 @@ fn create_context() -> Context {
         warnings: Vec::new(),
         function_returns: HashMap::new(),
         parent_type: None,
+        parent_generics: Vec::new(),
+        struct_fields: HashMap::new(),
     }
 }
 
@@ -88,9 +92,7 @@ fn exit_scope(ctx: &mut Context) {
         for info in infos.iter() {
             if info.scope_level == ctx.scope_level && !info.used && ctx.scope_level > 0 {
                 ctx.warnings
-                    .push(AnalysisWarning::UnusedVariable(
-                        name.clone(),
-                    ));
+                    .push(AnalysisWarning::UnusedVariable(name.clone()));
             }
         }
     }
@@ -123,9 +125,7 @@ fn add_symbol(
     match ctx.symbols.get_mut(&name) {
         Some(stack) => {
             ctx.warnings
-                .push(AnalysisWarning::ShadowedVariable(
-                    name.clone(),
-                ));
+                .push(AnalysisWarning::ShadowedVariable(name.clone()));
             stack.insert(0, info);
         }
         None => {
@@ -173,6 +173,37 @@ fn types_equal(a: &Type, b: &Type) -> bool {
 
 fn iter_types_equal(xs: &[Type], ys: &[Type]) -> bool {
     xs.len() == ys.len() && xs.iter().zip(ys).all(|(a, b)| types_equal(a, b))
+}
+
+fn resolve_generic_type(typ: &Type, parent_generics: &[String], type_args: &[Type]) -> Type {
+    use Type::*;
+    match typ {
+        TypeVar(var_name) => {
+            // Find the index of this TypeVar in parent_generics
+            if let Some(idx) = parent_generics.iter().position(|g| g == var_name) {
+                if idx < type_args.len() {
+                    type_args[idx].clone()
+                } else {
+                    typ.clone()
+                }
+            } else {
+                typ.clone()
+            }
+        }
+        ListTyp(inner) => ListTyp(Box::new(resolve_generic_type(
+            inner,
+            parent_generics,
+            type_args,
+        ))),
+        Generic(name, args) => {
+            let resolved_args: Vec<Type> = args
+                .iter()
+                .map(|arg| resolve_generic_type(arg, parent_generics, type_args))
+                .collect();
+            Generic(name.clone(), resolved_args)
+        }
+        _ => typ.clone(),
+    }
 }
 
 fn take_first_n<T: Clone>(n: usize, iter: impl Iterator<Item = T>) -> Vec<T> {
@@ -314,9 +345,68 @@ fn infer_unary_type(ctx: &mut Context, unary: &UnaryExpr) -> Type {
             let _ = infer_unary_type(ctx, expr);
             Type::Builtin("bool".to_string())
         }
-        UnaryExpr::UnaryMember(expr, _) => {
-            let _ = infer_unary_type(ctx, expr);
-            Type::UnitTyp
+        UnaryExpr::UnaryMember(expr, member_name) => {
+            let base_type = infer_unary_type(ctx, expr);
+
+            // For method calls, try to resolve the return type from function_returns
+            if let Some(return_type) = ctx.function_returns.get(member_name) {
+                // If the return type is a TypeVar and we have parent generics, resolve it
+                match return_type {
+                    Type::TypeVar(var_name) if !ctx.parent_generics.is_empty() => {
+                        // Check if this TypeVar is in our parent generics
+                        if let Type::Generic(_, type_args) = &base_type {
+                            // For Option[T], type_args[0] is T
+                            if let Some(idx) =
+                                ctx.parent_generics.iter().position(|g| g == var_name)
+                            {
+                                if idx < type_args.len() {
+                                    return type_args[idx].clone();
+                                }
+                            }
+                        }
+                        return_type.clone()
+                    }
+                    _ => return_type.clone(),
+                }
+            } else {
+                // Try to resolve member field type from the base type
+                match base_type {
+                    Type::User(struct_name) => {
+                        // Look up the struct fields
+                        if let Some(fields) = ctx.struct_fields.get(&struct_name) {
+                            if let Some((_, field_type)) =
+                                fields.iter().find(|(fname, _)| fname == member_name)
+                            {
+                                return field_type.clone();
+                            }
+                        }
+                        Type::UnitTyp
+                    }
+                    Type::Generic(struct_name, type_args) => {
+                        // Generic type with arguments like Box[T]
+                        // Look up the struct fields and resolve TypeVars
+                        if let Some(fields) = ctx.struct_fields.get(&struct_name) {
+                            if let Some((_, field_type)) =
+                                fields.iter().find(|(fname, _)| fname == member_name)
+                            {
+                                // Replace TypeVars with actual type arguments
+                                let resolved = resolve_generic_type(
+                                    field_type,
+                                    &ctx.parent_generics,
+                                    type_args.as_slice(),
+                                );
+                                return resolved;
+                            }
+                        }
+                        Type::UnitTyp
+                    }
+                    Type::TypeVar(_var_name) => {
+                        // This is a generic type parameter
+                        Type::UnitTyp
+                    }
+                    _ => Type::UnitTyp,
+                }
+            }
         }
         UnaryExpr::UnaryCall(call) => infer_call_type(ctx, call),
         UnaryExpr::UnaryVal(atom) => infer_atom_type(ctx, atom),
@@ -330,6 +420,24 @@ fn infer_atom_type(ctx: &mut Context, atom: &Atom) -> Type {
         Atom::Char(_) => Type::Builtin("char".to_string()),
         Atom::Int(_) => Type::Builtin("i32".to_string()),
         Atom::Ident(name) if name == "_" => Type::Builtin("i32".to_string()),
+        Atom::Ident(name) if name == "self" => {
+            // Special handling for self parameter
+            if let Some(parent) = &ctx.parent_type {
+                if ctx.parent_generics.is_empty() {
+                    Type::User(parent.clone())
+                } else {
+                    // Construct the generic type with TypeVar parameters
+                    let type_args: Vec<Type> = ctx
+                        .parent_generics
+                        .iter()
+                        .map(|g| Type::TypeVar(g.clone()))
+                        .collect();
+                    Type::Generic(parent.clone(), type_args)
+                }
+            } else {
+                Type::UnitTyp
+            }
+        }
         Atom::Ident(name) => {
             if let Some(info) = lookup_symbol_mut(ctx, name) {
                 info.used = true;
@@ -650,6 +758,30 @@ fn analyze_decl(ctx: &mut Context, decl: &DeclStmt) {
 
             let body_type = if let Some(expr) = expr_opt {
                 analyze_expression(ctx, expr);
+
+                // Store struct fields if this is a struct definition
+                if let Expression::StructExpr(fields, _) = expr.as_ref() {
+                    let field_list: Vec<(String, Type)> = fields
+                        .iter()
+                        .map(|(fname, ftyp, _)| (fname.clone(), ftyp.clone()))
+                        .collect();
+                    ctx.struct_fields.insert(name.clone(), field_list);
+                }
+
+                // Store enum variants if this is an enum definition
+                if let Expression::EnumExpr(variants, _) = expr.as_ref() {
+                    let variant_list: Vec<(String, Type)> = variants
+                        .iter()
+                        .filter_map(|(vname, vbody)| match vbody {
+                            Some(parser::nodes::VariantBody::TypeBody(vtype)) => {
+                                Some((vname.clone(), vtype.clone()))
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    ctx.struct_fields.insert(name.clone(), variant_list);
+                }
+
                 let mut inferred = infer_expression_type(ctx, expr);
                 if let Type::User(n) = &inferred {
                     if let Some(Type::Generic(m, _)) = explicit_ret {
@@ -693,13 +825,18 @@ fn analyze_decl(ctx: &mut Context, decl: &DeclStmt) {
 
             // Analyze methods in with block if this is a struct or enum
             if let Some(expr) = expr_opt {
-                if let Expression::StructExpr(_, Some(with_block)) | Expression::EnumExpr(_, Some(with_block)) = expr.as_ref() {
+                if let Expression::StructExpr(_, Some(with_block))
+                | Expression::EnumExpr(_, Some(with_block)) = expr.as_ref()
+                {
                     let old_parent_type = ctx.parent_type.clone();
+                    let old_parent_generics = ctx.parent_generics.clone();
                     ctx.parent_type = Some(name.clone());
+                    ctx.parent_generics = decl.generics().unwrap_or_default();
                     for method_node in with_block {
                         analyze_ast(ctx, method_node);
                     }
                     ctx.parent_type = old_parent_type;
+                    ctx.parent_generics = old_parent_generics;
                 }
             }
 

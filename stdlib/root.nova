@@ -8,6 +8,8 @@ let Option[T] :: = enum {
 		| .none    -> false
 	
 	let is_none :: self = !self.is_some()
+
+	let unwrap :: self = self.some
 }
 
 (*! Result represents success (ok) or failure (err). *)

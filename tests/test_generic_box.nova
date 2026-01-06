@@ -1,0 +1,6 @@
+(*! Test generic return type *)
+let Box[T] :: = struct {
+    value: T,
+} with {
+    let get :: self = self.value
+}

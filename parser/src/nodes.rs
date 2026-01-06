@@ -268,3 +268,18 @@ pub enum Type {
     UnitTyp,
     ListTyp(Box<Type>),
 }
+
+impl DeclStmt {
+    pub fn generics(&self) -> Option<Vec<Ident>> {
+        match self {
+            DeclStmt::Decl { generics, .. } => {
+                if generics.is_empty() {
+                    None
+                } else {
+                    Some(generics.clone())
+                }
+            }
+            _ => None,
+        }
+    }
+}
