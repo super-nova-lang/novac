@@ -11,23 +11,35 @@ pub fn read_source(file: &str) -> Result<String> {
 pub fn read_source_with_stdlib(file: &str) -> Result<String> {
     let mut source = String::new();
 
-    // Include root.nova first
+    // Include root.nova first (unmangled, globally accessible)
     if let Ok(root_content) = std::fs::read_to_string("stdlib/root.nova") {
         source.push_str(&root_content);
         source.push('\n');
     }
 
-    // Include each file in stdlib/std/
+    // Include each file in stdlib/std/ wrapped in its module namespace
     if let Ok(entries) = std::fs::read_dir("stdlib/std") {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.extension().map(|e| e == "nova").unwrap_or(false) {
-                    if let Ok(content) = std::fs::read_to_string(&path) {
-                        source.push_str(&content);
-                        source.push('\n');
-                    }
-                }
+        let mut files: Vec<_> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|ext| ext == "nova").unwrap_or(false))
+            .collect();
+        
+        // Sort for consistent order
+        files.sort_by_key(|e| e.path());
+        
+        for entry in files {
+            let path = entry.path();
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                // Get filename without extension to create module name
+                let module_name = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown");
+                
+                // Wrap file content in module std.<filename>
+                source.push_str(&format!("module std.{} {{\n", module_name));
+                source.push_str(&content);
+                source.push_str("\n}\n\n");
             }
         }
     }

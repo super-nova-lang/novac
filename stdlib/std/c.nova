@@ -1,43 +1,41 @@
-module std.c {
-	module stdio {
-		export printf
-		export puts
-		export putchar
-		export getchar
+module stdio {
+	export printf
+	export puts
+	export putchar
+	export getchar
 
-		let printf  :: import <- "c", "printf"
-		let puts    :: import <- "c", "puts"
-		let putchar :: import <- "c", "putchar"
-		let getchar :: import <- "c", "getchar"
-	}
+	let printf  :: import <- "c", "printf"
+	let puts    :: import <- "c", "puts"
+	let putchar :: import <- "c", "putchar"
+	let getchar :: import <- "c", "getchar"
+}
 
-	module stdlib {
-		export malloc
-		export calloc
-		export realloc
-		export free
-		export exit
+module stdlib {
+	export malloc
+	export calloc
+	export realloc
+	export free
+	export exit
 
-		let malloc  :: import <- "c", "malloc"
-		let calloc  :: import <- "c", "calloc"
-		let realloc :: import <- "c", "realloc"
-		let free    :: import <- "c", "free"
-		let exit    :: import <- "c", "exit"
-	}
+	let malloc  :: import <- "c", "malloc"
+	let calloc  :: import <- "c", "calloc"
+	let realloc :: import <- "c", "realloc"
+	let free    :: import <- "c", "free"
+	let exit    :: import <- "c", "exit"
+}
 
-	module string {
-		export strlen
-		export strcmp
-		export strcpy
-		export strncpy
-		export memcpy
-		export memset
+module string {
+	export strlen
+	export strcmp
+	export strcpy
+	export strncpy
+	export memcpy
+	export memset
 
-		let strlen  :: import <- "c", "strlen"
-		let strcmp  :: import <- "c", "strcmp"
-		let strcpy  :: import <- "c", "strcpy"
-		let strncpy :: import <- "c", "strncpy"
-		let memcpy  :: import <- "c", "memcpy"
-		let memset  :: import <- "c", "memset"
-	}
+	let strlen  :: import <- "c", "strlen"
+	let strcmp  :: import <- "c", "strcmp"
+	let strcpy  :: import <- "c", "strcpy"
+	let strncpy :: import <- "c", "strncpy"
+	let memcpy  :: import <- "c", "memcpy"
+	let memset  :: import <- "c", "memset"
 }
