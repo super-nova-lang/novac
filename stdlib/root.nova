@@ -6,8 +6,8 @@ let Option[T] :: = enum {
 
 (*! Result represents success (ok) or failure (err). *)
 let Result[T, E] :: = enum {
-	ok :: struct { value: T },
-	err :: struct { error: E },
+	ok :: T,
+	err :: E,
 }
 
 let String :: ()
