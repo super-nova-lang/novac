@@ -2,12 +2,13 @@ use anyhow::{Result, bail};
 
 use crate::cli::Target;
 use crate::commands::common::{
-    analyze_step, lex_step, parse_step, read_source, report_analysis_errors, report_parse_errors,
+    analyze_step, lex_step, parse_step, read_source_with_stdlib, report_analysis_errors,
+    report_parse_errors,
 };
 
 pub fn run(files: Vec<String>, target: Target) -> Result<()> {
     for file in files {
-        let source = read_source(&file)?;
+        let source = read_source_with_stdlib(&file)?;
         let tokens = lex_step(&file, &source);
         let ast = parse_step(tokens)?;
 

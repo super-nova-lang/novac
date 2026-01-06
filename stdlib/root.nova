@@ -17,12 +17,13 @@ let String :: ()
 } with {
 	let new :: () 
 	= Self {
-		.internal = "",
+		.str = "",
 		.size = 0,
 	}
 
 	let from :: str
 	= Self {
-		
+		.str = str,
+		.size = 0,
 	}
 }

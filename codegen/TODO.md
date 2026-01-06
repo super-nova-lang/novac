@@ -7,8 +7,6 @@
 - [ ] Method/member calls (resolve receivers instead of extern varargs)
 - [ ] Better error handling (replace unsupported placeholders with proper errors)
 - [ ] Fat-pointer strings (length-tracked strings with consistent ABI/runtime helpers; currently null-terminated)
-- [ ] LLVM ptr API update (move off deprecated `ptr_type` usage)
-- [ ] LLVM integration improvements (optimization, portability)
 - [ ] Linking improvements (external library support)
 
 ## Backend Targets
@@ -19,7 +17,6 @@
 	- [ ] Data layout for structs/enums (field offsets, tagging strategy)
 	- [ ] String/constant emission into `.rodata`
 	- [ ] Syscall/stdlib surface for `_start` and runtime hooks
-- [ ] Align LLVM backend outputs with runtime/ABI once fat pointers return
 
 ## Finished
 - [x] File layout: `.text`, `.data`, symbol visibility, section ordering

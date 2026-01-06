@@ -158,7 +158,7 @@ impl Parser {
             TokenKind::Ident(_) => {
                 let current_pos = self.pos;
                 self.advance();
-                let is_decl = matches!(self.peek().kind, TokenKind::Colon | TokenKind::DoubleColon);
+                let is_decl = matches!(self.peek().kind, TokenKind::Colon | TokenKind::DoubleColon | TokenKind::OpenSquare);
                 self.pos = current_pos;
                 if is_decl {
                     self.parse_decl_stmt(tags)
@@ -531,6 +531,9 @@ impl Parser {
         match self.consume().kind {
             TokenKind::Ident(s) if s.starts_with('\'') => Type::TypeVar(s),
             TokenKind::Ident(s) => {
+                // Check if this is an uppercase identifier (likely a type variable)
+                let is_type_var = s.chars().next().map_or(false, |c| c.is_uppercase());
+                
                 let generics = if matches!(self.peek().kind, TokenKind::OpenSquare) {
                     self.advance();
                     let args = self.parse_list(&[TokenKind::CloseSquare], |p| Ok(p.parse_type()));
@@ -539,7 +542,10 @@ impl Parser {
                 } else {
                     Vec::new()
                 };
-                if generics.is_empty() {
+                
+                if generics.is_empty() && is_type_var {
+                    Type::TypeVar(s)
+                } else if generics.is_empty() {
                     Type::User(s)
                 } else {
                     Type::Generic(s, generics)
@@ -1191,6 +1197,29 @@ impl Parser {
                     self.expect(TokenKind::CloseParen)?;
                     let call = CallExpr::DeclCall(Box::new(self.wrap_unary(res.clone())), params);
                     res = UnaryExpr::UnaryCall(call);
+                }
+                TokenKind::OpenBrack => {
+                    // Struct constructor: Name { field: value, ... } or Name { .field = value, ... }
+                    self.advance();
+                    let fields = self.parse_list(&[TokenKind::CloseBrack], |p| {
+                        // Check if this is the shorthand .field = value syntax or regular field: type = value
+                        if matches!(p.peek().kind, TokenKind::Dot) {
+                            p.advance();
+                            let name = match p.consume().kind {
+                                TokenKind::Ident(s) => s,
+                                _ => return Err(p.fail("Expected identifier after .")),
+                            };
+                            p.expect(TokenKind::Eql)?;
+                            let expr = Box::new(p.parse_expression()?);
+                            // For shorthand, we don't have a type, use Unit type
+                            Ok((name, Type::UnitTyp, Some(expr)))
+                        } else {
+                            p.parse_struct_field()
+                        }
+                    })?;
+                    self.expect(TokenKind::CloseBrack)?;
+                    let struct_expr = Expression::StructExpr(fields, None);
+                    res = UnaryExpr::UnaryVal(Atom::Grouping(Box::new(struct_expr)));
                 }
                 _ => break,
             }

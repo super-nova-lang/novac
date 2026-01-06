@@ -1,11 +1,42 @@
+use crate::logging;
 use analysis::{self, AnalysisResult};
 use anyhow::Result;
 use lexer::{Lexer, token::Token};
 use parser::{self, nodes::Node};
-use crate::logging;
 
 pub fn read_source(file: &str) -> Result<String> {
     std::fs::read_to_string(file).map_err(Into::into)
+}
+
+pub fn read_source_with_stdlib(file: &str) -> Result<String> {
+    let mut source = String::new();
+
+    // Include root.nova first
+    if let Ok(root_content) = std::fs::read_to_string("stdlib/root.nova") {
+        source.push_str(&root_content);
+        source.push('\n');
+    }
+
+    // Include each file in stdlib/std/
+    if let Ok(entries) = std::fs::read_dir("stdlib/std") {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let path = entry.path();
+                if path.extension().map(|e| e == "nova").unwrap_or(false) {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        source.push_str(&content);
+                        source.push('\n');
+                    }
+                }
+            }
+        }
+    }
+
+    // Append user source file
+    let user_source = std::fs::read_to_string(file)?;
+    source.push_str(&user_source);
+
+    Ok(source)
 }
 
 pub fn lex_step(file: &str, source: &str) -> Vec<Token> {
@@ -41,19 +72,41 @@ pub fn report_analysis_errors(file: &str, errors: &[AnalysisResult]) -> bool {
         if let AnalysisResult::Error(e) = err {
             match e {
                 analysis::AnalysisError::UndefinedVariable(name, suggestions) => {
-                    logging::error_simple(file, "analysis.undefined_variable", &format!("Undefined variable '{}' (suggestions: {})", name, suggestions.join(", ")));
+                    logging::error_simple(
+                        file,
+                        "analysis.undefined_variable",
+                        &format!(
+                            "Undefined variable '{}' (suggestions: {})",
+                            name,
+                            suggestions.join(", ")
+                        ),
+                    );
                 }
                 analysis::AnalysisError::TypeMismatch(a, b) => {
-                    logging::error_simple(file, "analysis.type_mismatch", &format!("Type mismatch: expected {:?}, found {:?}", a, b));
+                    logging::error_simple(
+                        file,
+                        "analysis.type_mismatch",
+                        &format!("Type mismatch: expected {:?}, found {:?}", a, b),
+                    );
                 }
                 analysis::AnalysisError::DuplicateDeclaration(name, (r, c)) => {
-                    logging::error_span(file, *r, *c, "analysis.duplicate_declaration", &format!("Duplicate declaration '{}'", name));
+                    logging::error_span(
+                        file,
+                        *r,
+                        *c,
+                        "analysis.duplicate_declaration",
+                        &format!("Duplicate declaration '{}'", name),
+                    );
                 }
                 analysis::AnalysisError::InvalidOperation(msg) => {
                     logging::error_simple(file, "analysis", msg);
                 }
                 analysis::AnalysisError::MissingReturnType(name) => {
-                    logging::error_simple(file, "analysis.missing_return", &format!("Missing return in function '{}'", name));
+                    logging::error_simple(
+                        file,
+                        "analysis.missing_return",
+                        &format!("Missing return in function '{}'", name),
+                    );
                 }
             }
         }
@@ -72,10 +125,18 @@ pub fn report_analysis_warnings(file: &str, warnings: &[AnalysisResult]) {
         if let AnalysisResult::Warning(w) = warn {
             match w {
                 analysis::AnalysisWarning::UnusedVariable(name) => {
-                    logging::warn_simple(file, "analysis.unused_variable", &format!("Unused variable '{}'", name));
+                    logging::warn_simple(
+                        file,
+                        "analysis.unused_variable",
+                        &format!("Unused variable '{}'", name),
+                    );
                 }
                 analysis::AnalysisWarning::ShadowedVariable(name) => {
-                    logging::warn_simple(file, "analysis.shadowed_variable", &format!("Shadowed variable '{}'", name));
+                    logging::warn_simple(
+                        file,
+                        "analysis.shadowed_variable",
+                        &format!("Shadowed variable '{}'", name),
+                    );
                 }
             }
         }

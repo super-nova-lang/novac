@@ -1,0 +1,4 @@
+let Option[T] :: = enum {
+	some :: struct { value: T },
+	none :: (),
+}

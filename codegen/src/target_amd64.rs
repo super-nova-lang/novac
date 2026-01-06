@@ -155,7 +155,7 @@ impl<'ctx> Emitter<'ctx> {
         self.header.push(format!("# nodes: {}", ast.len()));
         self.header
             .push(format!("# mangler: {}", self.ctx.mangler().module_tag()));
-        self.header.push(String::from("# handrolled amd64 backend"));
+        self.header.push(String::from("# amd64 backend"));
         self.header.push(String::new());
         self.header.push(String::from(".global _start"));
     }
