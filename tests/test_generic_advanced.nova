@@ -1,0 +1,25 @@
+(*! Result type representing success or failure *)
+let Result[T, E] :: = enum {
+    ok :: T,
+    err :: E,
+} with {
+    let unwrap :: self = self.ok
+    let unwrap_err :: self = self.err
+    let is_ok :: self = match self with
+        | .ok(_) -> true
+        | .err(_) -> false
+    let is_err :: self = !self.is_ok()
+}
+
+(*! Container that holds a pair of values *)
+let Pair[A, B] :: = struct {
+    first: A,
+    second: B,
+} with {
+    let get_first :: self = self.first
+    let get_second :: self = self.second
+    let swap :: self = Pair {
+        .first = self.second,
+        .second = self.first,
+    }
+}
