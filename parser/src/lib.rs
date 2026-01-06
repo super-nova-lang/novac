@@ -43,12 +43,7 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult<Vec<Node>> {
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        // Strip doc comments to match OCaml parser behavior
-        let tokens = tokens
-            .into_iter()
-            .filter(|t| !matches!(t.kind, TokenKind::DocComment(_)))
-            .collect();
-
+        // Keep doc comments so we can attach them to declarations
         Parser { tokens, pos: 0 }
     }
 
@@ -79,6 +74,7 @@ impl Parser {
     }
 
     fn parse_toplevel(&mut self) -> ParseResult<Node> {
+        let doc = self.extract_doc_comment();
         let tags = self.parse_tags();
         match self.peek().kind {
             TokenKind::Module => {
@@ -122,6 +118,7 @@ impl Parser {
 
                 self.expect(TokenKind::CloseBrack)?;
                 Ok(Node::Statement(Statement::Decl(DeclStmt::ModuleDecl {
+                    doc,
                     name,
                     exports,
                     body,
@@ -151,7 +148,7 @@ impl Parser {
                 }
             }
             TokenKind::Let => self
-                .parse_decl_stmt(tags)
+                .parse_decl_stmt(tags, doc)
                 .map(Statement::Decl)
                 .map(Node::Statement),
             TokenKind::Ident(_) => {
@@ -163,7 +160,7 @@ impl Parser {
                 );
                 self.pos = current_pos;
                 if is_decl {
-                    self.parse_decl_stmt(tags)
+                    self.parse_decl_stmt(tags, doc)
                         .map(Statement::Decl)
                         .map(Node::Statement)
                 } else {
@@ -171,6 +168,16 @@ impl Parser {
                 }
             }
             _ => self.parse_statement().map(Node::Statement),
+        }
+    }
+
+    fn extract_doc_comment(&mut self) -> Option<String> {
+        if let TokenKind::DocComment(doc) = &self.peek().kind {
+            let doc_content = doc.clone();
+            self.advance();
+            Some(doc_content)
+        } else {
+            None
         }
     }
 
@@ -210,7 +217,7 @@ impl Parser {
     fn parse_statement(&mut self) -> ParseResult<Statement> {
         match self.peek().kind {
             TokenKind::Open => self.parse_open_stmt(),
-            TokenKind::Let => self.parse_decl_stmt(Vec::new()).map(Statement::Decl),
+            TokenKind::Let => self.parse_decl_stmt(Vec::new(), None).map(Statement::Decl),
             TokenKind::Return => self.parse_return_stmt(),
             TokenKind::If => self.parse_if_stmt(),
             TokenKind::While => self.parse_while_stmt(),
@@ -310,7 +317,7 @@ impl Parser {
         tag
     }
 
-    fn parse_decl_stmt(&mut self, tags: Vec<Tag>) -> ParseResult<DeclStmt> {
+    fn parse_decl_stmt(&mut self, tags: Vec<Tag>, doc: Option<String>) -> ParseResult<DeclStmt> {
         if matches!(self.peek().kind, TokenKind::Let) {
             self.advance();
         }
@@ -358,6 +365,7 @@ impl Parser {
                         }
                     };
                     Ok(DeclStmt::ImportDecl {
+                        doc,
                         name,
                         calling_conf,
                         link_name,
@@ -381,6 +389,7 @@ impl Parser {
                             |p| p.parse_expression(),
                         )?;
                         Ok(DeclStmt::CurryDecl {
+                            doc,
                             tags,
                             name,
                             curried,
@@ -426,6 +435,7 @@ impl Parser {
                         };
 
                         Ok(DeclStmt::Decl {
+                            doc,
                             tags,
                             name,
                             generics,
@@ -447,6 +457,7 @@ impl Parser {
                     |p| p.parse_expression(),
                 )?;
                 Ok(DeclStmt::CurryDecl {
+                    doc,
                     tags,
                     name,
                     curried,
@@ -463,6 +474,7 @@ impl Parser {
                     (Vec::new(), None)
                 };
                 Ok(DeclStmt::Decl {
+                    doc,
                     tags,
                     name,
                     generics: Vec::new(),
@@ -475,6 +487,7 @@ impl Parser {
                 self.advance();
                 let body = self.parse_body()?;
                 Ok(DeclStmt::Decl {
+                    doc,
                     tags,
                     name,
                     generics: Vec::new(),

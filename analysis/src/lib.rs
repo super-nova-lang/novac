@@ -570,6 +570,7 @@ fn analyze_open(ctx: &mut Context, open_stmt: &OpenStmt) {
 fn analyze_decl(ctx: &mut Context, decl: &DeclStmt) {
     match decl {
         DeclStmt::Decl {
+            doc: _,
             tags: _,
             generics: _,
             name,
@@ -637,6 +638,7 @@ fn analyze_decl(ctx: &mut Context, decl: &DeclStmt) {
             exit_scope(ctx);
         }
         DeclStmt::CurryDecl {
+            doc: _,
             tags: _,
             name,
             curried: _,
@@ -648,6 +650,7 @@ fn analyze_decl(ctx: &mut Context, decl: &DeclStmt) {
             }
         }
         DeclStmt::ImportDecl {
+            doc: _,
             name,
             calling_conf: _,
             link_name: _,
@@ -655,6 +658,7 @@ fn analyze_decl(ctx: &mut Context, decl: &DeclStmt) {
             add_symbol(ctx, name.clone(), None, (0, 0));
         }
         DeclStmt::ModuleDecl {
+            doc: _,
             name,
             exports,
             body,

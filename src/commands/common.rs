@@ -17,16 +17,24 @@ pub fn read_source_with_stdlib(file: &str) -> Result<String> {
         source.push('\n');
     }
 
-    // Include each file in stdlib/std/ wrapped in its module namespace
+    // Wrap all stdlib files in a std module
+    source.push_str("module std {\n");
+
+    // Include each file in stdlib/std/ wrapped in its own module
     if let Ok(entries) = std::fs::read_dir("stdlib/std") {
         let mut files: Vec<_> = entries
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map(|ext| ext == "nova").unwrap_or(false))
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .map(|ext| ext == "nova")
+                    .unwrap_or(false)
+            })
             .collect();
-        
+
         // Sort for consistent order
         files.sort_by_key(|e| e.path());
-        
+
         for entry in files {
             let path = entry.path();
             if let Ok(content) = std::fs::read_to_string(&path) {
@@ -35,14 +43,21 @@ pub fn read_source_with_stdlib(file: &str) -> Result<String> {
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("unknown");
-                
-                // Wrap file content in module std.<filename>
-                source.push_str(&format!("module std.{} {{\n", module_name));
-                source.push_str(&content);
-                source.push_str("\n}\n\n");
+
+                // Wrap file content in module <filename>
+                source.push_str(&format!("    module {} {{\n", module_name));
+                // Indent the content
+                for line in content.lines() {
+                    source.push_str("        ");
+                    source.push_str(line);
+                    source.push('\n');
+                }
+                source.push_str("    }\n\n");
             }
         }
     }
+
+    source.push_str("}\n\n");
 
     // Append user source file
     let user_source = std::fs::read_to_string(file)?;

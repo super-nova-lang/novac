@@ -92,6 +92,7 @@ pub enum ElseStmt {
 #[derive(Clone, Debug)]
 pub enum DeclStmt {
     Decl {
+        doc: Option<String>,
         tags: Vec<Tag>,
         name: Ident,
         generics: Vec<Ident>,
@@ -100,17 +101,20 @@ pub enum DeclStmt {
         body: DeclBody,
     },
     CurryDecl {
+        doc: Option<String>,
         tags: Vec<Tag>,
         name: Ident,
         curried: Ident,
         input: Vec<Expression>,
     },
     ImportDecl {
+        doc: Option<String>,
         name: Ident,
         calling_conf: String,
         link_name: String,
     },
     ModuleDecl {
+        doc: Option<String>,
         name: Ident,
         exports: Vec<ExportStmt>,
         body: Vec<Node>,
