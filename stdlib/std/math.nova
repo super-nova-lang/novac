@@ -1,10 +1,12 @@
-export square
-export double
+module std.math {
+	export square
+	export double
 
-let square :: (x: i32) -> i32 = {
-  x * x
-}
+	let square :: (x: i32) -> i32 = {
+		x * x
+	}
 
-let double :: (x: i32) -> i32 = {
-  x + x
+	let double :: (x: i32) -> i32 = {
+		x + x
+	}
 }

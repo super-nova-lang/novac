@@ -30,7 +30,6 @@ impl ParseError {
     }
 }
 
-
 use nodes::*;
 
 pub struct Parser {
@@ -158,7 +157,10 @@ impl Parser {
             TokenKind::Ident(_) => {
                 let current_pos = self.pos;
                 self.advance();
-                let is_decl = matches!(self.peek().kind, TokenKind::Colon | TokenKind::DoubleColon | TokenKind::OpenSquare);
+                let is_decl = matches!(
+                    self.peek().kind,
+                    TokenKind::Colon | TokenKind::DoubleColon | TokenKind::OpenSquare
+                );
                 self.pos = current_pos;
                 if is_decl {
                     self.parse_decl_stmt(tags)
@@ -533,7 +535,7 @@ impl Parser {
             TokenKind::Ident(s) => {
                 // Check if this is an uppercase identifier (likely a type variable)
                 let is_type_var = s.chars().next().map_or(false, |c| c.is_uppercase());
-                
+
                 let generics = if matches!(self.peek().kind, TokenKind::OpenSquare) {
                     self.advance();
                     let args = self.parse_list(&[TokenKind::CloseSquare], |p| Ok(p.parse_type()));
@@ -542,7 +544,7 @@ impl Parser {
                 } else {
                     Vec::new()
                 };
-                
+
                 if generics.is_empty() && is_type_var {
                     Type::TypeVar(s)
                 } else if generics.is_empty() {
