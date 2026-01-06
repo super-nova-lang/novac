@@ -2,6 +2,7 @@ use analysis::{self, AnalysisResult};
 use anyhow::Result;
 use lexer::{Lexer, token::Token};
 use parser::{self, nodes::Node};
+use crate::logging;
 
 pub fn read_source(file: &str) -> Result<String> {
     std::fs::read_to_string(file).map_err(Into::into)
@@ -23,10 +24,7 @@ pub fn report_parse_errors(ast: &[Node]) -> bool {
     let mut had_parse_error = false;
     for node in ast {
         if let Node::Error(msg, span) = node {
-            println!(
-                "{}:{}:{} [error.parsing] {}",
-                span.file, span.line, span.column, msg
-            );
+            logging::error_span(&span.file, span.line, span.column, "parsing", msg);
             had_parse_error = true;
         }
     }
@@ -38,38 +36,24 @@ pub fn report_analysis_errors(file: &str, errors: &[AnalysisResult]) -> bool {
         return false;
     }
 
-    println!("-- Analysis Errors --");
+    logging::info("-- Analysis Errors --");
     for err in errors {
         if let AnalysisResult::Error(e) = err {
             match e {
                 analysis::AnalysisError::UndefinedVariable(name, suggestions) => {
-                    println!(
-                        "{}:0:0 [error.analysis.undefined_variable] Undefined variable '{}' (suggestions: {})",
-                        file,
-                        name,
-                        suggestions.join(", ")
-                    );
+                    logging::error_simple(file, "analysis.undefined_variable", &format!("Undefined variable '{}' (suggestions: {})", name, suggestions.join(", ")));
                 }
                 analysis::AnalysisError::TypeMismatch(a, b) => {
-                    println!(
-                        "{}:0:0 [error.analysis.type_mismatch] Type mismatch: expected {:?}, found {:?}",
-                        file, a, b
-                    );
+                    logging::error_simple(file, "analysis.type_mismatch", &format!("Type mismatch: expected {:?}, found {:?}", a, b));
                 }
                 analysis::AnalysisError::DuplicateDeclaration(name, (r, c)) => {
-                    println!(
-                        "{}:{}:{} [error.analysis.duplicate_declaration] Duplicate declaration '{}'",
-                        file, r, c, name
-                    );
+                    logging::error_span(file, *r, *c, "analysis.duplicate_declaration", &format!("Duplicate declaration '{}'", name));
                 }
                 analysis::AnalysisError::InvalidOperation(msg) => {
-                    println!("{}:0:0 [error.analysis] {}", file, msg);
+                    logging::error_simple(file, "analysis", msg);
                 }
                 analysis::AnalysisError::MissingReturnType(name) => {
-                    println!(
-                        "{}:0:0 [error.analysis.missing_return] Missing return in function '{}'",
-                        file, name
-                    );
+                    logging::error_simple(file, "analysis.missing_return", &format!("Missing return in function '{}'", name));
                 }
             }
         }
@@ -83,21 +67,15 @@ pub fn report_analysis_warnings(file: &str, warnings: &[AnalysisResult]) {
         return;
     }
 
-    println!("-- Analysis Warnings --");
+    logging::info("-- Analysis Warnings --");
     for warn in warnings {
         if let AnalysisResult::Warning(w) = warn {
             match w {
                 analysis::AnalysisWarning::UnusedVariable(name) => {
-                    println!(
-                        "{}:0:0 [warning.analysis.unused_variable] Unused variable '{}'",
-                        file, name
-                    );
+                    logging::warn_simple(file, "analysis.unused_variable", &format!("Unused variable '{}'", name));
                 }
                 analysis::AnalysisWarning::ShadowedVariable(name) => {
-                    println!(
-                        "{}:0:0 [warning.analysis.shadowed_variable] Shadowed variable '{}'",
-                        file, name
-                    );
+                    logging::warn_simple(file, "analysis.shadowed_variable", &format!("Shadowed variable '{}'", name));
                 }
             }
         }

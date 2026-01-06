@@ -7,8 +7,10 @@ use cli::Cli;
 
 mod cli;
 mod commands;
+mod logging;
 
 fn main() -> Result<()> {
+    logging::init();
     let cli = Cli::parse();
 
     match cli {

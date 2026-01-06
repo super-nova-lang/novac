@@ -1,5 +1,3 @@
-open std.c with { stdio.printf }
-
 (*! Option represents existance or absence of a value. *)
 let Option[T] :: = enum {
 	some :: struct { value: T },
@@ -10,4 +8,21 @@ let Option[T] :: = enum {
 let Result[T, E] :: = enum {
 	ok :: struct { value: T },
 	err :: struct { error: E },
+}
+
+let String :: ()
+= struct {
+	str: string,
+	size: usize,
+} with {
+	let new :: () 
+	= Self {
+		.internal = "",
+		.size = 0,
+	}
+
+	let from :: str
+	= Self {
+		
+	}
 }
