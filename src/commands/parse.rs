@@ -15,7 +15,7 @@ pub fn run(files: Vec<String>) -> Result<()> {
             continue;
         }
 
-        let (errors, _warnings) = analyze_step(ast.clone());
+        let (errors, _warnings, _return_types) = analyze_step(ast.clone());
 
         println!("-- AST --\n{:#?}", ast);
         report_analysis_errors(&file, &errors);

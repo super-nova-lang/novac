@@ -21,6 +21,7 @@ pub fn run(files: Vec<String>) -> Result<()> {
     std::fs::create_dir_all(doc_dir)?;
 
     let mut all_entries: Vec<DocEntry> = Vec::new();
+    let mut all_return_types = std::collections::HashMap::new();
 
     for file in files {
         let source = read_source_with_stdlib(&file)?;
@@ -31,9 +32,10 @@ pub fn run(files: Vec<String>) -> Result<()> {
             continue;
         }
 
-        let (_errors, _warnings) = analyze_step(ast.clone());
+        let (_errors, _warnings, return_types) = analyze_step(ast.clone());
+        all_return_types.extend(return_types);
 
-        extract_docs_flat(&ast, &mut all_entries, String::new(), &file);
+        extract_docs_flat(&ast, &mut all_entries, String::new(), &file, &all_return_types);
     }
 
     // Copy CSS file
@@ -149,6 +151,7 @@ fn extract_docs_flat(
     entries: &mut Vec<DocEntry>,
     current_module: String,
     file: &str,
+    return_types: &std::collections::HashMap<String, parser::nodes::Type>,
 ) {
     for (idx, node) in nodes.iter().enumerate() {
         match node {
@@ -159,6 +162,7 @@ fn extract_docs_flat(
                     current_module.clone(),
                     file,
                     idx as u32 + 1,
+                    return_types,
                 );
             }
             _ => {}
@@ -183,18 +187,19 @@ fn extract_with_block_methods(
     entries: &mut Vec<DocEntry>,
     struct_name: String,
     file: &str,
+    return_types: &std::collections::HashMap<String, parser::nodes::Type>,
 ) {
     for (idx, node) in with_block.iter().enumerate() {
         match node {
-            Node::Statement(Statement::Decl(DeclStmt::Decl {
-                doc,
-                name,
-                ..
-            })) => {
+            Node::Statement(Statement::Decl(DeclStmt::Decl { doc, name, .. })) => {
+                let return_type = return_types
+                    .get(name)
+                    .map(|t| format_type(t))
+                    .unwrap_or_else(|| "()".to_string());
                 entries.push(DocEntry {
                     name: name.clone(),
                     doc: doc.clone(),
-                    signature: format!("{}({}) => ()", name, struct_name),
+                    signature: format!("{}({}) => {}", name, struct_name, return_type),
                     file_location: format!("{}:{}:1", file, idx as u32 + 1),
                     source_file: file.to_string(),
                 });
@@ -210,6 +215,7 @@ fn extract_decl_docs_flat(
     current_module: String,
     file: &str,
     line_num: u32,
+    return_types: &std::collections::HashMap<String, parser::nodes::Type>,
 ) {
     match decl {
         DeclStmt::Decl {
@@ -230,7 +236,7 @@ fn extract_decl_docs_flat(
 
             // Extract methods from with block if this is a struct or enum
             if let Some(with_block) = extract_with_block(expr) {
-                extract_with_block_methods(with_block, entries, name.clone(), file);
+                extract_with_block_methods(with_block, entries, name.clone(), file, return_types);
             }
         }
         DeclStmt::CurryDecl { doc, name, .. } => {
@@ -264,7 +270,7 @@ fn extract_decl_docs_flat(
                 });
             }
 
-            extract_docs_flat(body, entries, new_module, file);
+            extract_docs_flat(body, entries, new_module, file, return_types);
         }
         DeclStmt::ExportStmt(_) => {}
     }

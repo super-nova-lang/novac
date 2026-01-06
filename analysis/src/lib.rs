@@ -35,6 +35,12 @@ pub struct SymbolInfo {
     pub location: (usize, usize),
 }
 
+#[derive(Debug, Clone)]
+pub struct FunctionReturnType {
+    pub name: String,
+    pub return_type: Type,
+}
+
 type SymbolTable = HashMap<String, Vec<SymbolInfo>>;
 
 #[derive(Debug, Clone)]
@@ -43,14 +49,15 @@ pub struct Context {
     scope_level: usize,
     errors: Vec<AnalysisResult>,
     warnings: Vec<AnalysisResult>,
+    function_returns: HashMap<String, Type>,
 }
 
-pub fn analyze(ast_nodes: Vec<Node>) -> (Vec<AnalysisResult>, Vec<AnalysisResult>) {
+pub fn analyze(ast_nodes: Vec<Node>) -> (Vec<AnalysisResult>, Vec<AnalysisResult>, HashMap<String, Type>) {
     let mut ctx = create_context();
     for node in ast_nodes {
         analyze_ast(&mut ctx, &node);
     }
-    (ctx.errors, ctx.warnings)
+    (ctx.errors, ctx.warnings, ctx.function_returns.clone())
 }
 
 fn create_context() -> Context {
@@ -59,6 +66,7 @@ fn create_context() -> Context {
         scope_level: 0,
         errors: Vec::new(),
         warnings: Vec::new(),
+        function_returns: HashMap::new(),
     }
 }
 
@@ -634,7 +642,8 @@ fn analyze_decl(ctx: &mut Context, decl: &DeclStmt) {
                 }
             }
 
-            set_inferred_type(ctx, name, body_type);
+            set_inferred_type(ctx, name, body_type.clone());
+            ctx.function_returns.insert(name.clone(), body_type);
             exit_scope(ctx);
         }
         DeclStmt::CurryDecl {
