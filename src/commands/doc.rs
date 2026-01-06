@@ -7,17 +7,20 @@ use crate::commands::common::{
     analyze_step, lex_step, parse_step, read_source_with_stdlib, report_parse_errors,
 };
 
+#[derive(Clone)]
 struct DocEntry {
     name: String,
     doc: Option<String>,
     signature: String,
+    file_location: String,
+    source_file: String,
 }
 
 pub fn run(files: Vec<String>) -> Result<()> {
     let doc_dir = Path::new("build/doc");
     std::fs::create_dir_all(doc_dir)?;
 
-    let mut all_docs: HashMap<String, Vec<DocEntry>> = HashMap::new();
+    let mut all_entries: Vec<DocEntry> = Vec::new();
 
     for file in files {
         let source = read_source_with_stdlib(&file)?;
@@ -30,55 +33,183 @@ pub fn run(files: Vec<String>) -> Result<()> {
 
         let (_errors, _warnings) = analyze_step(ast.clone());
 
-        extract_docs(&ast, &mut all_docs, String::new());
+        extract_docs_flat(&ast, &mut all_entries, String::new(), &file);
     }
 
-    // Write CSS file
-    std::fs::write(doc_dir.join("style.css"), generate_css())?;
+    // Copy CSS file
+    let css_content = std::fs::read_to_string("assets/style.css")?;
+    std::fs::write(doc_dir.join("style.css"), css_content)?;
     println!("Generated: {}/style.css", doc_dir.display());
 
-    // Write JavaScript file
-    std::fs::write(doc_dir.join("script.js"), generate_javascript())?;
+    // Copy JavaScript file
+    let js_content = std::fs::read_to_string("assets/script.js")?;
+    std::fs::write(doc_dir.join("script.js"), js_content)?;
     println!("Generated: {}/script.js", doc_dir.display());
 
-    // Generate HTML pages for each module
-    let mut sorted_modules: Vec<_> = all_docs.iter().collect();
-    sorted_modules.sort_by_key(|(k, _)| k.as_str());
+    // Separate stdlib and other files based on file_location
+    let mut user_entries: Vec<DocEntry> = Vec::new();
+    let mut stdlib_entries: Vec<DocEntry> = Vec::new();
 
-    for (module_path, entries) in sorted_modules {
-        let file_path = if module_path.is_empty() {
-            doc_dir.join("index.html")
+    for entry in all_entries.iter() {
+        let location_file = entry.file_location.split(':').next().unwrap_or("");
+        if location_file.starts_with("stdlib/") {
+            stdlib_entries.push(entry.clone());
         } else {
-            doc_dir.join(format!("{}.html", module_path.replace("::", "_")))
-        };
+            user_entries.push(entry.clone());
+        }
+    }
 
-        let html = generate_module_html(module_path, entries, &all_docs);
+    // Group user files by source file
+    let mut user_files: HashMap<String, Vec<DocEntry>> = HashMap::new();
+    for entry in user_entries.iter() {
+        user_files
+            .entry(entry.source_file.clone())
+            .or_insert_with(Vec::new)
+            .push(entry.clone());
+    }
+
+    // Group stdlib files by location file
+    let mut stdlib_files: HashMap<String, Vec<DocEntry>> = HashMap::new();
+    for entry in stdlib_entries.iter() {
+        let location_file = entry
+            .file_location
+            .split(':')
+            .next()
+            .unwrap_or("")
+            .to_string();
+        stdlib_files
+            .entry(location_file)
+            .or_insert_with(Vec::new)
+            .push(entry.clone());
+    }
+
+    // Create sorted file lists
+    let mut sorted_user_files: Vec<_> = user_files.keys().collect();
+    sorted_user_files.sort();
+
+    let mut sorted_stdlib_files: Vec<_> = stdlib_files.keys().collect();
+    sorted_stdlib_files.sort();
+
+    // Generate HTML pages for user files
+    for file_name in &sorted_user_files {
+        let entries = &user_files[*file_name];
+        let file_html_name = file_name.replace("/", "_").replace(".", "_") + ".html";
+        let html = generate_file_html(
+            file_name,
+            entries,
+            &sorted_user_files,
+            &sorted_stdlib_files,
+            false,
+        );
+        let file_path = doc_dir.join(&file_html_name);
         std::fs::write(&file_path, html)?;
         println!("Generated: {}", file_path.display());
     }
 
+    // Generate HTML pages for stdlib files
+    for file_name in &sorted_stdlib_files {
+        let entries = &stdlib_files[*file_name];
+        let file_html_name = file_name.replace("/", "_").replace(".", "_") + ".html";
+        let html = generate_file_html(
+            file_name,
+            entries,
+            &sorted_user_files,
+            &sorted_stdlib_files,
+            true,
+        );
+        let file_path = doc_dir.join(&file_html_name);
+        std::fs::write(&file_path, html)?;
+        println!("Generated: {}", file_path.display());
+    }
+
+    // Generate stdlib index page if there are stdlib files
+    if !sorted_stdlib_files.is_empty() {
+        let stdlib_index_html = generate_stdlib_index_html(&stdlib_entries, &sorted_stdlib_files);
+        let file_path = doc_dir.join("stdlib.html");
+        std::fs::write(&file_path, stdlib_index_html)?;
+        println!("Generated: {}", file_path.display());
+    }
+
+    // Generate main index page
+    let index_html = generate_index_html(
+        &all_entries,
+        &sorted_user_files,
+        &sorted_stdlib_files,
+        !sorted_stdlib_files.is_empty(),
+    );
+    let file_path = doc_dir.join("index.html");
+    std::fs::write(&file_path, index_html)?;
+    println!("Generated: {}", file_path.display());
+
     Ok(())
 }
 
-fn extract_docs(
+fn extract_docs_flat(
     nodes: &[Node],
-    all_docs: &mut HashMap<String, Vec<DocEntry>>,
+    entries: &mut Vec<DocEntry>,
     current_module: String,
+    file: &str,
 ) {
-    for node in nodes {
+    for (idx, node) in nodes.iter().enumerate() {
         match node {
             Node::Statement(Statement::Decl(decl)) => {
-                extract_decl_docs(&decl, all_docs, current_module.clone());
+                extract_decl_docs_flat(
+                    &decl,
+                    entries,
+                    current_module.clone(),
+                    file,
+                    idx as u32 + 1,
+                );
             }
             _ => {}
         }
     }
 }
 
-fn extract_decl_docs(
+fn extract_with_block(expr: &Option<Box<Expression>>) -> Option<&parser::nodes::WithBlock> {
+    if let Some(e) = expr {
+        match e.as_ref() {
+            Expression::StructExpr(_, with_block) => with_block.as_ref(),
+            Expression::EnumExpr(_, with_block) => with_block.as_ref(),
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
+fn extract_with_block_methods(
+    with_block: &parser::nodes::WithBlock,
+    entries: &mut Vec<DocEntry>,
+    struct_name: String,
+    file: &str,
+) {
+    for (idx, node) in with_block.iter().enumerate() {
+        match node {
+            Node::Statement(Statement::Decl(DeclStmt::Decl {
+                doc,
+                name,
+                ..
+            })) => {
+                entries.push(DocEntry {
+                    name: name.clone(),
+                    doc: doc.clone(),
+                    signature: format!("{}({}) => ()", name, struct_name),
+                    file_location: format!("{}:{}:1", file, idx as u32 + 1),
+                    source_file: file.to_string(),
+                });
+            }
+            _ => {}
+        }
+    }
+}
+
+fn extract_decl_docs_flat(
     decl: &DeclStmt,
-    all_docs: &mut HashMap<String, Vec<DocEntry>>,
+    entries: &mut Vec<DocEntry>,
     current_module: String,
+    file: &str,
+    line_num: u32,
 ) {
     match decl {
         DeclStmt::Decl {
@@ -89,56 +220,51 @@ fn extract_decl_docs(
             ..
         } => {
             let signature = format_decl_signature(name, generics, expr);
-            all_docs
-                .entry(current_module)
-                .or_insert_with(Vec::new)
-                .push(DocEntry {
-                    name: name.clone(),
-                    doc: doc.clone(),
-                    signature,
-                });
+            entries.push(DocEntry {
+                name: name.clone(),
+                doc: doc.clone(),
+                signature,
+                file_location: format!("{}:{}:1", file, line_num),
+                source_file: file.to_string(),
+            });
+
+            // Extract methods from with block if this is a struct or enum
+            if let Some(with_block) = extract_with_block(expr) {
+                extract_with_block_methods(with_block, entries, name.clone(), file);
+            }
         }
         DeclStmt::CurryDecl { doc, name, .. } => {
-            all_docs
-                .entry(current_module)
-                .or_insert_with(Vec::new)
-                .push(DocEntry {
-                    name: name.clone(),
-                    doc: doc.clone(),
-                    signature: format!("let {} :: ...", name),
-                });
+            entries.push(DocEntry {
+                name: name.clone(),
+                doc: doc.clone(),
+                signature: format!("let {} :: ...", name),
+                file_location: format!("{}:{}:1", file, line_num),
+                source_file: file.to_string(),
+            });
         }
-        DeclStmt::ImportDecl { doc, name, .. } => {
-            all_docs
-                .entry(current_module)
-                .or_insert_with(Vec::new)
-                .push(DocEntry {
-                    name: name.clone(),
-                    doc: doc.clone(),
-                    signature: format!("import {}", name),
-                });
+        DeclStmt::ImportDecl { .. } => {
+            // Skip imports in documentation
         }
         DeclStmt::ModuleDecl {
             doc, name, body, ..
         } => {
             let new_module = if current_module.is_empty() {
-                format!("std::{}", name)
+                format!("{}", name)
             } else {
-                format!("{}::{}", current_module, name)
+                format!("{}.{}", current_module, name)
             };
 
             if let Some(doc_text) = doc {
-                all_docs
-                    .entry(new_module.clone())
-                    .or_insert_with(Vec::new)
-                    .push(DocEntry {
-                        name: name.clone(),
-                        doc: Some(doc_text.clone()),
-                        signature: format!("module {}", name),
-                    });
+                entries.push(DocEntry {
+                    name: name.clone(),
+                    doc: Some(doc_text.clone()),
+                    signature: format!("module {}", name),
+                    file_location: format!("{}:{}:1", file, line_num),
+                    source_file: file.to_string(),
+                });
             }
 
-            extract_docs(body, all_docs, new_module);
+            extract_docs_flat(body, entries, new_module, file);
         }
         DeclStmt::ExportStmt(_) => {}
     }
@@ -204,63 +330,240 @@ fn format_type(t: &Type) -> String {
     }
 }
 
-fn generate_module_html(
-    module_path: &str,
-    entries: &[DocEntry],
-    all_docs: &HashMap<String, Vec<DocEntry>>,
-) -> String {
-    let title = if module_path.is_empty() {
-        "Documentation".to_string()
-    } else {
-        format!("{} - Documentation", module_path)
-    };
-
-    let breadcrumbs = if module_path.is_empty() {
-        String::new()
-    } else {
-        let parts: Vec<&str> = module_path.split("::").collect();
-        let mut breadcrumb_html = String::from("<nav class=\"breadcrumbs\">");
-        breadcrumb_html.push_str("<a href=\"index.html\">Home</a>");
-        let mut current_path = String::new();
-        for (i, part) in parts.iter().enumerate() {
-            if i == 0 {
-                current_path.push_str(part);
-            } else {
-                current_path.push_str("::");
-                current_path.push_str(part);
-            }
-            let file_name = current_path.replace("::", "_");
-            if i == parts.len() - 1 {
-                breadcrumb_html.push_str(&format!(" / <span>{}</span>", part));
-            } else {
-                breadcrumb_html.push_str(&format!(
-                    " / <a href=\"{}.html\">{}</a>",
-                    file_name, part
-                ));
+fn extract_first_param_type(signature: &str) -> Option<String> {
+    // Parse signature like "func(Type1, Type2) => Type3"
+    // Extract "Type1"
+    if let Some(paren_idx) = signature.find('(') {
+        if let Some(comma_or_close) = signature[paren_idx + 1..].find(|c| c == ',' || c == ')') {
+            let first_param = signature[paren_idx + 1..paren_idx + 1 + comma_or_close].trim();
+            if !first_param.is_empty() {
+                return Some(first_param.to_string());
             }
         }
-        breadcrumb_html.push_str("</nav>");
-        breadcrumb_html
-    };
+    }
+    None
+}
 
-    let nav_html = generate_navigation(all_docs, module_path);
+fn extract_return_type(signature: &str) -> String {
+    // Parse signature like "func(Type1, Type2) => Type3"
+    // Extract "Type3"
+    if let Some(arrow_idx) = signature.find("=>") {
+        signature[arrow_idx + 2..].trim().to_string()
+    } else {
+        signature.to_string()
+    }
+}
 
+fn generate_file_html(
+    file_name: &str,
+    entries: &[DocEntry],
+    user_files: &[&String],
+    stdlib_files: &[&String],
+    is_stdlib: bool,
+) -> String {
+    // Generate navigation sidebar
+    let nav_html = generate_nav(file_name, user_files, stdlib_files, is_stdlib);
+
+    // Separate type definitions from functions, and group functions with their types
+    let mut type_entries = Vec::new();
+    let mut function_entries = Vec::new();
+
+    for e in entries.iter() {
+        if !e.signature.starts_with("module ") {
+            if e.signature.contains(" => struct ") || e.signature.contains(" => enum ") {
+                type_entries.push(e.clone());
+            } else {
+                function_entries.push(e.clone());
+            }
+        }
+    }
+
+    // Generate HTML for types with their methods
+    let mut entries_html = String::new();
+    let mut displayed_methods = std::collections::HashSet::new();
+
+    for type_entry in &type_entries {
+        let doc_text = type_entry
+            .doc
+            .as_ref()
+            .map(|d| format!("<pre>{}</pre>", escape_html(d)))
+            .unwrap_or_default();
+
+        entries_html.push_str(&format!(
+            r#"        <section data-signature="{}" data-doc="{}">
+            <p class="loc">{}</p>
+            <h2><code>{}</code></h2>
+            {}
+"#,
+            escape_html(&type_entry.signature),
+            type_entry
+                .doc
+                .as_ref()
+                .map(|d| escape_html(d))
+                .unwrap_or_default(),
+            escape_html(&type_entry.file_location),
+            escape_html(&type_entry.signature),
+            doc_text
+        ));
+
+        // Find methods that use this type
+        let type_name = type_entry.name.clone();
+        let methods: Vec<_> = function_entries
+            .iter()
+            .filter(|f| extract_first_param_type(&f.signature) == Some(type_name.clone()))
+            .collect();
+
+        if !methods.is_empty() {
+            entries_html.push_str("            <div class=\"methods\">\n");
+            for method in &methods {
+                entries_html.push_str(&format!(
+                    r#"                <div class="method">
+                    <p class="method-name">-> <code>{}</code></p>
+                </div>
+"#,
+                    escape_html(&method.signature)
+                ));
+                displayed_methods.insert(method.signature.clone());
+            }
+            entries_html.push_str("            </div>\n");
+        }
+
+        entries_html.push_str("        </section>\n");
+    }
+
+    // Add remaining functions (not methods of any type)
+    for func_entry in &function_entries {
+        if !displayed_methods.contains(&func_entry.signature) {
+            let doc_text = func_entry
+                .doc
+                .as_ref()
+                .map(|d| format!("<pre>{}</pre>", escape_html(d)))
+                .unwrap_or_default();
+            entries_html.push_str(&format!(
+                r#"        <section data-signature="{}" data-doc="{}">
+            <p class="loc">{}</p>
+            <h2><code>{}</code></h2>
+            {}
+        </section>
+"#,
+                escape_html(&func_entry.signature),
+                func_entry
+                    .doc
+                    .as_ref()
+                    .map(|d| escape_html(d))
+                    .unwrap_or_default(),
+                escape_html(&func_entry.file_location),
+                escape_html(&func_entry.signature),
+                doc_text
+            ));
+        }
+    }
+
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>{} - Documentation</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="sidebar">
+            {}
+        </nav>
+        <main>
+            <h1>{}</h1>
+            
+            <div class="controls">
+                <label for="search">Search</label>
+                <input id="search" type="search" placeholder="Filter by name, type, or file...">
+                <button id="toggle-theme" type="button">Dark mode</button>
+            </div>
+
+            {}
+
+            <script src="script.js"></script>
+        </main>
+    </div>
+</body>
+</html>"#,
+        file_name, nav_html, file_name, entries_html
+    )
+}
+
+fn generate_nav(
+    current_file: &str,
+    user_files: &[&String],
+    stdlib_files: &[&String],
+    is_stdlib: bool,
+) -> String {
+    let mut nav = String::from("<ul>\n");
+
+    // Add user files section
+    if !user_files.is_empty() {
+        nav.push_str("    <li><strong>Files</strong><ul>\n");
+        for file_name in user_files {
+            let file_html_name = file_name.replace("/", "_").replace(".", "_") + ".html";
+            let is_current = *file_name == current_file && !is_stdlib;
+            let class = if is_current { " class=\"active\"" } else { "" };
+            nav.push_str(&format!(
+                "        <li><a href=\"{}\"{}>{}</a></li>\n",
+                file_html_name,
+                class,
+                escape_html(file_name)
+            ));
+        }
+        nav.push_str("    </ul></li>\n");
+    }
+
+    // Add stdlib section if it exists
+    if !stdlib_files.is_empty() {
+        nav.push_str("    <li><strong>Standard Library</strong><ul>\n");
+        nav.push_str("        <li><a href=\"stdlib.html\">Overview</a></li>\n");
+        for file_name in stdlib_files {
+            let file_html_name = file_name.replace("/", "_").replace(".", "_") + ".html";
+            let is_current = *file_name == current_file && is_stdlib;
+            let class = if is_current { " class=\"active\"" } else { "" };
+            nav.push_str(&format!(
+                "        <li><a href=\"{}\"{}>{}</a></li>\n",
+                file_html_name,
+                class,
+                escape_html(file_name)
+            ));
+        }
+        nav.push_str("    </ul></li>\n");
+    }
+
+    nav.push_str("</ul>");
+    nav
+}
+
+fn generate_stdlib_index_html(entries: &[DocEntry], stdlib_files: &[&String]) -> String {
+    // Generate navigation sidebar
+    let nav_html = generate_nav("", &[], stdlib_files, true);
+
+    // Generate entries for stdlib index
     let entries_html = entries
         .iter()
         .filter(|e| !e.signature.starts_with("module "))
         .map(|e| {
-            let doc_html = e
+            let doc_text = e
                 .doc
                 .as_ref()
-                .map(|d| format!("<p>{}</p>", escape_html(d)))
-                .unwrap_or_default();
+                .map(|d| format!("<pre>{}</pre>", escape_html(d)))
+                .unwrap_or_else(|| "<pre></pre>".to_string());
             format!(
-                r#"<div class="entry">
-  <div class="signature"><code>{}</code></div>
-  {}
-</div>"#,
+                r#"        <section data-signature="{}" data-doc="{}">
+            <p class="loc">{}</p>
+            <h2><code>{}</code></h2>
+            {}
+        </section>"#,
                 escape_html(&e.signature),
-                doc_html
+                e.doc.as_ref().map(|d| escape_html(d)).unwrap_or_default(),
+                escape_html(&e.file_location),
+                escape_html(&e.signature),
+                doc_text
             )
         })
         .collect::<Vec<_>>()
@@ -270,79 +573,106 @@ fn generate_module_html(
         r#"<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{}</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="utf-8">
+    <title>Standard Library - Documentation</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="dark-mode-toggle" id="darkModeToggle">
-    <input type="checkbox" id="darkModeCheckbox">
-    <label for="darkModeCheckbox">🌙</label>
-  </div>
-  
-  <div class="container">
-    {}
-    <aside class="sidebar">
-      {}
-    </aside>
-    
-    <main class="content">
-      {}
-      <h1>{}</h1>
-      {}
-    </main>
-  </div>
+    <div class="container">
+        <nav class="sidebar">
+            {}
+        </nav>
+        <main>
+            <h1>Standard Library</h1>
+            
+            <div class="controls">
+                <label for="search">Search</label>
+                <input id="search" type="search" placeholder="Filter by name, type, or file...">
+                <button id="toggle-theme" type="button">Dark mode</button>
+            </div>
 
-  <script src="script.js"></script>
+            {}
+
+            <script src="script.js"></script>
+        </main>
+    </div>
 </body>
 </html>"#,
-        title, nav_html, generate_sidebar(all_docs), breadcrumbs, title, entries_html
+        nav_html, entries_html
     )
 }
 
-fn generate_navigation(all_docs: &HashMap<String, Vec<DocEntry>>, current_module: &str) -> String {
-    let mut nav = String::from("<nav class=\"top-nav\">\n  <a href=\"index.html\" class=\"logo\">📚 Docs</a>\n");
+fn generate_index_html(
+    _entries: &[DocEntry],
+    user_files: &[&String],
+    stdlib_files: &[&String],
+    _has_stdlib: bool,
+) -> String {
+    // Generate navigation sidebar
+    let nav_html = generate_nav("", user_files, stdlib_files, false);
 
-    // Add module links (only show top-level std modules)
-    for key in all_docs.keys() {
-        if key.starts_with("std::") && !key[5..].contains("::") {
-            let file_name = key.replace("::", "_");
-            let display_name = key.trim_start_matches("std::");
-            let class = if key == current_module {
-                " class=\"active\""
-            } else {
-                ""
-            };
-            nav.push_str(&format!(
-                "  <a href=\"{}.html\"{} class=\"nav-link\">{}</a>\n",
-                file_name, class, display_name
+    // Generate overview content with links to files
+    let mut overview = String::new();
+
+    if !user_files.is_empty() {
+        overview.push_str("        <section>\n            <h2>Files</h2>\n            <ul>\n");
+        for file_name in user_files {
+            let file_html_name = file_name.replace("/", "_").replace(".", "_") + ".html";
+            overview.push_str(&format!(
+                "                <li><a href=\"{}\">{}</a></li>\n",
+                file_html_name,
+                escape_html(file_name)
             ));
         }
+        overview.push_str("            </ul>\n        </section>\n");
     }
 
-    nav.push_str("</nav>");
-    nav
-}
-
-fn generate_sidebar(all_docs: &HashMap<String, Vec<DocEntry>>) -> String {
-    let mut sidebar = String::from("<div class=\"modules\">\n<h3>Modules</h3>\n<ul>\n");
-
-    let mut sorted_keys: Vec<_> = all_docs.keys().collect();
-    sorted_keys.sort();
-
-    for key in sorted_keys {
-        if !key.is_empty() {
-            let file_name = key.replace("::", "_");
-            sidebar.push_str(&format!(
-                "  <li><a href=\"{}.html\">{}</a></li>\n",
-                file_name, key
+    if !stdlib_files.is_empty() {
+        overview.push_str(
+            "        <section>\n            <h2>Standard Library</h2>\n            <ul>\n",
+        );
+        overview.push_str("                <li><a href=\"stdlib.html\">Overview</a></li>\n");
+        for file_name in stdlib_files {
+            let file_html_name = file_name.replace("/", "_").replace(".", "_") + ".html";
+            overview.push_str(&format!(
+                "                <li><a href=\"{}\">{}</a></li>\n",
+                file_html_name,
+                escape_html(file_name)
             ));
         }
+        overview.push_str("            </ul>\n        </section>\n");
     }
 
-    sidebar.push_str("</ul>\n</div>");
-    sidebar
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Nova Documentation</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="sidebar">
+            {}
+        </nav>
+        <main>
+            <h1>Nova Documentation</h1>
+            <p>Select a file from the navigation to view its documentation.</p>
+            
+            <div class="controls">
+                <button id="toggle-theme" type="button">Dark mode</button>
+            </div>
+
+            {}
+
+            <script src="script.js"></script>
+        </main>
+    </div>
+</body>
+</html>"#,
+        nav_html, overview
+    )
 }
 
 fn escape_html(s: &str) -> String {
@@ -352,293 +682,3 @@ fn escape_html(s: &str) -> String {
         .replace("\"", "&quot;")
         .replace("'", "&#39;")
 }
-
-fn generate_css() -> String {
-    r#"* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-:root {
-  --bg-color: #ffffff;
-  --text-color: #333333;
-  --border-color: #e0e0e0;
-  --code-bg: #f5f5f5;
-  --accent-color: #007acc;
-  --sidebar-bg: #f9f9f9;
-  --entry-bg: #ffffff;
-}
-
-body.dark-mode {
-  --bg-color: #1e1e1e;
-  --text-color: #e0e0e0;
-  --border-color: #333333;
-  --code-bg: #2d2d2d;
-  --sidebar-bg: #252525;
-  --entry-bg: #2a2a2a;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
-  line-height: 1.6;
-  color: var(--text-color);
-  background: var(--bg-color);
-  transition: background-color 0.3s, color 0.3s;
-}
-
-.dark-mode-toggle {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  z-index: 100;
-}
-
-.dark-mode-toggle input {
-  display: none;
-}
-
-.dark-mode-toggle label {
-  cursor: pointer;
-  font-size: 24px;
-  user-select: none;
-  transition: transform 0.3s;
-}
-
-.dark-mode-toggle label:hover {
-  transform: scale(1.1);
-}
-
-.container {
-  display: flex;
-  max-width: 1200px;
-  margin: 0 auto;
-  gap: 30px;
-  padding: 20px;
-}
-
-.top-nav {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 15px 20px;
-  background: var(--sidebar-bg);
-  border-bottom: 2px solid var(--accent-color);
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-}
-
-.top-nav .logo {
-  font-weight: bold;
-  font-size: 18px;
-  color: var(--accent-color);
-  text-decoration: none;
-  margin-right: 20px;
-}
-
-.nav-link {
-  color: var(--text-color);
-  text-decoration: none;
-  padding: 5px 10px;
-  border-radius: 3px;
-  transition: background 0.2s;
-}
-
-.nav-link:hover,
-.nav-link.active {
-  background: var(--accent-color);
-  color: white;
-}
-
-.breadcrumbs {
-  display: block;
-  margin-bottom: 20px;
-  padding: 10px;
-  background: var(--code-bg);
-  border-radius: 3px;
-  font-size: 14px;
-}
-
-.breadcrumbs a {
-  color: var(--accent-color);
-  text-decoration: none;
-}
-
-.breadcrumbs a:hover {
-  text-decoration: underline;
-}
-
-.breadcrumbs span {
-  color: var(--text-color);
-}
-
-.sidebar {
-  flex: 0 0 250px;
-}
-
-.modules {
-  background: var(--sidebar-bg);
-  padding: 20px;
-  border-radius: 5px;
-  border: 1px solid var(--border-color);
-  position: sticky;
-  top: 20px;
-}
-
-.modules h3 {
-  margin-bottom: 15px;
-  color: var(--accent-color);
-  font-size: 16px;
-}
-
-.modules ul {
-  list-style: none;
-}
-
-.modules li {
-  margin-bottom: 8px;
-}
-
-.modules a {
-  color: var(--text-color);
-  text-decoration: none;
-  padding: 5px 0;
-  display: block;
-  border-left: 3px solid transparent;
-  padding-left: 10px;
-  transition: border-color 0.2s, color 0.2s;
-}
-
-.modules a:hover {
-  border-left-color: var(--accent-color);
-  color: var(--accent-color);
-}
-
-.content {
-  flex: 1;
-  min-width: 0;
-}
-
-h1 {
-  color: var(--accent-color);
-  border-bottom: 3px solid var(--accent-color);
-  padding-bottom: 10px;
-  margin-bottom: 30px;
-}
-
-.entry {
-  background: var(--entry-bg);
-  padding: 20px;
-  margin: 20px 0;
-  border-radius: 5px;
-  border-left: 4px solid var(--accent-color);
-  border: 1px solid var(--border-color);
-  border-left: 4px solid var(--accent-color);
-  transition: box-shadow 0.2s;
-}
-
-.entry:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.signature {
-  font-size: 14px;
-  margin-bottom: 12px;
-  overflow-x: auto;
-}
-
-.signature code {
-  background: var(--code-bg);
-  padding: 8px 12px;
-  border-radius: 3px;
-  font-family: "Courier New", "Monaco", monospace;
-  display: block;
-  overflow-x: auto;
-  border: 1px solid var(--border-color);
-}
-
-.entry p {
-  margin: 10px 0;
-  color: var(--text-color);
-}
-
-@media (max-width: 768px) {
-  .container {
-    flex-direction: column;
-  }
-
-  .sidebar {
-    flex: 1;
-    position: relative;
-    top: auto;
-  }
-
-  .modules {
-    position: relative;
-    top: auto;
-  }
-
-  .top-nav {
-    gap: 10px;
-  }
-
-  .dark-mode-toggle {
-    position: static;
-  }
-}"#.to_string()
-}
-
-fn generate_javascript() -> String {
-    "(function() {
-  const DARK_MODE_KEY = 'novac-docs-dark-mode';
-  const checkbox = document.getElementById('darkModeCheckbox');
-  const htmlElement = document.documentElement;
-
-  // Initialize dark mode from localStorage
-  function initDarkMode() {
-    const savedMode = localStorage.getItem(DARK_MODE_KEY);
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const isDarkMode = savedMode !== null ? savedMode === 'true' : prefersDark;
-    
-    if (isDarkMode) {
-      enableDarkMode();
-    }
-  }
-
-  function enableDarkMode() {
-    document.body.classList.add('dark-mode');
-    checkbox.checked = true;
-    localStorage.setItem(DARK_MODE_KEY, 'true');
-  }
-
-  function disableDarkMode() {
-    document.body.classList.remove('dark-mode');
-    checkbox.checked = false;
-    localStorage.setItem(DARK_MODE_KEY, 'false');
-  }
-
-  // Event listener for toggle
-  checkbox.addEventListener('change', function() {
-    if (this.checked) {
-      enableDarkMode();
-    } else {
-      disableDarkMode();
-    }
-  });
-
-  // Initialize on load
-  initDarkMode();
-
-  // Smooth scroll for navigation
-  document.querySelectorAll('a[href^=\"#\"]').forEach(anchor => {
-    anchor.addEventListener('click', function(e) {
-      e.preventDefault();
-      const target = document.querySelector(this.getAttribute('href'));
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth' });
-      }
-    });
-  });
-})();".to_string()
-}
-
