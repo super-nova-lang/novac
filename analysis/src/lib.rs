@@ -306,9 +306,13 @@ fn infer_multiplicative_type(ctx: &mut Context, mul: &MultiplicativeExpr) -> Typ
 
 fn infer_unary_type(ctx: &mut Context, unary: &UnaryExpr) -> Type {
     match unary {
-        UnaryExpr::Neg(expr) | UnaryExpr::Not(expr) => {
+        UnaryExpr::Neg(expr) => {
             let _ = infer_unary_type(ctx, expr);
-            Type::User("i32".to_string())
+            Type::Builtin("i32".to_string())
+        }
+        UnaryExpr::Not(expr) => {
+            let _ = infer_unary_type(ctx, expr);
+            Type::Builtin("bool".to_string())
         }
         UnaryExpr::UnaryMember(expr, _) => {
             let _ = infer_unary_type(ctx, expr);
@@ -321,11 +325,11 @@ fn infer_unary_type(ctx: &mut Context, unary: &UnaryExpr) -> Type {
 
 fn infer_atom_type(ctx: &mut Context, atom: &Atom) -> Type {
     match atom {
-        Atom::String(_) => Type::User("string".to_string()),
-        Atom::Bool(_) => Type::User("bool".to_string()),
-        Atom::Char(_) => Type::User("char".to_string()),
-        Atom::Int(_) => Type::User("i32".to_string()),
-        Atom::Ident(name) if name == "_" => Type::User("i32".to_string()),
+        Atom::String(_) => Type::Builtin("string".to_string()),
+        Atom::Bool(_) => Type::Builtin("bool".to_string()),
+        Atom::Char(_) => Type::Builtin("char".to_string()),
+        Atom::Int(_) => Type::Builtin("i32".to_string()),
+        Atom::Ident(name) if name == "_" => Type::Builtin("i32".to_string()),
         Atom::Ident(name) => {
             if let Some(info) = lookup_symbol_mut(ctx, name) {
                 info.used = true;
@@ -359,9 +363,18 @@ fn infer_atom_type(ctx: &mut Context, atom: &Atom) -> Type {
     }
 }
 
-fn infer_match_type(_ctx: &mut Context, _expr: &(Box<Expression>, Vec<MatchArm>)) -> Type {
-    // TODO: Infer from match arms.
-    Type::UnitTyp
+fn infer_match_type(ctx: &mut Context, expr: &(Box<Expression>, Vec<MatchArm>)) -> Type {
+    let (_cond, arms) = expr;
+    // Infer type from the first match arm's result
+    if let Some((_, _, (_, result_expr))) = arms.first() {
+        if let Some(result) = result_expr {
+            infer_expression_type(ctx, result)
+        } else {
+            Type::UnitTyp
+        }
+    } else {
+        Type::UnitTyp
+    }
 }
 
 fn analyze_expression(ctx: &mut Context, expr: &Expression) {
