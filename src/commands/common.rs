@@ -74,7 +74,13 @@ pub fn parse_step(tokens: Vec<Token>) -> Result<Vec<Node>> {
     parser::parse(tokens).map_err(|e| anyhow::anyhow!("parse error: {:?}", e))
 }
 
-pub fn analyze_step(nodes: Vec<Node>) -> (Vec<AnalysisResult>, Vec<AnalysisResult>, std::collections::HashMap<String, parser::nodes::Type>) {
+pub fn analyze_step(
+    nodes: Vec<Node>,
+) -> (
+    Vec<AnalysisResult>,
+    Vec<analysis::AnalysisWarning>,
+    std::collections::HashMap<String, parser::nodes::Type>,
+) {
     analysis::analyze(nodes)
 }
 

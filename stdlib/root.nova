@@ -1,7 +1,13 @@
 (*! Option represents existance or absence of a value. *)
 let Option[T] :: = enum {
-	some :: struct { value: T },
+	some :: T,
 	none :: (),
+} with {
+	let is_some :: self = match self with
+		| .some(_) -> true
+		| .none    -> false
+	
+	let is_none :: self = !self.is_some()
 }
 
 (*! Result represents success (ok) or failure (err). *)

@@ -35,7 +35,13 @@ pub fn run(files: Vec<String>) -> Result<()> {
         let (_errors, _warnings, return_types) = analyze_step(ast.clone());
         all_return_types.extend(return_types);
 
-        extract_docs_flat(&ast, &mut all_entries, String::new(), &file, &all_return_types);
+        extract_docs_flat(
+            &ast,
+            &mut all_entries,
+            String::new(),
+            &file,
+            &all_return_types,
+        );
     }
 
     // Copy CSS file

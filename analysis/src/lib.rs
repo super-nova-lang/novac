@@ -48,11 +48,18 @@ pub struct Context {
     symbols: SymbolTable,
     scope_level: usize,
     errors: Vec<AnalysisResult>,
-    warnings: Vec<AnalysisResult>,
+    warnings: Vec<AnalysisWarning>,
     function_returns: HashMap<String, Type>,
+    parent_type: Option<String>,
 }
 
-pub fn analyze(ast_nodes: Vec<Node>) -> (Vec<AnalysisResult>, Vec<AnalysisResult>, HashMap<String, Type>) {
+pub fn analyze(
+    ast_nodes: Vec<Node>,
+) -> (
+    Vec<AnalysisResult>,
+    Vec<AnalysisWarning>,
+    HashMap<String, Type>,
+) {
     let mut ctx = create_context();
     for node in ast_nodes {
         analyze_ast(&mut ctx, &node);
@@ -67,6 +74,7 @@ fn create_context() -> Context {
         errors: Vec::new(),
         warnings: Vec::new(),
         function_returns: HashMap::new(),
+        parent_type: None,
     }
 }
 
@@ -80,9 +88,9 @@ fn exit_scope(ctx: &mut Context) {
         for info in infos.iter() {
             if info.scope_level == ctx.scope_level && !info.used && ctx.scope_level > 0 {
                 ctx.warnings
-                    .push(AnalysisResult::Warning(AnalysisWarning::UnusedVariable(
+                    .push(AnalysisWarning::UnusedVariable(
                         name.clone(),
-                    )));
+                    ));
             }
         }
     }
@@ -115,9 +123,9 @@ fn add_symbol(
     match ctx.symbols.get_mut(&name) {
         Some(stack) => {
             ctx.warnings
-                .push(AnalysisResult::Warning(AnalysisWarning::ShadowedVariable(
+                .push(AnalysisWarning::ShadowedVariable(
                     name.clone(),
-                )));
+                ));
             stack.insert(0, info);
         }
         None => {
@@ -216,8 +224,22 @@ fn infer_expression_type(ctx: &mut Context, expr: &Expression) -> Type {
             Type::ListTyp(Box::new(elem_typ))
         }
         Expression::MatchExpr(m) => infer_match_type(ctx, m),
-        Expression::StructExpr(..) => Type::User("struct".to_string()),
-        Expression::EnumExpr(..) => Type::User("enum".to_string()),
+        Expression::StructExpr(..) => {
+            // If this method is inside a with block, use parent type
+            if let Some(parent) = &ctx.parent_type {
+                Type::User(parent.clone())
+            } else {
+                Type::User("struct".to_string())
+            }
+        }
+        Expression::EnumExpr(..) => {
+            // If this method is inside a with block, use parent type
+            if let Some(parent) = &ctx.parent_type {
+                Type::User(parent.clone())
+            } else {
+                Type::User("enum".to_string())
+            }
+        }
         Expression::DeriveExpr(_) => Type::UnitTyp,
     }
 }
@@ -624,8 +646,22 @@ fn analyze_decl(ctx: &mut Context, decl: &DeclStmt) {
                     }
                 }
                 match expr.as_ref() {
-                    Expression::StructExpr(..) => Type::User(name.clone()),
-                    Expression::EnumExpr(..) => Type::User(name.clone()),
+                    Expression::StructExpr(..) => {
+                        // If this is a method in a with block, return parent type
+                        if let Some(parent) = &ctx.parent_type {
+                            Type::User(parent.clone())
+                        } else {
+                            Type::User(name.clone())
+                        }
+                    }
+                    Expression::EnumExpr(..) => {
+                        // If this is a method in a with block, return parent type
+                        if let Some(parent) = &ctx.parent_type {
+                            Type::User(parent.clone())
+                        } else {
+                            Type::User(name.clone())
+                        }
+                    }
                     _ => inferred,
                 }
             } else {
@@ -639,6 +675,18 @@ fn analyze_decl(ctx: &mut Context, decl: &DeclStmt) {
                             expected.clone(),
                             body_type.clone(),
                         )));
+                }
+            }
+
+            // Analyze methods in with block if this is a struct or enum
+            if let Some(expr) = expr_opt {
+                if let Expression::StructExpr(_, Some(with_block)) | Expression::EnumExpr(_, Some(with_block)) = expr.as_ref() {
+                    let old_parent_type = ctx.parent_type.clone();
+                    ctx.parent_type = Some(name.clone());
+                    for method_node in with_block {
+                        analyze_ast(ctx, method_node);
+                    }
+                    ctx.parent_type = old_parent_type;
                 }
             }
 
