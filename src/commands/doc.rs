@@ -493,6 +493,19 @@ fn generate_file_html(
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div class="theme-selector">
+        <select id="theme-select">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="monokai">Monokai</option>
+            <option value="dracula">Dracula</option>
+            <option value="solarized-light">Solarized Light</option>
+            <option value="solarized-dark">Solarized Dark</option>
+            <option value="github-dark">GitHub Dark</option>
+            <option value="nord">Nord</option>
+            <option value="gruvbox">Gruvbox</option>
+        </select>
+    </div>
     <div class="container">
         <nav class="sidebar">
             {}
@@ -503,7 +516,6 @@ fn generate_file_html(
             <div class="controls">
                 <label for="search">Search</label>
                 <input id="search" type="search" placeholder="Filter by name, type, or file...">
-                <button id="toggle-theme" type="button">Dark mode</button>
             </div>
 
             {}
@@ -532,11 +544,12 @@ fn generate_nav(
             let file_html_name = file_name.replace("/", "_").replace(".", "_") + ".html";
             let is_current = *file_name == current_file && !is_stdlib;
             let class = if is_current { " class=\"active\"" } else { "" };
+            let display_name = file_name_to_display_name(file_name);
             nav.push_str(&format!(
                 "        <li><a href=\"{}\"{}>{}</a></li>\n",
                 file_html_name,
                 class,
-                escape_html(file_name)
+                escape_html(&display_name)
             ));
         }
         nav.push_str("    </ul></li>\n");
@@ -550,11 +563,12 @@ fn generate_nav(
             let file_html_name = file_name.replace("/", "_").replace(".", "_") + ".html";
             let is_current = *file_name == current_file && is_stdlib;
             let class = if is_current { " class=\"active\"" } else { "" };
+            let display_name = file_name_to_display_name(file_name);
             nav.push_str(&format!(
                 "        <li><a href=\"{}\"{}>{}</a></li>\n",
                 file_html_name,
                 class,
-                escape_html(file_name)
+                escape_html(&display_name)
             ));
         }
         nav.push_str("    </ul></li>\n");
@@ -603,6 +617,19 @@ fn generate_stdlib_index_html(entries: &[DocEntry], stdlib_files: &[&String]) ->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div class="theme-selector">
+        <select id="theme-select">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="monokai">Monokai</option>
+            <option value="dracula">Dracula</option>
+            <option value="solarized-light">Solarized Light</option>
+            <option value="solarized-dark">Solarized Dark</option>
+            <option value="github-dark">GitHub Dark</option>
+            <option value="nord">Nord</option>
+            <option value="gruvbox">Gruvbox</option>
+        </select>
+    </div>
     <div class="container">
         <nav class="sidebar">
             {}
@@ -613,7 +640,6 @@ fn generate_stdlib_index_html(entries: &[DocEntry], stdlib_files: &[&String]) ->
             <div class="controls">
                 <label for="search">Search</label>
                 <input id="search" type="search" placeholder="Filter by name, type, or file...">
-                <button id="toggle-theme" type="button">Dark mode</button>
             </div>
 
             {}
@@ -643,10 +669,11 @@ fn generate_index_html(
         overview.push_str("        <section>\n            <h2>Files</h2>\n            <ul>\n");
         for file_name in user_files {
             let file_html_name = file_name.replace("/", "_").replace(".", "_") + ".html";
+            let display_name = file_name_to_display_name(file_name);
             overview.push_str(&format!(
-                "                <li><a href=\"{}\">{}</a></li>\n",
+                "                <li><a href=\"{}\">{}\u{003c}/a>\u{003c}/li>\n",
                 file_html_name,
-                escape_html(file_name)
+                escape_html(&display_name)
             ));
         }
         overview.push_str("            </ul>\n        </section>\n");
@@ -659,10 +686,11 @@ fn generate_index_html(
         overview.push_str("                <li><a href=\"stdlib.html\">Overview</a></li>\n");
         for file_name in stdlib_files {
             let file_html_name = file_name.replace("/", "_").replace(".", "_") + ".html";
+            let display_name = file_name_to_display_name(file_name);
             overview.push_str(&format!(
-                "                <li><a href=\"{}\">{}</a></li>\n",
+                "                <li><a href=\"{}\">{}\u{003c}/a>\u{003c}/li>\n",
                 file_html_name,
-                escape_html(file_name)
+                escape_html(&display_name)
             ));
         }
         overview.push_str("            </ul>\n        </section>\n");
@@ -677,6 +705,19 @@ fn generate_index_html(
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div class="theme-selector">
+        <select id="theme-select">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="monokai">Monokai</option>
+            <option value="dracula">Dracula</option>
+            <option value="solarized-light">Solarized Light</option>
+            <option value="solarized-dark">Solarized Dark</option>
+            <option value="github-dark">GitHub Dark</option>
+            <option value="nord">Nord</option>
+            <option value="gruvbox">Gruvbox</option>
+        </select>
+    </div>
     <div class="container">
         <nav class="sidebar">
             {}
@@ -685,10 +726,6 @@ fn generate_index_html(
             <h1>Nova Documentation</h1>
             <p>Select a file from the navigation to view its documentation.</p>
             
-            <div class="controls">
-                <button id="toggle-theme" type="button">Dark mode</button>
-            </div>
-
             {}
 
             <script src="script.js"></script>
@@ -698,6 +735,28 @@ fn generate_index_html(
 </html>"#,
         nav_html, overview
     )
+}
+
+fn file_name_to_display_name(file_name: &str) -> String {
+    // Extract the base name without extension and path
+    let base_name = file_name
+        .split('/')
+        .last()
+        .unwrap_or(file_name)
+        .trim_end_matches(".nova");
+
+    // Convert to title case
+    base_name
+        .split('_')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn escape_html(s: &str) -> String {

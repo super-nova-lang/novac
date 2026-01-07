@@ -1,12 +1,31 @@
 document.addEventListener('DOMContentLoaded', () => {
     const input = document.querySelector('#search');
-    const toggle = document.querySelector('#toggle-theme');
+    const themeSelect = document.querySelector('#theme-select');
     const sections = Array.from(document.querySelectorAll('section[data-signature]'));
 
-    const applyTheme = (mode) => {
-        document.body.classList.toggle('dark', mode === 'dark');
-        localStorage.setItem('docs-theme', mode);
-        if (toggle) toggle.textContent = mode === 'dark' ? 'Light mode' : 'Dark mode';
+    const themes = [
+        'light',
+        'dark',
+        'monokai',
+        'dracula',
+        'solarized-light',
+        'solarized-dark',
+        'github-dark',
+        'nord',
+        'gruvbox'
+    ];
+
+    const applyTheme = (theme) => {
+        // Remove all theme classes
+        themes.forEach(t => document.body.classList.remove(t));
+
+        // Add new theme class (light is default, no class needed)
+        if (theme !== 'light') {
+            document.body.classList.add(theme);
+        }
+
+        localStorage.setItem('docs-theme', theme);
+        if (themeSelect) themeSelect.value = theme;
     };
 
     const saved = localStorage.getItem('docs-theme') || 'light';
@@ -23,9 +42,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    input.addEventListener('input', filter);
-    toggle.addEventListener('click', () => {
-        const isDark = document.body.classList.contains('dark');
-        applyTheme(isDark ? 'light' : 'dark');
-    });
+    if (input) {
+        input.addEventListener('input', filter);
+    }
+
+    if (themeSelect) {
+        themeSelect.addEventListener('change', (e) => {
+            applyTheme(e.target.value);
+        });
+    }
 });

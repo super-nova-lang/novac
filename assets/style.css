@@ -7,6 +7,78 @@
     --accent: #2563eb;
 }
 
+body.dark {
+    --bg: #0f172a;
+    --fg: #e5e7eb;
+    --muted: #94a3b8;
+    --surface: #1f2937;
+    --border: #334155;
+    --accent: #38bdf8;
+}
+
+body.monokai {
+    --bg: #272822;
+    --fg: #f8f8f2;
+    --muted: #75715e;
+    --surface: #3e3d32;
+    --border: #49483e;
+    --accent: #a6e22e;
+}
+
+body.dracula {
+    --bg: #282a36;
+    --fg: #f8f8f2;
+    --muted: #6272a4;
+    --surface: #44475a;
+    --border: #6272a4;
+    --accent: #ff79c6;
+}
+
+body.solarized-light {
+    --bg: #fdf6e3;
+    --fg: #657b83;
+    --muted: #93a1a1;
+    --surface: #eee8d5;
+    --border: #93a1a1;
+    --accent: #268bd2;
+}
+
+body.solarized-dark {
+    --bg: #002b36;
+    --fg: #839496;
+    --muted: #586e75;
+    --surface: #073642;
+    --border: #586e75;
+    --accent: #2aa198;
+}
+
+body.github-dark {
+    --bg: #0d1117;
+    --fg: #c9d1d9;
+    --muted: #8b949e;
+    --surface: #161b22;
+    --border: #30363d;
+    --accent: #58a6ff;
+}
+
+body.nord {
+    --bg: #2e3440;
+    --fg: #eceff4;
+    --muted: #d8dee9;
+    --surface: #3b4252;
+    --border: #4c566a;
+    --accent: #88c0d0;
+}
+
+body.gruvbox {
+    --bg: #282828;
+    --fg: #ebdbb2;
+    --muted: #a89984;
+    --surface: #3c3836;
+    --border: #504945;
+    --accent: #b8bb26;
+}
+
 body {
     font-family: 'Segoe UI', system-ui, sans-serif;
     background: var(--bg);
@@ -77,6 +149,42 @@ main {
     max-width: 960px;
 }
 
+main a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+main a:hover {
+    text-decoration: underline;
+}
+
+.theme-selector {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.theme-selector label {
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.theme-selector select {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--fg);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    min-width: 150px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
 .controls {
     display: flex;
     gap: 8px;
@@ -88,6 +196,11 @@ main {
     padding: 10px 0;
 }
 
+.controls label {
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
 .controls input {
     flex: 1;
     padding: 8px 10px;
@@ -97,13 +210,19 @@ main {
     color: var(--fg);
 }
 
-.controls button {
+.controls button,
+.controls select {
     padding: 8px 12px;
     border: 1px solid var(--border);
     background: var(--surface);
     color: var(--fg);
     border-radius: 6px;
     cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.controls select {
+    min-width: 150px;
 }
 
 section {
@@ -153,13 +272,4 @@ pre {
 .method-name code {
     color: var(--fg);
     font-family: 'Fira Code', monospace;
-}
-
-body.dark {
-    --bg: #0f172a;
-    --fg: #e5e7eb;
-    --muted: #94a3b8;
-    --surface: #1f2937;
-    --border: #334155;
-    --accent: #38bdf8;
 }
