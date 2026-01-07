@@ -1,11 +1,11 @@
 use anyhow::{Result, bail};
 
 use crate::cli::Target;
+use crate::codegen;
 use crate::commands::common::{
     analyze_step, lex_step, parse_step, read_source_with_stdlib, report_analysis_errors,
     report_parse_errors,
 };
-use crate::codegen;
 
 pub fn run(files: Vec<String>, target: Target) -> Result<()> {
     for file in files {
