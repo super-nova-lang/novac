@@ -99,7 +99,7 @@ impl Mangler {
     }
 }
 
-/// Target-level context for AMD64 code generation.
+/// Target-level context for ARM64 Linux code generation.
 pub struct Context {
     module_name: String,
     mangler: Mangler,
@@ -118,7 +118,7 @@ impl Context {
     }
 }
 
-/// Emits AMD64 code from the AST.
+/// Emits ARM64 Linux assembly from the AST.
 pub struct Emitter<'ctx> {
     ctx: &'ctx Context,
     header: Vec<String>,
@@ -155,7 +155,7 @@ impl<'ctx> Emitter<'ctx> {
         self.header.push(format!("# nodes: {}", ast.len()));
         self.header
             .push(format!("# mangler: {}", self.ctx.mangler().module_tag()));
-        self.header.push(String::from("# amd64 backend"));
+        self.header.push(String::from("# arm64-linux backend"));
         self.header.push(String::new());
         self.header.push(String::from(".global _start"));
     }
@@ -163,10 +163,10 @@ impl<'ctx> Emitter<'ctx> {
     fn entry_stub(&mut self) {
         self.text.push(String::from("_start:"));
         self.text
-            .push(String::from("    xor     %rdi, %rdi    # exit code 0"));
+            .push(String::from("    mov     x0, #0          // exit code 0"));
         self.text
-            .push(String::from("    mov     $60, %rax     # sys_exit"));
-        self.text.push(String::from("    syscall"));
+            .push(String::from("    mov     x8, #93         // sys_exit"));
+        self.text.push(String::from("    svc     #0"));
     }
 
     fn render(&self) -> String {
@@ -209,7 +209,7 @@ impl<'ctx> Emitter<'ctx> {
     }
 }
 
-/// AMD64 backend entrypoint.
+/// ARM64 Linux backend entrypoint.
 pub fn gen_target(module_name: &str, ast: &[Node]) -> Result<String> {
     let ctx = Context::new(module_name);
     let emitter = Emitter::new(&ctx);

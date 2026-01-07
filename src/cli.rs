@@ -15,13 +15,13 @@ pub enum Cli {
     Parse { files: Vec<String> },
     /// Generate the LLVM source code
     Codegen {
-        #[arg(short, long, value_enum, default_value_t = Target::Amd64)]
+        #[arg(short, long, value_enum, default_value_t = Target::Amd64Linux)]
         target: Target,
         files: Vec<String>,
     },
     /// Compile the Nova source code
     Compile {
-        #[arg(short, long, value_enum, default_value_t = Target::Amd64)]
+        #[arg(short, long, value_enum, default_value_t = Target::Amd64Linux)]
         target: Target,
         files: Vec<String>,
     },
@@ -32,7 +32,7 @@ pub enum Cli {
     Doc { files: Vec<String> },
     /// Run Nova project
     Run {
-        #[arg(short, long, value_enum, default_value_t = Target::Amd64)]
+        #[arg(short, long, value_enum, default_value_t = Target::Amd64Linux)]
         target: Target,
         files: Vec<String>,
     },
@@ -54,6 +54,12 @@ impl std::fmt::Display for Cli {
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum Target {
-    #[value(name = "amd64")]
-    Amd64,
+    #[value(name = "amd64-linux")]
+    Amd64Linux,
+    #[value(name = "amd64-windows")]
+    Amd64Windows,
+    #[value(name = "arm64-linux")]
+    Arm64Linux,
+    #[value(name = "arm64-windows")]
+    Arm64Windows,
 }

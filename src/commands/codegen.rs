@@ -24,7 +24,19 @@ pub fn run(files: Vec<String>, target: Target) -> Result<()> {
         }
 
         match target {
-            Target::Amd64 => match codegen::target_amd64_linux::gen_target(&file, &ast) {
+            Target::Amd64Linux => match codegen::target_amd64_linux::gen_target(&file, &ast) {
+                Ok(ir) => println!("{}", ir),
+                Err(e) => println!("Codegen failed for {}: {}", file, e),
+            },
+            Target::Amd64Windows => match codegen::target_amd64_windows::gen_target(&file, &ast) {
+                Ok(ir) => println!("{}", ir),
+                Err(e) => println!("Codegen failed for {}: {}", file, e),
+            },
+            Target::Arm64Linux => match codegen::target_arm64_linux::gen_target(&file, &ast) {
+                Ok(ir) => println!("{}", ir),
+                Err(e) => println!("Codegen failed for {}: {}", file, e),
+            },
+            Target::Arm64Windows => match codegen::target_arm64_windows::gen_target(&file, &ast) {
                 Ok(ir) => println!("{}", ir),
                 Err(e) => println!("Codegen failed for {}: {}", file, e),
             },

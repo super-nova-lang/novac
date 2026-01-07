@@ -26,7 +26,7 @@ pub fn run(files: Vec<String>, target: Target) -> Result<()> {
         }
 
         match target {
-            Target::Amd64 => match codegen::target_amd64_linux::gen_target(&file, &ast) {
+            Target::Amd64Linux => match codegen::target_amd64_linux::gen_target(&file, &ast) {
                 Ok(asm) => {
                     let out_base = Path::new("build");
                     let emit_dir = out_base.join("emit");
@@ -63,6 +63,9 @@ pub fn run(files: Vec<String>, target: Target) -> Result<()> {
                     println!("Codegen failed for {}: {}", file, e);
                 }
             },
+            Target::Amd64Windows | Target::Arm64Linux | Target::Arm64Windows => {
+                println!("Compile not yet implemented for target: {:?}", target);
+            }
         }
     }
 
