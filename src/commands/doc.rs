@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::commands::common::{
-    analyze_step, lex_step, parse_step, read_source_with_stdlib, report_parse_errors,
+    analyze_step, lex_step, parse_step, read_source, read_source_with_stdlib, report_parse_errors,
 };
 
 #[derive(Clone)]
@@ -24,7 +24,8 @@ pub fn run(files: Vec<String>, open: bool) -> Result<()> {
     let mut all_return_types = std::collections::HashMap::new();
 
     for file in files {
-        let source = read_source_with_stdlib(&file)?;
+        // Read just the user file for documentation extraction
+        let source = read_source(&file)?;
         let tokens = lex_step(&file, &source);
         let ast = parse_step(tokens)?;
 
@@ -32,7 +33,11 @@ pub fn run(files: Vec<String>, open: bool) -> Result<()> {
             continue;
         }
 
-        let (_errors, _warnings, return_types) = analyze_step(ast.clone());
+        // Use stdlib-enhanced source only for analysis context
+        let stdlib_source = read_source_with_stdlib(&file)?;
+        let stdlib_tokens = lex_step(&file, &stdlib_source);
+        let stdlib_ast = parse_step(stdlib_tokens)?;
+        let (_errors, _warnings, return_types) = analyze_step(stdlib_ast);
         all_return_types.extend(return_types);
 
         extract_docs_flat(
