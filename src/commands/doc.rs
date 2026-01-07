@@ -1,5 +1,5 @@
-use anyhow::Result;
 use crate::parser::nodes::{DeclStmt, Expression, Node, Statement, Type, VariantBody};
+use anyhow::Result;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -16,7 +16,7 @@ struct DocEntry {
     source_file: String,
 }
 
-pub fn run(files: Vec<String>) -> Result<()> {
+pub fn run(files: Vec<String>, open: bool) -> Result<()> {
     let doc_dir = Path::new("build/doc");
     std::fs::create_dir_all(doc_dir)?;
 
@@ -148,6 +148,14 @@ pub fn run(files: Vec<String>) -> Result<()> {
     let file_path = doc_dir.join("index.html");
     std::fs::write(&file_path, index_html)?;
     println!("Generated: {}", file_path.display());
+
+    if open {
+        let index_path = std::fs::canonicalize(&file_path)?;
+        let url = format!("file://{}", index_path.display());
+        if let Err(e) = opener::open(&url) {
+            eprintln!("Failed to open browser: {}", e);
+        }
+    }
 
     Ok(())
 }

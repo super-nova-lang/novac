@@ -29,7 +29,12 @@ pub enum Cli {
     /// Clean build artifacts
     Clean,
     /// Generate documentation for Nova source code
-    Doc { files: Vec<String> },
+    Doc {
+        files: Vec<String>,
+        /// Open the documentation in the default browser
+        #[arg(long)]
+        open: bool,
+    },
     /// Run Nova project
     Run {
         #[arg(short, long, value_enum, default_value_t = Target::Amd64Linux)]

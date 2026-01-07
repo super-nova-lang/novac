@@ -24,7 +24,7 @@ fn main() -> Result<()> {
         Cli::Compile { files, target } => commands::compile::run(files, target)?,
         Cli::Run { files, target } => commands::run::run(files, target)?,
         Cli::Clean => commands::clean::run()?,
-        Cli::Doc { files } => commands::doc::run(files)?,
+        Cli::Doc { files, open } => commands::doc::run(files, open)?,
     }
 
     Ok(())
