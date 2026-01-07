@@ -96,7 +96,7 @@
     ],
     "run": {
       "exit_code": 0,
-      "stderr": "tests/test_simple_for_loop.nova:142:17 [error.parsing] Expected Colon, got OpenParen",
+      "stderr": "tests/test_simple_for_loop.nova:147:17 [error.parsing] Expected Colon, got OpenParen",
       "stdout": ""
     },
     "tokenize": [
