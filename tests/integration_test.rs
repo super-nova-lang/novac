@@ -3,6 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use novac::{analysis, codegen, lexer, parser};
+
 /// Run through the pipeline for a test file and collect outputs
 fn run_pipeline(test_file: &str) -> Result<Value, Box<dyn std::error::Error>> {
     let test_path = PathBuf::from("tests").join(test_file);
@@ -67,7 +69,8 @@ fn run_pipeline(test_file: &str) -> Result<Value, Box<dyn std::error::Error>> {
     });
 
     // Step 4: Codegen
-    let codegen_result = codegen::target_amd64_linux::gen_target(&test_path.display().to_string(), &nodes);
+    let codegen_result =
+        codegen::target_amd64_linux::gen_target(&test_path.display().to_string(), &nodes);
     match codegen_result {
         Ok(ir) => {
             outputs["steps"]["codegen"] = json!({
@@ -94,7 +97,11 @@ fn run_pipeline(test_file: &str) -> Result<Value, Box<dyn std::error::Error>> {
             // Extract only the novac output, not cargo build messages
             let stderr_lines: Vec<&str> = stderr
                 .lines()
-                .filter(|l| !l.contains("Blocking") && !l.contains("Finished") && !l.contains("Running `target"))
+                .filter(|l| {
+                    !l.contains("Blocking")
+                        && !l.contains("Finished")
+                        && !l.contains("Running `target")
+                })
                 .collect();
             outputs["steps"]["run"] = json!({
                 "exit_code": output.status.code().unwrap_or(-1),

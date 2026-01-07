@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use parser::nodes::*;
+use crate::parser::nodes::*;
 
 #[derive(Debug, Clone)]
 pub enum AnalysisError {
@@ -773,7 +773,7 @@ fn analyze_decl(ctx: &mut Context, decl: &DeclStmt) {
                     let variant_list: Vec<(String, Type)> = variants
                         .iter()
                         .filter_map(|(vname, vbody)| match vbody {
-                            Some(parser::nodes::VariantBody::TypeBody(vtype)) => {
+                            Some(VariantBody::TypeBody(vtype)) => {
                                 Some((vname.clone(), vtype.clone()))
                             }
                             _ => None,

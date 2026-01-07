@@ -2,7 +2,7 @@
 
 pub mod nodes;
 
-use lexer::token::{Span, Token, TokenKind};
+use crate::lexer::token::{Span, Token, TokenKind};
 
 #[derive(Debug, Clone)]
 pub struct ParseError {

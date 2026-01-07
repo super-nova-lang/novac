@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use lexer::token::Span;
+use crate::lexer::token::Span;
 
 #[derive(Clone, Debug)]
 pub enum Node {

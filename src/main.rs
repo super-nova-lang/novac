@@ -5,9 +5,13 @@ use clap::Parser as _;
 
 use cli::Cli;
 
+mod analysis;
 mod cli;
+mod codegen;
 mod commands;
+mod lexer;
 mod logging;
+mod parser;
 
 fn main() -> Result<()> {
     logging::init();

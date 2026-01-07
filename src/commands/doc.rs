@@ -1,5 +1,5 @@
 use anyhow::Result;
-use parser::nodes::{DeclStmt, Expression, Node, Statement, Type, VariantBody};
+use crate::parser::nodes::{DeclStmt, Expression, Node, Statement, Type, VariantBody};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -157,7 +157,7 @@ fn extract_docs_flat(
     entries: &mut Vec<DocEntry>,
     current_module: String,
     file: &str,
-    return_types: &std::collections::HashMap<String, parser::nodes::Type>,
+    return_types: &std::collections::HashMap<String, crate::parser::nodes::Type>,
 ) {
     for (idx, node) in nodes.iter().enumerate() {
         match node {
@@ -176,7 +176,7 @@ fn extract_docs_flat(
     }
 }
 
-fn extract_with_block(expr: &Option<Box<Expression>>) -> Option<&parser::nodes::WithBlock> {
+fn extract_with_block(expr: &Option<Box<Expression>>) -> Option<&crate::parser::nodes::WithBlock> {
     if let Some(e) = expr {
         match e.as_ref() {
             Expression::StructExpr(_, with_block) => with_block.as_ref(),
@@ -189,11 +189,11 @@ fn extract_with_block(expr: &Option<Box<Expression>>) -> Option<&parser::nodes::
 }
 
 fn extract_with_block_methods(
-    with_block: &parser::nodes::WithBlock,
+    with_block: &crate::parser::nodes::WithBlock,
     entries: &mut Vec<DocEntry>,
     struct_name: String,
     file: &str,
-    return_types: &std::collections::HashMap<String, parser::nodes::Type>,
+    return_types: &std::collections::HashMap<String, crate::parser::nodes::Type>,
 ) {
     for (idx, node) in with_block.iter().enumerate() {
         match node {
@@ -221,7 +221,7 @@ fn extract_decl_docs_flat(
     current_module: String,
     file: &str,
     line_num: u32,
-    return_types: &std::collections::HashMap<String, parser::nodes::Type>,
+    return_types: &std::collections::HashMap<String, crate::parser::nodes::Type>,
 ) {
     match decl {
         DeclStmt::Decl {

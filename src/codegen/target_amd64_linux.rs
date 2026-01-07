@@ -1,5 +1,5 @@
 use anyhow::Result;
-use parser::nodes::{DeclParam, Node, Type};
+use crate::parser::nodes::{DeclParam, Node, Type};
 
 /// Mangling utility to keep symbols unique per module and signature.
 pub struct Mangler {

@@ -1,8 +1,8 @@
+use crate::analysis::{self, AnalysisResult};
+use crate::lexer::{Lexer, token::Token};
 use crate::logging;
-use analysis::{self, AnalysisResult};
+use crate::parser::{self, nodes::Node};
 use anyhow::Result;
-use lexer::{Lexer, token::Token};
-use parser::{self, nodes::Node};
 
 pub fn read_source(file: &str) -> Result<String> {
     std::fs::read_to_string(file).map_err(Into::into)

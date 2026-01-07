@@ -3,6 +3,7 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::cli::Target;
+use crate::codegen;
 use crate::commands::common::{
     analyze_step, lex_step, parse_step, read_source_with_stdlib, report_analysis_errors,
     report_parse_errors,
