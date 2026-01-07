@@ -3,12 +3,15 @@ let Option[T] :: = enum {
 	some :: T,
 	none :: (),
 } with {
+	(*! Returns true when the Option holds a value. *)
 	let is_some :: self = match self with
 		| .some(_) -> true
 		| .none    -> false
 	
+	(*! Returns true when the Option is none. *)
 	let is_none :: self = !self.is_some()
 
+	(*! Retrieves the contained value; panics if none. *)
 	let unwrap :: self = self.some
 }
 
@@ -20,18 +23,20 @@ let Result[T, E] :: = enum {
 
 let String :: ()
 = struct {
-	str: string,
+	internal: str,
 	size: usize,
 } with {
+	(*! Constructs an empty String. *)
 	let new :: () 
 	= Self {
-		.str = "",
+		.internal = "",
 		.size = 0,
 	}
 
-	let from :: str
+	(*! Builds a String from an existing str. *)
+	let from :: internal
 	= Self {
-		.str = str,
+		.internal = internal,
 		.size = 0,
 	}
 }

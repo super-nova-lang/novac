@@ -608,12 +608,24 @@ fn generate_file_html(
         if !methods.is_empty() {
             entries_html.push_str("            <div class=\"methods\">\n");
             for method in &methods {
+                let method_doc = method
+                    .doc
+                    .as_ref()
+                    .map(|d| format!("<pre>{}</pre>", escape_html(d)))
+                    .unwrap_or_default();
                 entries_html.push_str(&format!(
                     r#"                <div class="method">
-                    <p class="method-name">-> <code>{}</code></p>
+                    <p class="method-name" data-doc="{}">-> <code>{}</code></p>
+                    {}
                 </div>
 "#,
-                    escape_html(&method.signature)
+                    method
+                        .doc
+                        .as_ref()
+                        .map(|d| escape_html(d))
+                        .unwrap_or_default(),
+                    escape_html(&method.signature),
+                    method_doc
                 ));
                 displayed_methods.insert(method.signature.clone());
             }
