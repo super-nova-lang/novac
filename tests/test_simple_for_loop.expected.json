@@ -1,0 +1,50 @@
+{
+  "file": "test_simple_for_loop.nova",
+  "steps": {
+    "analyze": {
+      "results": [
+        "Error(InvalidOperation(\"Expected Colon, got OpenParen\"))"
+      ],
+      "warnings": []
+    },
+    "parse": [
+      "Statement(\n    Open(\n        OpenStmt {\n            mods: [\n                \"std\",\n                \"c\",\n            ],\n            elements: [\n                OpenStmtElement {\n                    path: [\n                        \"printf\",\n                    ],\n                    alias: None,\n                },\n            ],\n        },\n    ),\n)",
+      "Error(\n    \"Expected Colon, got OpenParen\",\n    Span {\n        file: \"tests/test_simple_for_loop.nova\",\n        line: 6,\n        column: 17,\n    },\n)"
+    ],
+    "tokenize": [
+      "Token { kind: Open, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 1, column: 6 } }",
+      "Token { kind: Ident(\"std\"), span: Span { file: \"tests/test_simple_for_loop.nova\", line: 1, column: 10 } }",
+      "Token { kind: Dot, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 1, column: 11 } }",
+      "Token { kind: Ident(\"c\"), span: Span { file: \"tests/test_simple_for_loop.nova\", line: 1, column: 12 } }",
+      "Token { kind: With, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 1, column: 17 } }",
+      "Token { kind: OpenBrack, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 1, column: 19 } }",
+      "Token { kind: Ident(\"printf\"), span: Span { file: \"tests/test_simple_for_loop.nova\", line: 1, column: 26 } }",
+      "Token { kind: CloseBrack, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 2, column: 1 } }",
+      "Token { kind: Let, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 3, column: 5 } }",
+      "Token { kind: Ident(\"main\"), span: Span { file: \"tests/test_simple_for_loop.nova\", line: 3, column: 10 } }",
+      "Token { kind: DoubleColon, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 3, column: 13 } }",
+      "Token { kind: OpenParen, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 3, column: 15 } }",
+      "Token { kind: CloseParen, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 3, column: 16 } }",
+      "Token { kind: Eql, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 3, column: 18 } }",
+      "Token { kind: OpenBrack, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 4, column: 1 } }",
+      "Token { kind: Ident(\"printf\"), span: Span { file: \"tests/test_simple_for_loop.nova\", line: 4, column: 12 } }",
+      "Token { kind: OpenParen, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 4, column: 13 } }",
+      "Token { kind: String(\"Testing simple for loop\\n\"), span: Span { file: \"tests/test_simple_for_loop.nova\", line: 4, column: 40 } }",
+      "Token { kind: CloseParen, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 5, column: 1 } }",
+      "Token { kind: For, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 5, column: 9 } }",
+      "Token { kind: Ident(\"i\"), span: Span { file: \"tests/test_simple_for_loop.nova\", line: 5, column: 11 } }",
+      "Token { kind: In, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 5, column: 14 } }",
+      "Token { kind: Number(5), span: Span { file: \"tests/test_simple_for_loop.nova\", line: 5, column: 16 } }",
+      "Token { kind: OpenBrack, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 6, column: 1 } }",
+      "Token { kind: Ident(\"printf\"), span: Span { file: \"tests/test_simple_for_loop.nova\", line: 6, column: 16 } }",
+      "Token { kind: OpenParen, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 6, column: 17 } }",
+      "Token { kind: String(\"i = %d\\n\"), span: Span { file: \"tests/test_simple_for_loop.nova\", line: 6, column: 27 } }",
+      "Token { kind: Comma, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 6, column: 28 } }",
+      "Token { kind: Ident(\"i\"), span: Span { file: \"tests/test_simple_for_loop.nova\", line: 6, column: 30 } }",
+      "Token { kind: CloseParen, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 7, column: 1 } }",
+      "Token { kind: CloseBrack, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 8, column: 1 } }",
+      "Token { kind: CloseBrack, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 9, column: 1 } }",
+      "Token { kind: Eof, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 9, column: 1 } }"
+    ]
+  }
+}

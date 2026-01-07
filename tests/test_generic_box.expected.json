@@ -1,0 +1,44 @@
+{
+  "file": "test_generic_box.nova",
+  "steps": {
+    "analyze": {
+      "results": [],
+      "warnings": [
+        "UnusedVariable(\"get\")",
+        "UnusedVariable(\"get\")"
+      ]
+    },
+    "parse": [
+      "Statement(\n    Decl(\n        Decl {\n            doc: Some(\n                \"Test generic return type\",\n            ),\n            tags: [],\n            name: \"Box\",\n            generics: [\n                \"T\",\n            ],\n            params: [],\n            explicit_ret: None,\n            body: (\n                [],\n                Some(\n                    StructExpr(\n                        [\n                            (\n                                \"value\",\n                                TypeVar(\n                                    \"T\",\n                                ),\n                                None,\n                            ),\n                        ],\n                        Some(\n                            [\n                                Statement(\n                                    Decl(\n                                        Decl {\n                                            doc: None,\n                                            tags: [],\n                                            name: \"get\",\n                                            generics: [],\n                                            params: [\n                                                Untyped(\n                                                    \"self\",\n                                                ),\n                                            ],\n                                            explicit_ret: None,\n                                            body: (\n                                                [],\n                                                Some(\n                                                    RelationalExpr(\n                                                        RelationalVal(\n                                                            AdditiveVal(\n                                                                MultiplicativeVal(\n                                                                    UnaryMember(\n                                                                        UnaryVal(\n                                                                            Ident(\n                                                                                \"self\",\n                                                                            ),\n                                                                        ),\n                                                                        \"value\",\n                                                                    ),\n                                                                ),\n                                                            ),\n                                                        ),\n                                                    ),\n                                                ),\n                                            ),\n                                        },\n                                    ),\n                                ),\n                            ],\n                        ),\n                    ),\n                ),\n            ),\n        },\n    ),\n)"
+    ],
+    "tokenize": [
+      "Token { kind: DocComment(\"Test generic return type\"), span: Span { file: \"tests/test_generic_box.nova\", line: 2, column: 1 } }",
+      "Token { kind: Let, span: Span { file: \"tests/test_generic_box.nova\", line: 2, column: 5 } }",
+      "Token { kind: Ident(\"Box\"), span: Span { file: \"tests/test_generic_box.nova\", line: 2, column: 9 } }",
+      "Token { kind: OpenSquare, span: Span { file: \"tests/test_generic_box.nova\", line: 2, column: 10 } }",
+      "Token { kind: Ident(\"T\"), span: Span { file: \"tests/test_generic_box.nova\", line: 2, column: 11 } }",
+      "Token { kind: CloseSquare, span: Span { file: \"tests/test_generic_box.nova\", line: 2, column: 12 } }",
+      "Token { kind: DoubleColon, span: Span { file: \"tests/test_generic_box.nova\", line: 2, column: 15 } }",
+      "Token { kind: Eql, span: Span { file: \"tests/test_generic_box.nova\", line: 2, column: 17 } }",
+      "Token { kind: Struct, span: Span { file: \"tests/test_generic_box.nova\", line: 2, column: 24 } }",
+      "Token { kind: OpenBrack, span: Span { file: \"tests/test_generic_box.nova\", line: 3, column: 1 } }",
+      "Token { kind: Ident(\"value\"), span: Span { file: \"tests/test_generic_box.nova\", line: 3, column: 11 } }",
+      "Token { kind: Colon, span: Span { file: \"tests/test_generic_box.nova\", line: 3, column: 12 } }",
+      "Token { kind: Ident(\"T\"), span: Span { file: \"tests/test_generic_box.nova\", line: 3, column: 14 } }",
+      "Token { kind: Comma, span: Span { file: \"tests/test_generic_box.nova\", line: 4, column: 1 } }",
+      "Token { kind: CloseBrack, span: Span { file: \"tests/test_generic_box.nova\", line: 4, column: 3 } }",
+      "Token { kind: With, span: Span { file: \"tests/test_generic_box.nova\", line: 4, column: 8 } }",
+      "Token { kind: OpenBrack, span: Span { file: \"tests/test_generic_box.nova\", line: 5, column: 1 } }",
+      "Token { kind: Let, span: Span { file: \"tests/test_generic_box.nova\", line: 5, column: 9 } }",
+      "Token { kind: Ident(\"get\"), span: Span { file: \"tests/test_generic_box.nova\", line: 5, column: 13 } }",
+      "Token { kind: DoubleColon, span: Span { file: \"tests/test_generic_box.nova\", line: 5, column: 16 } }",
+      "Token { kind: Ident(\"self\"), span: Span { file: \"tests/test_generic_box.nova\", line: 5, column: 21 } }",
+      "Token { kind: Eql, span: Span { file: \"tests/test_generic_box.nova\", line: 5, column: 23 } }",
+      "Token { kind: Ident(\"self\"), span: Span { file: \"tests/test_generic_box.nova\", line: 5, column: 28 } }",
+      "Token { kind: Dot, span: Span { file: \"tests/test_generic_box.nova\", line: 5, column: 29 } }",
+      "Token { kind: Ident(\"value\"), span: Span { file: \"tests/test_generic_box.nova\", line: 6, column: 1 } }",
+      "Token { kind: CloseBrack, span: Span { file: \"tests/test_generic_box.nova\", line: 7, column: 1 } }",
+      "Token { kind: Eof, span: Span { file: \"tests/test_generic_box.nova\", line: 7, column: 1 } }"
+    ]
+  }
+}

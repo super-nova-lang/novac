@@ -15,3 +15,6 @@ lexer = { path = "lexer" }
 parser = { path = "parser" }
 analysis = { path = "analysis" }
 codegen = { path = "codegen" }
+
+[dev-dependencies]
+serde_json = "1.0"

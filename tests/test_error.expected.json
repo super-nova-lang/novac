@@ -1,0 +1,28 @@
+{
+  "file": "test_error.nova",
+  "steps": {
+    "analyze": {
+      "results": [
+        "Error(TypeMismatch(User(\"i32\"), Builtin(\"i32\")))"
+      ],
+      "warnings": []
+    },
+    "parse": [
+      "Statement(\n    Decl(\n        Decl {\n            doc: None,\n            tags: [],\n            name: \"main\",\n            generics: [],\n            params: [],\n            explicit_ret: Some(\n                User(\n                    \"i32\",\n                ),\n            ),\n            body: (\n                [],\n                Some(\n                    RelationalExpr(\n                        RelationalVal(\n                            AdditiveVal(\n                                MultiplicativeVal(\n                                    UnaryVal(\n                                        Int(\n                                            1,\n                                        ),\n                                    ),\n                                ),\n                            ),\n                        ),\n                    ),\n                ),\n            ),\n        },\n    ),\n)"
+    ],
+    "tokenize": [
+      "Token { kind: Let, span: Span { file: \"tests/test_error.nova\", line: 1, column: 5 } }",
+      "Token { kind: Ident(\"main\"), span: Span { file: \"tests/test_error.nova\", line: 1, column: 10 } }",
+      "Token { kind: DoubleColon, span: Span { file: \"tests/test_error.nova\", line: 1, column: 13 } }",
+      "Token { kind: OpenParen, span: Span { file: \"tests/test_error.nova\", line: 1, column: 15 } }",
+      "Token { kind: CloseParen, span: Span { file: \"tests/test_error.nova\", line: 1, column: 16 } }",
+      "Token { kind: SkinnyArrow, span: Span { file: \"tests/test_error.nova\", line: 1, column: 19 } }",
+      "Token { kind: Ident(\"i32\"), span: Span { file: \"tests/test_error.nova\", line: 1, column: 23 } }",
+      "Token { kind: Eql, span: Span { file: \"tests/test_error.nova\", line: 1, column: 25 } }",
+      "Token { kind: OpenBrack, span: Span { file: \"tests/test_error.nova\", line: 1, column: 27 } }",
+      "Token { kind: Number(1), span: Span { file: \"tests/test_error.nova\", line: 1, column: 29 } }",
+      "Token { kind: CloseBrack, span: Span { file: \"tests/test_error.nova\", line: 1, column: 30 } }",
+      "Token { kind: Eof, span: Span { file: \"tests/test_error.nova\", line: 1, column: 30 } }"
+    ]
+  }
+}

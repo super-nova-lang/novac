@@ -21,8 +21,6 @@ fn main() -> Result<()> {
         Cli::Run { files, target } => commands::run::run(files, target)?,
         Cli::Clean => commands::clean::run()?,
         Cli::Doc { files } => commands::doc::run(files)?,
-        Cli::TestCompile => commands::test_compile::run()?,
-        Cli::TestCompilePromote => commands::test_compile_promote::run()?,
     }
 
     Ok(())

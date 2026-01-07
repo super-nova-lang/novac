@@ -36,11 +36,6 @@ pub enum Cli {
         target: Target,
         files: Vec<String>,
     },
-    // DEVELOPMENT COMMANDS
-    /// Test the compiler
-    TestCompile,
-    /// Test the compiler with promotion enabled
-    TestCompilePromote,
 }
 
 impl std::fmt::Display for Cli {
@@ -53,8 +48,6 @@ impl std::fmt::Display for Cli {
             Cli::Compile { .. } => write!(f, "compile"),
             Cli::Doc { .. } => write!(f, "doc"),
             Cli::Run { .. } => write!(f, "run"),
-            Cli::TestCompile => write!(f, "test-compile"),
-            Cli::TestCompilePromote => write!(f, "test-compile-promote"),
         }
     }
 }
