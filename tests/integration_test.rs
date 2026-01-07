@@ -68,23 +68,106 @@ fn run_pipeline(test_file: &str) -> Result<Value, Box<dyn std::error::Error>> {
         "warnings": sorted_warnings,
     });
 
-    // Step 4: Codegen
+    // Step 4: Codegen - test all targets
+    let mut codegen_outputs = serde_json::Map::new();
+
+    // AMD64 Linux
     let codegen_result =
         codegen::target_amd64_linux::gen_target(&test_path.display().to_string(), &nodes);
     match codegen_result {
         Ok(ir) => {
-            outputs["steps"]["codegen"] = json!({
-                "exit_code": 0,
-                "output": ir.lines().take(50).collect::<Vec<_>>(),
-            });
+            codegen_outputs.insert(
+                "amd64_linux".to_string(),
+                json!({
+                    "exit_code": 0,
+                    "output": ir.lines().take(50).collect::<Vec<_>>(),
+                }),
+            );
         }
         Err(e) => {
-            outputs["steps"]["codegen"] = json!({
-                "exit_code": 1,
-                "error": format!("{:?}", e),
-            });
+            codegen_outputs.insert(
+                "amd64_linux".to_string(),
+                json!({
+                    "exit_code": 1,
+                    "error": format!("{:?}", e),
+                }),
+            );
         }
     }
+
+    // AMD64 Windows
+    let codegen_result =
+        codegen::target_amd64_windows::gen_target(&test_path.display().to_string(), &nodes);
+    match codegen_result {
+        Ok(ir) => {
+            codegen_outputs.insert(
+                "amd64_windows".to_string(),
+                json!({
+                    "exit_code": 0,
+                    "output": ir.lines().take(50).collect::<Vec<_>>(),
+                }),
+            );
+        }
+        Err(e) => {
+            codegen_outputs.insert(
+                "amd64_windows".to_string(),
+                json!({
+                    "exit_code": 1,
+                    "error": format!("{:?}", e),
+                }),
+            );
+        }
+    }
+
+    // ARM64 Linux
+    let codegen_result =
+        codegen::target_arm64_linux::gen_target(&test_path.display().to_string(), &nodes);
+    match codegen_result {
+        Ok(ir) => {
+            codegen_outputs.insert(
+                "arm64_linux".to_string(),
+                json!({
+                    "exit_code": 0,
+                    "output": ir.lines().take(50).collect::<Vec<_>>(),
+                }),
+            );
+        }
+        Err(e) => {
+            codegen_outputs.insert(
+                "arm64_linux".to_string(),
+                json!({
+                    "exit_code": 1,
+                    "error": format!("{:?}", e),
+                }),
+            );
+        }
+    }
+
+    // ARM64 Windows
+    let codegen_result =
+        codegen::target_arm64_windows::gen_target(&test_path.display().to_string(), &nodes);
+    match codegen_result {
+        Ok(ir) => {
+            codegen_outputs.insert(
+                "arm64_windows".to_string(),
+                json!({
+                    "exit_code": 0,
+                    "output": ir.lines().take(50).collect::<Vec<_>>(),
+                }),
+            );
+        }
+        Err(e) => {
+            codegen_outputs.insert(
+                "arm64_windows".to_string(),
+                json!({
+                    "exit_code": 1,
+                    "error": format!("{:?}", e),
+                }),
+            );
+        }
+    }
+
+    outputs["steps"]["codegen"] = Value::Object(codegen_outputs);
 
     // Step 5: Run (via novac run command)
     let run_output = Command::new("cargo")
@@ -95,12 +178,22 @@ fn run_pipeline(test_file: &str) -> Result<Value, Box<dyn std::error::Error>> {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             // Extract only the novac output, not cargo build messages
-            let stderr_lines: Vec<&str> = stderr
+            // Also normalize temporary file paths to make tests deterministic
+            let stderr_lines: Vec<String> = stderr
                 .lines()
                 .filter(|l| {
                     !l.contains("Blocking")
                         && !l.contains("Finished")
                         && !l.contains("Running `target")
+                })
+                .map(|l| {
+                    // Normalize temporary file paths like /tmp/test_generic_box-89e507.o
+                    if l.contains("/tmp/") {
+                        let re = regex::Regex::new(r"/tmp/[^-]+-[0-9a-f]+\.o").unwrap();
+                        re.replace_all(l, "/tmp/<temp>.o").to_string()
+                    } else {
+                        l.to_string()
+                    }
                 })
                 .collect();
             outputs["steps"]["run"] = json!({
@@ -161,82 +254,36 @@ fn run_test(test_file: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[test]
-fn test_c_style_for_loop() {
-    run_test("test_c_style_for_loop.nova").expect("Test failed");
+/// Macro to generate test functions for all .nova files in the tests directory
+macro_rules! generate_tests {
+    ($($name:ident => $file:expr),* $(,)?) => {
+        $(
+            #[test]
+            fn $name() {
+                run_test($file).expect("Test failed");
+            }
+        )*
+    };
 }
 
-#[test]
-fn test_compound_assign() {
-    run_test("test_compound_assign.nova").expect("Test failed");
-}
-
-#[test]
-fn test_enum_payload() {
-    run_test("test_enum_payload.nova").expect("Test failed");
-}
-
-#[test]
-fn test_error() {
-    run_test("test_error.nova").expect("Test failed");
-}
-
-#[test]
-fn test_for_loop() {
-    run_test("test_for_loop.nova").expect("Test failed");
-}
-
-#[test]
-fn test_generic_advanced() {
-    run_test("test_generic_advanced.nova").expect("Test failed");
-}
-
-#[test]
-fn test_generic_box() {
-    run_test("test_generic_box.nova").expect("Test failed");
-}
-
-#[test]
-fn test_generics() {
-    run_test("test_generics.nova").expect("Test failed");
-}
-
-#[test]
-fn test_many_params() {
-    run_test("test_many_params.nova").expect("Test failed");
-}
-
-#[test]
-fn test_match() {
-    run_test("test_match.nova").expect("Test failed");
-}
-
-#[test]
-fn test_named_params() {
-    run_test("test_named_params.nova").expect("Test failed");
-}
-
-#[test]
-fn test_power() {
-    run_test("test_power.nova").expect("Test failed");
-}
-
-#[test]
-fn test_reflection() {
-    run_test("test_reflection.nova").expect("Test failed");
-}
-
-#[test]
-fn test_simple_for_loop() {
-    run_test("test_simple_for_loop.nova").expect("Test failed");
-}
-
-#[test]
-fn test_variadic() {
-    run_test("test_variadic.nova").expect("Test failed");
-}
-
-#[test]
-fn test_while() {
-    run_test("test_while.nova").expect("Test failed");
+// Auto-generate tests for all .nova test files
+generate_tests! {
+    test_c_style_for_loop => "test_c_style_for_loop.nova",
+    test_codegen_minimal => "test_codegen_minimal.nova",
+    test_codegen_simple => "test_codegen_simple.nova",
+    test_compound_assign => "test_compound_assign.nova",
+    test_enum_payload => "test_enum_payload.nova",
+    test_error => "test_error.nova",
+    test_for_loop => "test_for_loop.nova",
+    test_generic_advanced => "test_generic_advanced.nova",
+    test_generic_box => "test_generic_box.nova",
+    test_generics => "test_generics.nova",
+    test_many_params => "test_many_params.nova",
+    test_match => "test_match.nova",
+    test_named_params => "test_named_params.nova",
+    test_power => "test_power.nova",
+    test_reflection => "test_reflection.nova",
+    test_simple_for_loop => "test_simple_for_loop.nova",
+    test_variadic => "test_variadic.nova",
+    test_while => "test_while.nova",
 }

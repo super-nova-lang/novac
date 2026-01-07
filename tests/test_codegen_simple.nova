@@ -1,0 +1,8 @@
+(* Simple codegen test *)
+
+let add :: x: i32, y: i32 = x + y
+
+let main :: () = {
+    let result = add(5, 3)
+    result
+}

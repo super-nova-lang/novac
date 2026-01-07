@@ -8,30 +8,87 @@
       "warnings": []
     },
     "codegen": {
-      "exit_code": 0,
-      "output": [
-        "# module: tests/test_reflection.nova",
-        "# nodes: 3",
-        "# mangler: tests_test_reflection_nova",
-        "# amd64 backend",
-        "",
-        ".global _start",
-        "",
-        ".text",
-        "_start:",
-        "    xor     %rdi, %rdi    # exit code 0",
-        "    mov     $60, %rax     # sys_exit",
-        "    syscall",
-        "",
-        ".rodata",
-        "# <no rodata>",
-        "",
-        ".data",
-        "# <no data>",
-        "",
-        ".bss",
-        "# <no bss>"
-      ]
+      "amd64_linux": {
+        "error": "AST error node: Expected Colon, got OpenParen",
+        "exit_code": 1
+      },
+      "amd64_windows": {
+        "exit_code": 0,
+        "output": [
+          "# module: tests/test_reflection.nova",
+          "# nodes: 3",
+          "# mangler: tests_test_reflection_nova",
+          "# amd64-windows backend",
+          "",
+          ".globl main",
+          "",
+          ".text",
+          "main:",
+          "    sub     rsp, 40         # shadow space + alignment",
+          "    xor     ecx, ecx        # exit code 0",
+          "    call    ExitProcess     # Windows API",
+          "",
+          ".rdata",
+          "# <no rodata>",
+          "",
+          ".data",
+          "# <no data>",
+          "",
+          ".bss",
+          "# <no bss>"
+        ]
+      },
+      "arm64_linux": {
+        "exit_code": 0,
+        "output": [
+          "# module: tests/test_reflection.nova",
+          "# nodes: 3",
+          "# mangler: tests_test_reflection_nova",
+          "# arm64-linux backend",
+          "",
+          ".global _start",
+          "",
+          ".text",
+          "_start:",
+          "    mov     x0, #0          // exit code 0",
+          "    mov     x8, #93         // sys_exit",
+          "    svc     #0",
+          "",
+          ".rodata",
+          "# <no rodata>",
+          "",
+          ".data",
+          "# <no data>",
+          "",
+          ".bss",
+          "# <no bss>"
+        ]
+      },
+      "arm64_windows": {
+        "exit_code": 0,
+        "output": [
+          "# module: tests/test_reflection.nova",
+          "# nodes: 3",
+          "# mangler: tests_test_reflection_nova",
+          "# arm64-windows backend",
+          "",
+          ".globl main",
+          "",
+          ".text",
+          "main:",
+          "    mov     w0, #0          // exit code 0",
+          "    bl      ExitProcess     // Windows API",
+          "",
+          ".rdata",
+          "# <no rodata>",
+          "",
+          ".data",
+          "# <no data>",
+          "",
+          ".bss",
+          "# <no bss>"
+        ]
+      }
     },
     "parse": [
       "Statement(\n    Open(\n        OpenStmt {\n            mods: [\n                \"std\",\n                \"c\",\n            ],\n            elements: [\n                OpenStmtElement {\n                    path: [\n                        \"printf\",\n                    ],\n                    alias: None,\n                },\n            ],\n        },\n    ),\n)",

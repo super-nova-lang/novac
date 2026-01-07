@@ -1,6 +1,13 @@
+open std with { c.printf }
+
 (*! Test generic return type *)
 let Box[T] :: = struct {
     value: T,
 } with {
     let get :: self = self.value
 }
+
+let main :: () = {
+    let my_box: Box[i32] = Box(420)
+    printf("My box value: %d\n", my_box.get)
+} 
