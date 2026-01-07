@@ -128,7 +128,7 @@ fn add_symbol(
                 .push(AnalysisWarning::ShadowedVariable(name.clone()));
             stack.insert(0, info);
         }
-        None => {
+        _ => {
             ctx.symbols.insert(name, vec![info]);
         }
     }
