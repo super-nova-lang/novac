@@ -25,7 +25,7 @@ pub fn run(files: Vec<String>, target: Target) -> Result<()> {
         }
 
         match target {
-            Target::Amd64 => match codegen::target_amd64::gen_target(&file, &ast) {
+            Target::Amd64 => match codegen::target_amd64_linux::gen_target(&file, &ast) {
                 Ok(asm) => {
                     let out_base = Path::new("build");
                     let emit_dir = out_base.join("emit");

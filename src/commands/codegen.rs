@@ -23,7 +23,7 @@ pub fn run(files: Vec<String>, target: Target) -> Result<()> {
         }
 
         match target {
-            Target::Amd64 => match codegen::target_amd64::gen_target(&file, &ast) {
+            Target::Amd64 => match codegen::target_amd64_linux::gen_target(&file, &ast) {
                 Ok(ir) => println!("{}", ir),
                 Err(e) => println!("Codegen failed for {}: {}", file, e),
             },
