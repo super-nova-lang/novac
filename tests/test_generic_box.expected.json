@@ -8,9 +8,40 @@
         "UnusedVariable(\"get\")"
       ]
     },
+    "codegen": {
+      "exit_code": 0,
+      "output": [
+        "# module: tests/test_generic_box.nova",
+        "# nodes: 1",
+        "# mangler: tests_test_generic_box_nova",
+        "# amd64 backend",
+        "",
+        ".global _start",
+        "",
+        ".text",
+        "_start:",
+        "    xor     %rdi, %rdi    # exit code 0",
+        "    mov     $60, %rax     # sys_exit",
+        "    syscall",
+        "",
+        ".rodata",
+        "# <no rodata>",
+        "",
+        ".data",
+        "# <no data>",
+        "",
+        ".bss",
+        "# <no bss>"
+      ]
+    },
     "parse": [
       "Statement(\n    Decl(\n        Decl {\n            doc: Some(\n                \"Test generic return type\",\n            ),\n            tags: [],\n            name: \"Box\",\n            generics: [\n                \"T\",\n            ],\n            params: [],\n            explicit_ret: None,\n            body: (\n                [],\n                Some(\n                    StructExpr(\n                        [\n                            (\n                                \"value\",\n                                TypeVar(\n                                    \"T\",\n                                ),\n                                None,\n                            ),\n                        ],\n                        Some(\n                            [\n                                Statement(\n                                    Decl(\n                                        Decl {\n                                            doc: None,\n                                            tags: [],\n                                            name: \"get\",\n                                            generics: [],\n                                            params: [\n                                                Untyped(\n                                                    \"self\",\n                                                ),\n                                            ],\n                                            explicit_ret: None,\n                                            body: (\n                                                [],\n                                                Some(\n                                                    RelationalExpr(\n                                                        RelationalVal(\n                                                            AdditiveVal(\n                                                                MultiplicativeVal(\n                                                                    UnaryMember(\n                                                                        UnaryVal(\n                                                                            Ident(\n                                                                                \"self\",\n                                                                            ),\n                                                                        ),\n                                                                        \"value\",\n                                                                    ),\n                                                                ),\n                                                            ),\n                                                        ),\n                                                    ),\n                                                ),\n                                            ),\n                                        },\n                                    ),\n                                ),\n                            ],\n                        ),\n                    ),\n                ),\n            ),\n        },\n    ),\n)"
     ],
+    "run": {
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "Linked executable: build/debug/test_generic_box.out\nExecution finished: exit status: 0\n"
+    },
     "tokenize": [
       "Token { kind: DocComment(\"Test generic return type\"), span: Span { file: \"tests/test_generic_box.nova\", line: 2, column: 1 } }",
       "Token { kind: Let, span: Span { file: \"tests/test_generic_box.nova\", line: 2, column: 5 } }",

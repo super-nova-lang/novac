@@ -7,10 +7,41 @@
       ],
       "warnings": []
     },
+    "codegen": {
+      "exit_code": 0,
+      "output": [
+        "# module: tests/test_variadic.nova",
+        "# nodes: 2",
+        "# mangler: tests_test_variadic_nova",
+        "# amd64 backend",
+        "",
+        ".global _start",
+        "",
+        ".text",
+        "_start:",
+        "    xor     %rdi, %rdi    # exit code 0",
+        "    mov     $60, %rax     # sys_exit",
+        "    syscall",
+        "",
+        ".rodata",
+        "# <no rodata>",
+        "",
+        ".data",
+        "# <no data>",
+        "",
+        ".bss",
+        "# <no bss>"
+      ]
+    },
     "parse": [
       "Statement(\n    Open(\n        OpenStmt {\n            mods: [\n                \"std\",\n                \"c\",\n            ],\n            elements: [\n                OpenStmtElement {\n                    path: [\n                        \"printf\",\n                    ],\n                    alias: None,\n                },\n            ],\n        },\n    ),\n)",
       "Error(\n    \"Expected identifier for parameter, got Dot\",\n    Span {\n        file: \"tests/test_variadic.nova\",\n        line: 3,\n        column: 42,\n    },\n)"
     ],
+    "run": {
+      "exit_code": 0,
+      "stderr": "tests/test_variadic.nova:109:42 [error.parsing] Expected identifier for parameter, got Dot",
+      "stdout": ""
+    },
     "tokenize": [
       "Token { kind: Open, span: Span { file: \"tests/test_variadic.nova\", line: 1, column: 6 } }",
       "Token { kind: Ident(\"std\"), span: Span { file: \"tests/test_variadic.nova\", line: 1, column: 10 } }",

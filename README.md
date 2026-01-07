@@ -12,7 +12,7 @@ cargo test
 
 ## Testing
 
-Tests run the full compiler pipeline (tokenize → parse → analyze) on `.nova` files in the `tests/` directory and compare outputs against `.expected.json` baseline files. Expected files are automatically generated on first run.
+Tests run the full compiler pipeline (tokenize → parse → analyze → codegen → run) on `.nova` files in the `tests/` directory and compare outputs against `.expected.json` baseline files. Expected files are automatically generated on first run. Each test captures exit codes and output from each pipeline step.
 
 ```bash
 cargo test --test integration_test

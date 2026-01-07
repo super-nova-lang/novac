@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// Run through the pipeline for a test file and collect outputs
 fn run_pipeline(test_file: &str) -> Result<Value, Box<dyn std::error::Error>> {
@@ -64,6 +65,50 @@ fn run_pipeline(test_file: &str) -> Result<Value, Box<dyn std::error::Error>> {
         "results": sorted_results,
         "warnings": sorted_warnings,
     });
+
+    // Step 4: Codegen
+    let codegen_result = codegen::target_amd64_linux::gen_target(&test_path.display().to_string(), &nodes);
+    match codegen_result {
+        Ok(ir) => {
+            outputs["steps"]["codegen"] = json!({
+                "exit_code": 0,
+                "output": ir.lines().take(50).collect::<Vec<_>>(),
+            });
+        }
+        Err(e) => {
+            outputs["steps"]["codegen"] = json!({
+                "exit_code": 1,
+                "error": format!("{:?}", e),
+            });
+        }
+    }
+
+    // Step 5: Run (via novac run command)
+    let run_output = Command::new("cargo")
+        .args(&["run", "--", "run", test_path.to_str().unwrap()])
+        .output();
+    match run_output {
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            // Extract only the novac output, not cargo build messages
+            let stderr_lines: Vec<&str> = stderr
+                .lines()
+                .filter(|l| !l.contains("Blocking") && !l.contains("Finished") && !l.contains("Running `target"))
+                .collect();
+            outputs["steps"]["run"] = json!({
+                "exit_code": output.status.code().unwrap_or(-1),
+                "stdout": stdout,
+                "stderr": stderr_lines.join("\n"),
+            });
+        }
+        Err(e) => {
+            outputs["steps"]["run"] = json!({
+                "exit_code": -1,
+                "error": format!("{:?}", e),
+            });
+        }
+    }
 
     Ok(outputs)
 }

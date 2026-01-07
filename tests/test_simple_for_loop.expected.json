@@ -7,10 +7,41 @@
       ],
       "warnings": []
     },
+    "codegen": {
+      "exit_code": 0,
+      "output": [
+        "# module: tests/test_simple_for_loop.nova",
+        "# nodes: 2",
+        "# mangler: tests_test_simple_for_loop_nova",
+        "# amd64 backend",
+        "",
+        ".global _start",
+        "",
+        ".text",
+        "_start:",
+        "    xor     %rdi, %rdi    # exit code 0",
+        "    mov     $60, %rax     # sys_exit",
+        "    syscall",
+        "",
+        ".rodata",
+        "# <no rodata>",
+        "",
+        ".data",
+        "# <no data>",
+        "",
+        ".bss",
+        "# <no bss>"
+      ]
+    },
     "parse": [
       "Statement(\n    Open(\n        OpenStmt {\n            mods: [\n                \"std\",\n                \"c\",\n            ],\n            elements: [\n                OpenStmtElement {\n                    path: [\n                        \"printf\",\n                    ],\n                    alias: None,\n                },\n            ],\n        },\n    ),\n)",
       "Error(\n    \"Expected Colon, got OpenParen\",\n    Span {\n        file: \"tests/test_simple_for_loop.nova\",\n        line: 6,\n        column: 17,\n    },\n)"
     ],
+    "run": {
+      "exit_code": 0,
+      "stderr": "tests/test_simple_for_loop.nova:112:17 [error.parsing] Expected Colon, got OpenParen",
+      "stdout": ""
+    },
     "tokenize": [
       "Token { kind: Open, span: Span { file: \"tests/test_simple_for_loop.nova\", line: 1, column: 6 } }",
       "Token { kind: Ident(\"std\"), span: Span { file: \"tests/test_simple_for_loop.nova\", line: 1, column: 10 } }",

@@ -7,9 +7,40 @@
       ],
       "warnings": []
     },
+    "codegen": {
+      "exit_code": 0,
+      "output": [
+        "# module: tests/test_error.nova",
+        "# nodes: 1",
+        "# mangler: tests_test_error_nova",
+        "# amd64 backend",
+        "",
+        ".global _start",
+        "",
+        ".text",
+        "_start:",
+        "    xor     %rdi, %rdi    # exit code 0",
+        "    mov     $60, %rax     # sys_exit",
+        "    syscall",
+        "",
+        ".rodata",
+        "# <no rodata>",
+        "",
+        ".data",
+        "# <no data>",
+        "",
+        ".bss",
+        "# <no bss>"
+      ]
+    },
     "parse": [
       "Statement(\n    Decl(\n        Decl {\n            doc: None,\n            tags: [],\n            name: \"main\",\n            generics: [],\n            params: [],\n            explicit_ret: Some(\n                User(\n                    \"i32\",\n                ),\n            ),\n            body: (\n                [],\n                Some(\n                    RelationalExpr(\n                        RelationalVal(\n                            AdditiveVal(\n                                MultiplicativeVal(\n                                    UnaryVal(\n                                        Int(\n                                            1,\n                                        ),\n                                    ),\n                                ),\n                            ),\n                        ),\n                    ),\n                ),\n            ),\n        },\n    ),\n)"
     ],
+    "run": {
+      "exit_code": 0,
+      "stderr": "",
+      "stdout": "-- Analysis Errors --\n"
+    },
     "tokenize": [
       "Token { kind: Let, span: Span { file: \"tests/test_error.nova\", line: 1, column: 5 } }",
       "Token { kind: Ident(\"main\"), span: Span { file: \"tests/test_error.nova\", line: 1, column: 10 } }",
