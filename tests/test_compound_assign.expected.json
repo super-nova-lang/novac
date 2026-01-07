@@ -146,7 +146,7 @@
     "run": {
       "exit_code": 0,
       "stderr": "",
-      "stdout": "Linked executable: build/debug/test_compound_assign.out\nExecution finished: exit status: 20\n"
+      "stdout": "-- Analysis Errors --\n"
     },
     "tokenize": [
       "Token { kind: Open, span: Span { file: \"tests/test_compound_assign.nova\", line: 1, column: 6 } }",

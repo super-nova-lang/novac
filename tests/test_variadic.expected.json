@@ -96,7 +96,7 @@
     ],
     "run": {
       "exit_code": 0,
-      "stderr": "tests/test_variadic.nova:109:42 [error.parsing] Expected identifier for parameter, got Dot",
+      "stderr": "tests/test_variadic.nova:139:42 [error.parsing] Expected identifier for parameter, got Dot",
       "stdout": ""
     },
     "tokenize": [

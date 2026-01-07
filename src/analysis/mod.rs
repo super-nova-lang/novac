@@ -722,14 +722,22 @@ fn analyze_decl(ctx: &mut Context, decl: &DeclStmt) {
     match decl {
         DeclStmt::Decl {
             doc: _,
-            tags: _,
+            tags,
             generics: _,
             name,
             params,
             explicit_ret,
             body: (stmts, expr_opt),
         } => {
+            let is_foreign = tags.iter().any(is_foreign_tag);
             add_symbol(ctx, name.clone(), explicit_ret.clone(), (0, 0));
+
+            if is_foreign {
+                let declared = explicit_ret.clone().unwrap_or(Type::UnitTyp);
+                set_inferred_type(ctx, name, declared.clone());
+                ctx.function_returns.insert(name.clone(), declared);
+                return;
+            }
 
             enter_scope(ctx);
             for param in params {
@@ -890,6 +898,33 @@ fn analyze_decl(ctx: &mut Context, decl: &DeclStmt) {
                     info.used = true;
                 }
             }
+        },
+    }
+}
+
+fn is_foreign_tag(tag: &Tag) -> bool {
+    match tag {
+        Tag::TagName(name) => name == "foreign",
+        Tag::TagCall(call) => extract_call_ident(call)
+            .map(|n| n == "foreign")
+            .unwrap_or(false),
+    }
+}
+
+fn extract_call_ident(call: &CallExpr) -> Option<&str> {
+    match call {
+        CallExpr::DeclCall(expr, _) => match expr.as_ref() {
+            Expression::RelationalExpr(RelationalExpr::RelationalVal(add)) => match add.as_ref() {
+                AdditiveExpr::AdditiveVal(mul) => match mul.as_ref() {
+                    MultiplicativeExpr::MultiplicativeVal(unary) => match unary.as_ref() {
+                        UnaryExpr::UnaryVal(Atom::Ident(name)) => Some(name.as_str()),
+                        _ => None,
+                    },
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
         },
     }
 }

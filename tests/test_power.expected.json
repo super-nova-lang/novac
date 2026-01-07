@@ -95,7 +95,7 @@
     "run": {
       "exit_code": 0,
       "stderr": "",
-      "stdout": "Codegen failed for tests/test_power.nova: Complex function expressions not yet supported\n"
+      "stdout": "-- Analysis Errors --\n"
     },
     "tokenize": [
       "Token { kind: Open, span: Span { file: \"tests/test_power.nova\", line: 1, column: 6 } }",

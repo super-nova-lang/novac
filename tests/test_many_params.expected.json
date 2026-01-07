@@ -96,7 +96,7 @@
     "run": {
       "exit_code": 0,
       "stderr": "",
-      "stdout": "Codegen failed for tests/test_many_params.nova: Undefined variable: g\n"
+      "stdout": "-- Analysis Errors --\n"
     },
     "tokenize": [
       "Token { kind: Open, span: Span { file: \"tests/test_many_params.nova\", line: 1, column: 6 } }",

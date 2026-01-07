@@ -4,10 +4,17 @@ module stdio {
 	export putchar
 	export getchar
 
-	let printf  :: import <- "c", "printf"
-	let puts    :: import <- "c", "puts"
-	let putchar :: import <- "c", "putchar"
-	let getchar :: import <- "c", "getchar"
+	#[foreign("c", "printf")]
+	let printf  :: (fmt: string, args...) -> i32
+
+	#[foreign("c", "puts")]
+	let puts    :: (s: string) -> i32
+
+	#[foreign("c", "putchar")]
+	let putchar :: (c: i32) -> i32
+
+	#[foreign("c", "getchar")]
+	let getchar :: () -> i32
 }
 
 module stdlib {
@@ -17,11 +24,20 @@ module stdlib {
 	export free
 	export exit
 
-	let malloc  :: import <- "c", "malloc"
-	let calloc  :: import <- "c", "calloc"
-	let realloc :: import <- "c", "realloc"
-	let free    :: import <- "c", "free"
-	let exit    :: import <- "c", "exit"
+	#[foreign("c", "malloc")]
+	let malloc  :: (size: usize) -> usize
+
+	#[foreign("c", "calloc")]
+	let calloc  :: (count: usize, size: usize) -> usize
+
+	#[foreign("c", "realloc")]
+	let realloc :: (ptr: usize, size: usize) -> usize
+
+	#[foreign("c", "free")]
+	let free    :: (ptr: usize) -> ()
+
+	#[foreign("c", "exit")]
+	let exit    :: (code: i32) -> ()
 }
 
 module string {
@@ -32,10 +48,21 @@ module string {
 	export memcpy
 	export memset
 
-	let strlen  :: import <- "c", "strlen"
-	let strcmp  :: import <- "c", "strcmp"
-	let strcpy  :: import <- "c", "strcpy"
-	let strncpy :: import <- "c", "strncpy"
-	let memcpy  :: import <- "c", "memcpy"
-	let memset  :: import <- "c", "memset"
+	#[foreign("c", "strlen")]
+	let strlen  :: (s: string) -> usize
+
+	#[foreign("c", "strcmp")]
+	let strcmp  :: (a: string, b: string) -> i32
+
+	#[foreign("c", "strcpy")]
+	let strcpy  :: (dst: string, src: string) -> string
+
+	#[foreign("c", "strncpy")]
+	let strncpy :: (dst: string, src: string, n: usize) -> string
+
+	#[foreign("c", "memcpy")]
+	let memcpy  :: (dst: string, src: string, n: usize) -> string
+
+	#[foreign("c", "memset")]
+	let memset  :: (dst: string, val: i32, n: usize) -> string
 }

@@ -1,4 +1,7 @@
-use crate::parser::nodes::{DeclStmt, Expression, Node, Statement, Type, VariantBody};
+use crate::parser::nodes::{
+    AdditiveExpr, Atom, CallExpr, CallParam, DeclParam, DeclStmt, Expression, MultiplicativeExpr,
+    Node, RelationalExpr, Statement, Tag, Type, UnaryExpr, VariantBody,
+};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::path::Path;
@@ -16,9 +19,29 @@ struct DocEntry {
     source_file: String,
 }
 
-pub fn run(files: Vec<String>, open: bool) -> Result<()> {
+#[derive(Clone, Debug, Default)]
+struct ForeignTagInfo {
+    calling_convention: Option<String>,
+    symbol: Option<String>,
+}
+
+pub fn run(mut files: Vec<String>, open: bool) -> Result<()> {
     let doc_dir = Path::new("build/doc");
     std::fs::create_dir_all(doc_dir)?;
+
+    // Automatically include stdlib files
+    let stdlib_files = vec![
+        "stdlib/root.nova".to_string(),
+        "stdlib/std/c.nova".to_string(),
+        "stdlib/std/io.nova".to_string(),
+        "stdlib/std/math.nova".to_string(),
+    ];
+
+    for stdlib_file in &stdlib_files {
+        if !files.contains(stdlib_file) && Path::new(stdlib_file).exists() {
+            files.push(stdlib_file.clone());
+        }
+    }
 
     let mut all_entries: Vec<DocEntry> = Vec::new();
     let mut all_return_types = std::collections::HashMap::new();
@@ -189,6 +212,85 @@ fn extract_docs_flat(
     }
 }
 
+fn extract_foreign_tag(tags: &[Tag]) -> Option<ForeignTagInfo> {
+    for tag in tags {
+        match tag {
+            Tag::TagName(name) if name == "foreign" => {
+                return Some(ForeignTagInfo::default());
+            }
+            Tag::TagCall(call)
+                if extract_call_ident(call)
+                    .map(|n| n == "foreign")
+                    .unwrap_or(false) =>
+            {
+                let mut info = ForeignTagInfo::default();
+                let params = match call {
+                    CallExpr::DeclCall(_, params) => params,
+                };
+                info.calling_convention = params.get(0).and_then(call_param_to_string);
+                info.symbol = params.get(1).and_then(call_param_to_string);
+                return Some(info);
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
+fn extract_call_ident(call: &CallExpr) -> Option<&str> {
+    match call {
+        CallExpr::DeclCall(expr, _) => match expr.as_ref() {
+            Expression::RelationalExpr(RelationalExpr::RelationalVal(add)) => match add.as_ref() {
+                AdditiveExpr::AdditiveVal(mul) => match mul.as_ref() {
+                    MultiplicativeExpr::MultiplicativeVal(unary) => match unary.as_ref() {
+                        UnaryExpr::UnaryVal(Atom::Ident(name)) => Some(name.as_str()),
+                        _ => None,
+                    },
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        },
+    }
+}
+
+fn call_param_to_string(param: &CallParam) -> Option<String> {
+    match param {
+        CallParam::Named(_, expr) | CallParam::Positional(expr) => {
+            atom_from_expression(expr).and_then(atom_to_string)
+        }
+    }
+}
+
+fn atom_from_expression(expr: &Expression) -> Option<&Atom> {
+    match expr {
+        Expression::RelationalExpr(RelationalExpr::RelationalVal(add)) => match add.as_ref() {
+            AdditiveExpr::AdditiveVal(mul) => match mul.as_ref() {
+                MultiplicativeExpr::MultiplicativeVal(unary) => match unary.as_ref() {
+                    UnaryExpr::UnaryVal(atom) => Some(atom),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn atom_to_string(atom: &Atom) -> Option<String> {
+    match atom {
+        Atom::String(s) => Some(s.clone()),
+        Atom::Ident(s) => Some(s.clone()),
+        Atom::Char(c) => Some(c.to_string()),
+        Atom::Int(i) => Some(i.to_string()),
+        Atom::Bool(b) => Some(b.to_string()),
+        _ => None,
+    }
+}
+
 fn extract_with_block(expr: &Option<Box<Expression>>) -> Option<&crate::parser::nodes::WithBlock> {
     if let Some(e) = expr {
         match e.as_ref() {
@@ -239,12 +341,19 @@ fn extract_decl_docs_flat(
     match decl {
         DeclStmt::Decl {
             doc,
+            tags,
             name,
             generics,
+            params,
+            explicit_ret,
             body: (_, expr),
             ..
         } => {
-            let signature = format_decl_signature(name, generics, expr);
+            let signature = if let Some(foreign) = extract_foreign_tag(tags) {
+                format_foreign_signature(name, generics, params, explicit_ret, &foreign)
+            } else {
+                format_decl_signature(name, generics, expr)
+            };
             entries.push(DocEntry {
                 name: name.clone(),
                 doc: doc.clone(),
@@ -267,8 +376,20 @@ fn extract_decl_docs_flat(
                 source_file: file.to_string(),
             });
         }
-        DeclStmt::ImportDecl { .. } => {
-            // Skip imports in documentation
+        DeclStmt::ImportDecl {
+            doc,
+            name,
+            calling_conf,
+            link_name,
+        } => {
+            let signature = format!("import {} from '{}' via {}", name, link_name, calling_conf);
+            entries.push(DocEntry {
+                name: name.clone(),
+                doc: doc.clone(),
+                signature,
+                file_location: format!("{}:{}:1", file, line_num),
+                source_file: file.to_string(),
+            });
         }
         DeclStmt::ModuleDecl {
             doc, name, body, ..
@@ -305,6 +426,52 @@ fn format_decl_signature(
     } else {
         let type_params = generics.join(", ");
         format_expr_signature(&format!("{}[{}]", name, type_params), expr)
+    }
+}
+
+fn format_foreign_signature(
+    name: &str,
+    generics: &[String],
+    params: &[DeclParam],
+    explicit_ret: &Option<Type>,
+    foreign: &ForeignTagInfo,
+) -> String {
+    let decl_name = format_decl_name(name, generics);
+    let params_str = format_param_list(params);
+    let ret_str = explicit_ret
+        .as_ref()
+        .map(format_type)
+        .unwrap_or_else(|| "()".to_string());
+    let callconv = foreign.calling_convention.as_deref().unwrap_or("c");
+    let symbol = foreign.symbol.as_deref().unwrap_or(name);
+
+    format!(
+        "foreign {}({}) -> {} via {} as {}",
+        decl_name, params_str, ret_str, callconv, symbol
+    )
+}
+
+fn format_decl_name(name: &str, generics: &[String]) -> String {
+    if generics.is_empty() {
+        name.to_string()
+    } else {
+        format!("{}[{}]", name, generics.join(", "))
+    }
+}
+
+fn format_param_list(params: &[DeclParam]) -> String {
+    let parts: Vec<String> = params.iter().map(format_param).collect();
+    parts.join(", ")
+}
+
+fn format_param(param: &DeclParam) -> String {
+    match param {
+        DeclParam::Untyped(n) => n.clone(),
+        DeclParam::Typed(n, t) => format!("{}: {}", n, format_type(t)),
+        DeclParam::OptionalTyped(n, t, _) => format!("{}?: {}", n, format_type(t)),
+        DeclParam::OptionalUntyped(n, _) => format!("{}?", n),
+        DeclParam::Variadic(n, Some(t)) => format!("...{}: {}", n, format_type(t)),
+        DeclParam::Variadic(n, None) => format!("...{}", n),
     }
 }
 
@@ -709,7 +876,7 @@ fn generate_index_html(
         <select id="theme-select">
             <option value="light">Light</option>
             <option value="dark">Dark</option>
-            <option value="monokai">Monokai</option>
+            <option value="monokai">Monokai</option>1
             <option value="dracula">Dracula</option>
             <option value="solarized-light">Solarized Light</option>
             <option value="solarized-dark">Solarized Dark</option>

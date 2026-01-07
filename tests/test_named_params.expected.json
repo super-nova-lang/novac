@@ -97,7 +97,7 @@
     ],
     "run": {
       "exit_code": 0,
-      "stderr": "tests/test_named_params.nova:114:17 [error.parsing] Unexpected token Concat at primary parse",
+      "stderr": "tests/test_named_params.nova:144:17 [error.parsing] Unexpected token Concat at primary parse",
       "stdout": ""
     },
     "tokenize": [

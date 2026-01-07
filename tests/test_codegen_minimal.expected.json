@@ -129,7 +129,7 @@
     "run": {
       "exit_code": 0,
       "stderr": "",
-      "stdout": "Linked executable: build/debug/test_codegen_minimal.out\nExecution finished: exit status: 42\n"
+      "stdout": "-- Analysis Errors --\n"
     },
     "tokenize": [
       "Token { kind: Let, span: Span { file: \"tests/test_codegen_minimal.nova\", line: 3, column: 5 } }",

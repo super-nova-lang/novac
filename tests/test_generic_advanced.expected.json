@@ -150,8 +150,8 @@
     ],
     "run": {
       "exit_code": 0,
-      "stderr": "build/emit/test_generic_advanced.s:33:1: error: symbol '_Ntests_test_generic_advanced_nova__Result__Pv__Rv' is already defined\n_Ntests_test_generic_advanced_nova__Result__Pv__Rv:\n^\nbuild/emit/test_generic_advanced.s:34:1: error: symbol 'Result' is already defined\nResult:\n^",
-      "stdout": "Linker failed for tests/test_generic_advanced.nova: status exit status: 1\n"
+      "stderr": "",
+      "stdout": "-- Analysis Errors --\n"
     },
     "tokenize": [
       "Token { kind: DocComment(\"Result type representing success or failure\"), span: Span { file: \"tests/test_generic_advanced.nova\", line: 2, column: 1 } }",

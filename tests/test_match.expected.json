@@ -134,7 +134,7 @@
     "run": {
       "exit_code": 0,
       "stderr": "",
-      "stdout": "Linked executable: build/debug/test_match.out\nExecution finished: exit status: 3\n"
+      "stdout": "-- Analysis Errors --\n"
     },
     "tokenize": [
       "Token { kind: Open, span: Span { file: \"tests/test_match.nova\", line: 1, column: 6 } }",

@@ -1,5 +1,8 @@
 export println
 export print
 
-let println :: import <- "c", "puts"
-let print :: import <- "c", "printf"
+#[foreign("c", "puts")]
+let println :: (s: string) -> i32
+
+#[foreign("c", "printf")]
+let print :: (fmt: string, args...) -> i32
