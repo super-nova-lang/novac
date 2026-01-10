@@ -5,7 +5,7 @@ let Result[T, E] :: = enum {
 } with {
     let unwrap :: self = self.ok
     let unwrap_err :: self = self.err
-    let is_ok :: self = match self with
+    let is_ok :: self = match self
         | .ok(_) -> true
         | .err(_) -> false
     let is_err :: self = !self.is_ok()
