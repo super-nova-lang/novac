@@ -1,7 +1,7 @@
 use crate::parser::nodes::{
     AdditiveExpr, AssignmentExpr, Atom, CallExpr, CallParam, DeclBody, DeclParam, DeclStmt,
-    ElseStmt, Expression, IfStmt, MatchExpr, MultiplicativeExpr, Node, RelationalExpr,
-    ReturnStmt, Statement, Type, UnaryExpr,
+    ElseStmt, Expression, IfStmt, MatchExpr, MultiplicativeExpr, Node, RelationalExpr, ReturnStmt,
+    Statement, Type, UnaryExpr,
 };
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
@@ -295,8 +295,6 @@ impl<'ctx> Emitter<'ctx> {
         }
         Ok(())
     }
-
-
 
     fn emit_return(&mut self, ret_stmt: &ReturnStmt) -> Result<()> {
         match ret_stmt {

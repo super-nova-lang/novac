@@ -643,8 +643,6 @@ impl Parser {
         }
     }
 
-
-
     fn parse_body_as_t_list(&mut self) -> Vec<Node> {
         if matches!(self.peek().kind, TokenKind::OpenBrack) {
             self.advance();
@@ -702,18 +700,13 @@ impl Parser {
         let target = Box::new(self.parse_expression()?);
 
         // Accept several match syntaxes:
-        //  - match X with | ...    (old)
-        //  - match X | ...          (new)
-        //  - match X { | ... }      (new with braces)
-
-        if matches!(self.peek().kind, TokenKind::With) {
-            self.advance();
-        }
+        //  - match X ...          (new)
+        //  - match X { ... }      (new with braces)
 
         let mut arms = Vec::new();
 
         if matches!(self.peek().kind, TokenKind::OpenBrack) {
-            // match X { | ... }
+            // match X { ... }
             self.advance();
             while matches!(self.peek().kind, TokenKind::Bar) {
                 self.advance();
@@ -730,7 +723,7 @@ impl Parser {
             }
             self.expect(TokenKind::CloseBrack)?;
         } else {
-            // match X | ...  or match X with | ...
+            // match X ...
             while matches!(self.peek().kind, TokenKind::Bar) {
                 self.advance();
                 let param = self.parse_match_param();

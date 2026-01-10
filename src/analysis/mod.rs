@@ -943,8 +943,6 @@ fn analyze_if(ctx: &mut Context, if_stmt: &IfStmt) {
     analyze_else(ctx, &if_stmt.elif);
 }
 
-
-
 fn analyze_else(ctx: &mut Context, elif: &ElseStmt) {
     match elif {
         ElseStmt::ElseIf(cond, body, next) => {
