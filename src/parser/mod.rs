@@ -700,21 +700,52 @@ impl Parser {
     fn parse_match_expr(&mut self) -> ParseResult<Expression> {
         self.expect(TokenKind::Match)?;
         let target = Box::new(self.parse_expression()?);
-        self.expect(TokenKind::With)?;
-        let mut arms = Vec::new();
-        while matches!(self.peek().kind, TokenKind::Bar) {
+
+        // Accept several match syntaxes:
+        //  - match X with | ...    (old)
+        //  - match X | ...          (new)
+        //  - match X { | ... }      (new with braces)
+
+        if matches!(self.peek().kind, TokenKind::With) {
             self.advance();
-            let param = self.parse_match_param();
-            let if_opt = if matches!(self.peek().kind, TokenKind::If) {
-                self.advance();
-                Some(Box::new(self.parse_expression()?))
-            } else {
-                None
-            };
-            self.expect(TokenKind::SkinnyArrow)?;
-            let body = self.parse_match_arm_body()?;
-            arms.push((param, if_opt, body));
         }
+
+        let mut arms = Vec::new();
+
+        if matches!(self.peek().kind, TokenKind::OpenBrack) {
+            // match X { | ... }
+            self.advance();
+            while matches!(self.peek().kind, TokenKind::Bar) {
+                self.advance();
+                let param = self.parse_match_param();
+                let if_opt = if matches!(self.peek().kind, TokenKind::If) {
+                    self.advance();
+                    Some(Box::new(self.parse_expression()?))
+                } else {
+                    None
+                };
+                self.expect(TokenKind::SkinnyArrow)?;
+                let body = self.parse_match_arm_body()?;
+                arms.push((param, if_opt, body));
+            }
+            self.expect(TokenKind::CloseBrack)?;
+        } else {
+            // match X | ...  or match X with | ...
+            while matches!(self.peek().kind, TokenKind::Bar) {
+                self.advance();
+                let param = self.parse_match_param();
+                let if_opt = if matches!(self.peek().kind, TokenKind::If) {
+                    self.advance();
+                    Some(Box::new(self.parse_expression()?))
+                } else {
+                    None
+                };
+                self.expect(TokenKind::SkinnyArrow)?;
+                let body = self.parse_match_arm_body()?;
+                arms.push((param, if_opt, body));
+            }
+        }
+
         Ok(Expression::MatchExpr((target, arms)))
     }
 
