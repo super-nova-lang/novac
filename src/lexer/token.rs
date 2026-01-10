@@ -18,8 +18,6 @@ pub enum TokenKind {
     As,     // as
     Return, // return
     If,     // if
-    While,  // while
-    For,    // for
     In,     // in
     Else,   // else
     Struct, // struct

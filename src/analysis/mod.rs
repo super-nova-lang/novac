@@ -698,8 +698,6 @@ fn analyze_statement(ctx: &mut Context, stmt: &Statement) {
         Statement::Decl(decl) => analyze_decl(ctx, decl),
         Statement::Return(ret) => analyze_return(ctx, ret),
         Statement::If(if_stmt) => analyze_if(ctx, if_stmt),
-        Statement::While(while_stmt) => analyze_while(ctx, while_stmt),
-        Statement::For(for_stmt) => analyze_for(ctx, for_stmt),
         Statement::Expression(expr) => analyze_expression(ctx, expr),
     }
 }
@@ -945,50 +943,7 @@ fn analyze_if(ctx: &mut Context, if_stmt: &IfStmt) {
     analyze_else(ctx, &if_stmt.elif);
 }
 
-fn analyze_while(ctx: &mut Context, while_stmt: &WhileStmt) {
-    analyze_expression(ctx, &while_stmt.cond);
-    enter_scope(ctx);
-    for node in &while_stmt.body {
-        analyze_ast(ctx, node);
-    }
-    exit_scope(ctx);
-}
 
-fn analyze_for(ctx: &mut Context, for_stmt: &ForStmt) {
-    match for_stmt {
-        ForStmt::ForIter(f) => {
-            analyze_expression(ctx, &f.iterable);
-            enter_scope(ctx);
-            add_symbol(ctx, f.var.clone(), None, (0, 0));
-            for node in &f.body {
-                analyze_ast(ctx, node);
-            }
-            exit_scope(ctx);
-        }
-        ForStmt::ForC(f) => {
-            analyze_expression(ctx, &f.init);
-            enter_scope(ctx);
-            add_symbol(ctx, f.var.clone(), None, (0, 0));
-            analyze_expression(ctx, &f.cond);
-            analyze_expression(ctx, &f.update);
-            for node in &f.body {
-                analyze_ast(ctx, node);
-            }
-            exit_scope(ctx);
-        }
-        ForStmt::ForTuple(f) => {
-            analyze_expression(ctx, &f.iterable);
-            enter_scope(ctx);
-            for var in &f.vars {
-                add_symbol(ctx, var.clone(), None, (0, 0));
-            }
-            for node in &f.body {
-                analyze_ast(ctx, node);
-            }
-            exit_scope(ctx);
-        }
-    }
-}
 
 fn analyze_else(ctx: &mut Context, elif: &ElseStmt) {
     match elif {

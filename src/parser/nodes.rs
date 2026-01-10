@@ -16,8 +16,6 @@ pub enum Statement {
     Decl(DeclStmt),
     Return(ReturnStmt),
     If(IfStmt),
-    While(WhileStmt),
-    For(ForStmt),
     Expression(Box<Expression>),
 }
 
@@ -44,42 +42,6 @@ pub struct IfStmt {
     pub cond: Box<Expression>,
     pub body: Vec<Node>,
     pub elif: ElseStmt,
-}
-
-#[derive(Clone, Debug)]
-pub struct WhileStmt {
-    pub cond: Box<Expression>,
-    pub body: Vec<Node>,
-}
-
-#[derive(Clone, Debug)]
-pub enum ForStmt {
-    ForIter(ForIterStmt),
-    ForC(ForCStmt),
-    ForTuple(ForTupleStmt),
-}
-
-#[derive(Clone, Debug)]
-pub struct ForIterStmt {
-    pub var: Ident,
-    pub iterable: Box<Expression>,
-    pub body: Vec<Node>,
-}
-
-#[derive(Clone, Debug)]
-pub struct ForCStmt {
-    pub var: Ident,
-    pub init: Box<Expression>,
-    pub cond: Box<Expression>,
-    pub update: Box<Expression>,
-    pub body: Vec<Node>,
-}
-
-#[derive(Clone, Debug)]
-pub struct ForTupleStmt {
-    pub vars: Vec<Ident>,
-    pub iterable: Box<Expression>,
-    pub body: Vec<Node>,
 }
 
 #[derive(Clone, Debug)]

@@ -220,8 +220,6 @@ impl Parser {
             TokenKind::Let => self.parse_decl_stmt(Vec::new(), None).map(Statement::Decl),
             TokenKind::Return => self.parse_return_stmt(),
             TokenKind::If => self.parse_if_stmt(),
-            TokenKind::While => self.parse_while_stmt(),
-            TokenKind::For => self.parse_for_stmt(),
             TokenKind::Hash => Err(self.fail("Tags can only be applied to declarations")),
             _ => self.parse_expression_stmt(),
         }
@@ -645,73 +643,7 @@ impl Parser {
         }
     }
 
-    fn parse_while_stmt(&mut self) -> ParseResult<Statement> {
-        self.expect(TokenKind::While)?;
-        let cond = Box::new(self.parse_expression()?);
-        let body = self.parse_body_as_t_list();
-        Ok(Statement::While(WhileStmt { cond, body }))
-    }
 
-    fn parse_for_stmt(&mut self) -> ParseResult<Statement> {
-        self.expect(TokenKind::For)?;
-        match self.peek().kind {
-            TokenKind::Let => {
-                self.advance();
-                let var = match self.consume().kind {
-                    TokenKind::Ident(s) => s,
-                    _ => return Err(self.fail("Expected variable name in for loop initialization")),
-                };
-                self.expect(TokenKind::Walrus)?;
-                let init = Box::new(self.parse_expression()?);
-                self.expect(TokenKind::SemiColon)?;
-                let cond = Box::new(self.parse_expression()?);
-                self.expect(TokenKind::SemiColon)?;
-                let update = Box::new(self.parse_expression()?);
-                let body = self.parse_body_as_t_list();
-                Ok(Statement::For(ForStmt::ForC(ForCStmt {
-                    var,
-                    init,
-                    cond,
-                    update,
-                    body,
-                })))
-            }
-            TokenKind::OpenParen => {
-                self.advance();
-                let mut vars = Vec::new();
-                while !matches!(self.peek().kind, TokenKind::CloseParen) {
-                    match self.consume().kind {
-                        TokenKind::Ident(s) => vars.push(s),
-                        _ => return Err(self.fail("Expected variable name in tuple pattern")),
-                    }
-                }
-                self.expect(TokenKind::CloseParen)?;
-                self.expect(TokenKind::In)?;
-                let iterable = Box::new(self.parse_expression()?);
-                let body = self.parse_body_as_t_list();
-                Ok(Statement::For(ForStmt::ForTuple(ForTupleStmt {
-                    vars,
-                    iterable,
-                    body,
-                })))
-            }
-            TokenKind::Ident(_) => {
-                let var = match self.consume().kind {
-                    TokenKind::Ident(s) => s,
-                    _ => unreachable!(),
-                };
-                self.expect(TokenKind::In)?;
-                let iterable = Box::new(self.parse_expression()?);
-                let body = self.parse_body_as_t_list();
-                Ok(Statement::For(ForStmt::ForIter(ForIterStmt {
-                    var,
-                    iterable,
-                    body,
-                })))
-            }
-            _ => Err(self.fail("Expected 'let', '(', or variable name after 'for'")),
-        }
-    }
 
     fn parse_body_as_t_list(&mut self) -> Vec<Node> {
         if matches!(self.peek().kind, TokenKind::OpenBrack) {

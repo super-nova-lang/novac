@@ -118,8 +118,6 @@ impl<'ctx> Emitter<'ctx> {
             Statement::Decl(decl) => self.emit_decl(decl),
             Statement::Return(ret) => self.emit_return(ret),
             Statement::If(if_stmt) => self.emit_if(if_stmt),
-            Statement::While(while_stmt) => self.emit_while(while_stmt),
-            Statement::For(for_stmt) => self.emit_for(for_stmt),
             Statement::Expression(expr) => {
                 self.emit_expression(expr)?;
                 Ok(())
@@ -298,67 +296,7 @@ impl<'ctx> Emitter<'ctx> {
         Ok(())
     }
 
-    fn emit_while(&mut self, while_stmt: &WhileStmt) -> Result<()> {
-        let loop_start = self.fresh_label("while");
-        let loop_end = self.fresh_label("endwhile");
 
-        self.emit_text(format!("{}:", loop_start));
-
-        // Emit condition
-        self.emit_expression(&while_stmt.cond)?;
-        self.emit_text(String::from("    test    %rax, %rax"));
-        self.emit_text(format!("    jz      {}", loop_end));
-
-        // Emit body
-        for node in &while_stmt.body {
-            self.emit_node(node)?;
-        }
-
-        self.emit_text(format!("    jmp     {}", loop_start));
-        self.emit_text(format!("{}:", loop_end));
-
-        Ok(())
-    }
-
-    fn emit_for(&mut self, for_stmt: &ForStmt) -> Result<()> {
-        match for_stmt {
-            ForStmt::ForC(for_c) => {
-                let loop_start = self.fresh_label("for");
-                let loop_end = self.fresh_label("endfor");
-
-                // Allocate space for loop variable
-                self.stack_offset -= 8;
-                self.locals.insert(for_c.var.clone(), self.stack_offset);
-
-                // Init
-                self.emit_expression(&for_c.init)?;
-                self.emit_text(format!("    mov     %rax, {}(%rbp)", self.stack_offset));
-
-                self.emit_text(format!("{}:", loop_start));
-
-                // Condition
-                self.emit_expression(&for_c.cond)?;
-                self.emit_text(String::from("    test    %rax, %rax"));
-                self.emit_text(format!("    jz      {}", loop_end));
-
-                // Body
-                for node in &for_c.body {
-                    self.emit_node(node)?;
-                }
-
-                // Update
-                self.emit_expression(&for_c.update)?;
-                let offset = self.locals[&for_c.var];
-                self.emit_text(format!("    mov     %rax, {}(%rbp)", offset));
-
-                self.emit_text(format!("    jmp     {}", loop_start));
-                self.emit_text(format!("{}:", loop_end));
-
-                Ok(())
-            }
-            _ => Ok(()), // ForIter and ForTuple not yet implemented
-        }
-    }
 
     fn emit_return(&mut self, ret_stmt: &ReturnStmt) -> Result<()> {
         match ret_stmt {

@@ -530,8 +530,6 @@ impl Lexer {
             "as" => TokenKind::As,
             "return" => TokenKind::Return,
             "if" => TokenKind::If,
-            "while" => TokenKind::While,
-            "for" => TokenKind::For,
             "in" => TokenKind::In,
             "else" => TokenKind::Else,
             "struct" => TokenKind::Struct,
