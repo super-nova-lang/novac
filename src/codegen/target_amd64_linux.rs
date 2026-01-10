@@ -1,7 +1,7 @@
 use crate::parser::nodes::{
     AdditiveExpr, AssignmentExpr, Atom, CallExpr, CallParam, DeclBody, DeclParam, DeclStmt,
-    ElseStmt, Expression, ForStmt, IfStmt, MatchExpr, MultiplicativeExpr, Node, RelationalExpr,
-    ReturnStmt, Statement, Type, UnaryExpr, WhileStmt,
+    ElseStmt, Expression, IfStmt, MatchExpr, MultiplicativeExpr, Node, RelationalExpr,
+    ReturnStmt, Statement, Type, UnaryExpr,
 };
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
