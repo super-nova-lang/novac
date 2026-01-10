@@ -254,36 +254,35 @@ fn run_test(test_file: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Macro to generate test functions for all .nova files in the tests directory
-macro_rules! generate_tests {
-    ($($name:ident => $file:expr),* $(,)?) => {
-        $(
-            #[test]
-            fn $name() {
-                run_test($file).expect("Test failed");
+#[test]
+fn integration_tests() {
+    let mut failures: Vec<String> = Vec::new();
+    for entry in fs::read_dir("tests").expect("Failed to read tests directory") {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                failures.push(format!("Failed to read dir entry: {:?}", e));
+                continue;
             }
-        )*
-    };
-}
+        };
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("nova") {
+            continue;
+        }
+        let file_name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n,
+            None => {
+                failures.push(format!("Invalid file name: {:?}", path));
+                continue;
+            }
+        };
 
-// Auto-generate tests for all .nova test files
-generate_tests! {
-    test_c_style_for_loop => "test_c_style_for_loop.nova",
-    test_codegen_minimal => "test_codegen_minimal.nova",
-    test_codegen_simple => "test_codegen_simple.nova",
-    test_compound_assign => "test_compound_assign.nova",
-    test_enum_payload => "test_enum_payload.nova",
-    test_error => "test_error.nova",
-    test_for_loop => "test_for_loop.nova",
-    test_generic_advanced => "test_generic_advanced.nova",
-    test_generic_box => "test_generic_box.nova",
-    test_generics => "test_generics.nova",
-    test_many_params => "test_many_params.nova",
-    test_match => "test_match.nova",
-    test_named_params => "test_named_params.nova",
-    test_power => "test_power.nova",
-    test_reflection => "test_reflection.nova",
-    test_simple_for_loop => "test_simple_for_loop.nova",
-    test_variadic => "test_variadic.nova",
-    test_while => "test_while.nova",
+        if let Err(e) = run_test(file_name) {
+            failures.push(format!("{}: {:?}", file_name, e));
+        }
+    }
+
+    if !failures.is_empty() {
+        panic!("Integration tests failed:\n{}", failures.join("\n"));
+    }
 }
