@@ -1,0 +1,11 @@
+let add :: a, b = a + b
+let sub :: a: i32, b: i32
+    -> i32 = a - b
+
+let do_many_things
+:: x, y, z = {
+    let res := x + y * 3
+    let res := y - res ^ 2
+    let res := res - z ^ x
+    return res
+}
