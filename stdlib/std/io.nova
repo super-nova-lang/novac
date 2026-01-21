@@ -1,8 +1,0 @@
-export println
-export print
-
-#[foreign("c", "puts")]
-let println :: (s: string) -> i32
-
-#[foreign("c", "printf")]
-let print :: (fmt: string, args...) -> i32
