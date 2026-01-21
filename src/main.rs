@@ -27,8 +27,8 @@ fn main() -> miette::Result<()> {
                 .wrap_err_with(|| format!("reading '{}' failed", filepath.display()))?;
 
             let parser = parser::Parser::new(&file_contents);
-            let expr = parser.parse()?;
-            println!("Found: {:?}", expr);
+            let program = parser.parse()?;
+            println!("{}", program);
         }
     }
     Ok(())

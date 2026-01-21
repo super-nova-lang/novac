@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use std::borrow::Cow;
+use std::fmt;
 
 /// Top-level program structure
 #[derive(Debug, Clone, PartialEq)]
@@ -102,6 +103,7 @@ pub enum Type<'de> {
         params: Vec<Type<'de>>,
     },
     Tuple(Vec<Type<'de>>),
+    AnonymousStruct(Vec<StructField<'de>>),
 }
 
 /// Primitive type
@@ -348,4 +350,604 @@ pub enum Literal<'de> {
 pub struct BuiltinCall<'de> {
     pub name: Cow<'de, str>,
     pub args: Option<Vec<Expr<'de>>>,
+}
+
+// Display implementations
+
+impl<'de> fmt::Display for Program<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, item) in self.items.iter().enumerate() {
+            if i > 0 {
+                writeln!(f)?;
+            }
+            write!(f, "{}", item)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'de> fmt::Display for TopLevelItem<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TopLevelItem::Function(func) => write!(f, "{}", func),
+            TopLevelItem::VariableDecl(var) => write!(f, "{}", var),
+            TopLevelItem::TypeDecl(ty) => write!(f, "{}", ty),
+        }
+    }
+}
+
+impl<'de> fmt::Display for Function<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "let {}", self.name)?;
+        if !self.generics.is_empty() {
+            write!(f, "<")?;
+            for (i, generic) in self.generics.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", generic)?;
+            }
+            write!(f, ">")?;
+        }
+        write!(f, " :: ")?;
+        if self.params.is_empty() {
+            write!(f, "()")?;
+        } else {
+            for (i, param) in self.params.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", param)?;
+            }
+        }
+        if let Some(return_type) = &self.return_type {
+            write!(f, " -> {}", return_type)?;
+        }
+        write!(f, " = {}", self.body)
+    }
+}
+
+impl<'de> fmt::Display for FunctionParam<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        if let Some(ty) = &self.type_annotation {
+            write!(f, ": {}", ty)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'de> fmt::Display for VariableDecl<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "let {}", self.name)?;
+        if let Some(ty) = &self.type_annotation {
+            write!(f, ": {} = ", ty)?;
+        } else {
+            write!(f, " := ")?;
+        }
+        write!(f, "{}", self.value)
+    }
+}
+
+impl<'de> fmt::Display for TypeDecl<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for attr in &self.attrs {
+            write!(f, "{}", attr)?;
+        }
+        write!(f, "let {} := ", self.name)?;
+        match &self.decl {
+            TypeDeclKind::Struct(s) => write!(f, "{}", s),
+            TypeDeclKind::Enum(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl<'de> fmt::Display for Attr<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "#[{}", self.name)?;
+        if let Some(value) = &self.value {
+            write!(f, " := {}", value)?;
+        }
+        write!(f, "]")
+    }
+}
+
+impl<'de> fmt::Display for StructDecl<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "struct {{")?;
+        for (i, field) in self.fields.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", field)?;
+        }
+        write!(f, "}}")?;
+        if let Some(impl_block) = &self.impl_block {
+            write!(f, " with {{")?;
+            for func in impl_block {
+                write!(f, "\n    {}", func)?;
+            }
+            write!(f, "\n}}")?;
+        }
+        Ok(())
+    }
+}
+
+impl<'de> fmt::Display for StructField<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.name, self.type_)
+    }
+}
+
+impl<'de> fmt::Display for EnumDecl<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "enum {{")?;
+        for (i, variant) in self.variants.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", variant)?;
+        }
+        write!(f, "}}")
+    }
+}
+
+impl<'de> fmt::Display for EnumVariant<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for attr in &self.attrs {
+            write!(f, "{}", attr)?;
+        }
+        write!(f, "{}", self.name)?;
+        if let Some(ty) = &self.type_ {
+            write!(f, ": {}", ty)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'de> fmt::Display for Type<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Type::Primitive(p) => write!(f, "{}", p),
+            Type::Named(n) => write!(f, "{}", n),
+            Type::Generic { base, args } => {
+                write!(f, "{}<", base)?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", arg)?;
+                }
+                write!(f, ">")
+            }
+            Type::Function { params } => {
+                write!(f, "|")?;
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", param)?;
+                }
+                write!(f, "|")
+            }
+            Type::Tuple(types) => {
+                write!(f, "(")?;
+                for (i, ty) in types.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", ty)?;
+                }
+                write!(f, ")")
+            }
+            Type::AnonymousStruct(fields) => {
+                write!(f, "struct {{")?;
+                for (i, field) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", field)?;
+                }
+                write!(f, "}}")
+            }
+        }
+    }
+}
+
+impl fmt::Display for PrimitiveType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PrimitiveType::I8 => write!(f, "i8"),
+            PrimitiveType::I16 => write!(f, "i16"),
+            PrimitiveType::I32 => write!(f, "i32"),
+            PrimitiveType::I64 => write!(f, "i64"),
+            PrimitiveType::Isize => write!(f, "isize"),
+            PrimitiveType::U8 => write!(f, "u8"),
+            PrimitiveType::U16 => write!(f, "u16"),
+            PrimitiveType::U32 => write!(f, "u32"),
+            PrimitiveType::U64 => write!(f, "u64"),
+            PrimitiveType::Usize => write!(f, "usize"),
+            PrimitiveType::Str => write!(f, "str"),
+            PrimitiveType::Char => write!(f, "char"),
+            PrimitiveType::Nil => write!(f, "nil"),
+            PrimitiveType::List => write!(f, "list"),
+        }
+    }
+}
+
+impl<'de> fmt::Display for ExprList<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExprList::Single(expr) => write!(f, "{}", expr),
+            ExprList::Block(stmts) => {
+                write!(f, "{{")?;
+                for stmt in stmts {
+                    write!(f, "\n    {}", stmt)?;
+                }
+                write!(f, "\n}}")
+            }
+        }
+    }
+}
+
+impl<'de> fmt::Display for Stmt<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Stmt::VariableDecl(var) => write!(f, "{}", var),
+            Stmt::Expr(expr) => write!(f, "{}", expr),
+            Stmt::Return(Some(expr)) => write!(f, "return {}", expr),
+            Stmt::Return(None) => write!(f, "return"),
+        }
+    }
+}
+
+impl<'de> fmt::Display for Expr<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Expr::Binary { left, op, right } => {
+                write!(f, "{} {} {}", left, op, right)
+            }
+            Expr::Unary { op, expr } => {
+                write!(f, "{}{}", op, expr)
+            }
+            Expr::Literal(lit) => write!(f, "{}", lit),
+            Expr::Ident(name) => write!(f, "{}", name),
+            Expr::Call { callee, args } => {
+                write!(f, "{}(", callee)?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", arg)?;
+                }
+                write!(f, ")")
+            }
+            Expr::MethodCall {
+                receiver,
+                method,
+                args,
+            } => {
+                write!(f, "{}:{}(", receiver, method)?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", arg)?;
+                }
+                write!(f, ")")
+            }
+            Expr::Member { object, field } => {
+                write!(f, "{}.{}", object, field)
+            }
+            Expr::StructLit { type_, fields } => {
+                if let Some(ty) = type_ {
+                    write!(f, "{}", ty)?;
+                } else {
+                    write!(f, ".")?;
+                }
+                write!(f, "{{")?;
+                for (i, field) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", field)?;
+                }
+                write!(f, "}}")
+            }
+            Expr::EnumVariant { name, value } => {
+                write!(f, ".{}", name)?;
+                if let Some(val) = value {
+                    match val {
+                        EnumVariantValue::Single(expr) => write!(f, "({})", expr),
+                        EnumVariantValue::Tuple(exprs) => {
+                            write!(f, "(")?;
+                            for (i, expr) in exprs.iter().enumerate() {
+                                if i > 0 {
+                                    write!(f, ", ")?;
+                                }
+                                write!(f, "{}", expr)?;
+                            }
+                            write!(f, ")")
+                        }
+                    }
+                } else {
+                    Ok(())
+                }
+            }
+            Expr::AnonFn { params, body } => {
+                write!(f, "|")?;
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", param)?;
+                }
+                write!(f, "| {}", body)
+            }
+            Expr::Match { expr, arms } => {
+                write!(f, "match {} {{", expr)?;
+                for arm in arms {
+                    write!(f, "\n    {}", arm)?;
+                }
+                write!(f, "\n}}")
+            }
+            Expr::If {
+                condition,
+                then_block,
+                elif_blocks,
+                else_block,
+            } => {
+                write!(f, "if {} {{", condition)?;
+                for stmt in then_block {
+                    write!(f, "\n    {}", stmt)?;
+                }
+                write!(f, "\n}}")?;
+                for elif_block in elif_blocks {
+                    write!(f, " elif {} {{", elif_block.condition)?;
+                    for stmt in &elif_block.body {
+                        write!(f, "\n    {}", stmt)?;
+                    }
+                    write!(f, "\n}}")?;
+                }
+                if let Some(else_block) = else_block {
+                    write!(f, " else {{")?;
+                    for stmt in else_block {
+                        write!(f, "\n    {}", stmt)?;
+                    }
+                    write!(f, "\n}}")?;
+                }
+                Ok(())
+            }
+            Expr::List(exprs) => {
+                write!(f, "[")?;
+                for (i, expr) in exprs.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", expr)?;
+                }
+                write!(f, "]")
+            }
+            Expr::Tuple(exprs) => {
+                write!(f, "(")?;
+                for (i, expr) in exprs.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", expr)?;
+                }
+                write!(f, ")")
+            }
+            Expr::Paren(expr) => write!(f, "({})", expr),
+        }
+    }
+}
+
+impl fmt::Display for BinOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BinOp::Add => write!(f, "+"),
+            BinOp::Sub => write!(f, "-"),
+            BinOp::Mul => write!(f, "*"),
+            BinOp::Div => write!(f, "/"),
+            BinOp::Rem => write!(f, "%"),
+            BinOp::Pow => write!(f, "^"),
+            BinOp::Eq => write!(f, "=="),
+            BinOp::Ne => write!(f, "!="),
+            BinOp::Lt => write!(f, "<"),
+            BinOp::Gt => write!(f, ">"),
+            BinOp::Le => write!(f, "<="),
+            BinOp::Ge => write!(f, ">="),
+            BinOp::Concat => write!(f, "<>"),
+            BinOp::And => write!(f, "and"),
+            BinOp::Or => write!(f, "or"),
+        }
+    }
+}
+
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UnaryOp::Neg => write!(f, "-"),
+            UnaryOp::Not => write!(f, "!"),
+        }
+    }
+}
+
+impl<'de> fmt::Display for MemberField<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MemberField::Name(name) => write!(f, "{}", name),
+            MemberField::Index(idx) => write!(f, "{}", idx),
+        }
+    }
+}
+
+impl<'de> fmt::Display for StructFieldInit<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, ".{} = {}", self.name, self.value)
+    }
+}
+
+impl<'de> fmt::Display for MatchArm<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "|")?;
+        for (i, pattern) in self.patterns.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", pattern)?;
+        }
+        if let Some(guard) = &self.guard {
+            write!(f, " if {}", guard)?;
+        }
+        write!(f, " -> {}", self.body)
+    }
+}
+
+impl<'de> fmt::Display for Pattern<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Pattern::Literal(lit) => write!(f, "{}", lit),
+            Pattern::Ident(name) => write!(f, "{}", name),
+            Pattern::Wildcard => write!(f, "_"),
+            Pattern::List(pat) => write!(f, "{}", pat),
+            Pattern::Str(pat) => write!(f, "{}", pat),
+            Pattern::Struct(pat) => write!(f, "{}", pat),
+            Pattern::Enum(pat) => write!(f, "{}", pat),
+            Pattern::Tuple(pats) => {
+                write!(f, "(")?;
+                for (i, pat) in pats.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", pat)?;
+                }
+                write!(f, ")")
+            }
+        }
+    }
+}
+
+impl<'de> fmt::Display for ListPattern<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ListPattern::Empty => write!(f, "[]"),
+            ListPattern::Single(pat) => write!(f, "[{}]", pat),
+            ListPattern::HeadRest { head } => write!(f, "[{}, ..]", head),
+            ListPattern::RestTail { tail } => write!(f, "[.., {}]", tail),
+            ListPattern::HeadRestTail { head, tail } => {
+                write!(f, "[{}, .., {}]", head, tail)
+            }
+            ListPattern::Exact(pats) => {
+                write!(f, "[")?;
+                for (i, pat) in pats.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", pat)?;
+                }
+                write!(f, "]")
+            }
+        }
+    }
+}
+
+impl<'de> fmt::Display for StrPattern<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StrPattern::Ident(name) => write!(f, "{}", name),
+            StrPattern::Segments {
+                head,
+                delimiter,
+                tail,
+            } => {
+                write!(f, "{} :: '{}' :: {}", head, delimiter, tail)
+            }
+        }
+    }
+}
+
+impl<'de> fmt::Display for StructPattern<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(ty) = &self.type_ {
+            write!(f, "{}", ty)?;
+        } else {
+            write!(f, ".")?;
+        }
+        write!(f, "{{")?;
+        for (i, field) in self.fields.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", field)?;
+        }
+        write!(f, "}}")
+    }
+}
+
+impl<'de> fmt::Display for StructFieldPat<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StructFieldPat::Named { name, pattern } => {
+                write!(f, ".{} = {}", name, pattern)
+            }
+            StructFieldPat::Shorthand(name) => write!(f, "{}", name),
+        }
+    }
+}
+
+impl<'de> fmt::Display for EnumPattern<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, ".{}", self.name)?;
+        if let Some(value) = &self.value {
+            match value {
+                EnumPatternValue::Single(pat) => write!(f, "({})", pat),
+                EnumPatternValue::Tuple(pats) => {
+                    write!(f, "(")?;
+                    for (i, pat) in pats.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", pat)?;
+                    }
+                    write!(f, ")")
+                }
+            }
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl<'de> fmt::Display for Literal<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Literal::Number(n) => write!(f, "{}", n),
+            Literal::String(s) => write!(f, "\"{}\"", s),
+            Literal::Char(c) => write!(f, "'{}'", c),
+            Literal::Boolean(true) => write!(f, "true"),
+            Literal::Boolean(false) => write!(f, "false"),
+            Literal::Nil => write!(f, "nil"),
+            Literal::BuiltinCall(builtin) => write!(f, "{}", builtin),
+        }
+    }
+}
+
+impl<'de> fmt::Display for BuiltinCall<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "@{}", self.name)?;
+        if let Some(args) = &self.args {
+            write!(f, "(")?;
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", arg)?;
+            }
+            write!(f, ")")
+        } else {
+            Ok(())
+        }
+    }
 }

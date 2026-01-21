@@ -19,8 +19,16 @@ impl<'de> Parser<'de> {
 
     pub fn parse(mut self) -> Result<Program<'de>, Error> {
         let mut items = Vec::new();
+        // Keep parsing while we have tokens and can parse a top-level item
+        // Top-level items start with attributes (optional) or 'let'
         while self.peek_kind().is_some() {
-            items.push(self.parse_top_level_item()?);
+            // Check if we can parse a top-level item (starts with attributes or 'let')
+            if self.check(TokenKind::Pound) || self.check(TokenKind::Let) {
+                items.push(self.parse_top_level_item()?);
+            } else {
+                // No more top-level items to parse
+                break;
+            }
         }
         Ok(Program { items })
     }
@@ -87,6 +95,9 @@ impl<'de> Parser<'de> {
     // Top-level parsing
 
     fn parse_top_level_item(&mut self) -> Result<TopLevelItem<'de>, Error> {
+        // Parse attributes (optional)
+        let attrs = self.parse_attrs()?;
+        
         if !self.check(TokenKind::Let) {
             return Err(self.error_eof("let"));
         }
@@ -107,9 +118,13 @@ impl<'de> Parser<'de> {
                 self.next_token(); // consume =
                 // This is `let Name := ...` - type declaration
                 if self.check(TokenKind::Struct) {
-                    return Ok(TopLevelItem::TypeDecl(self.parse_type_decl(name)?));
+                    let mut type_decl = self.parse_type_decl(name)?;
+                    type_decl.attrs = attrs;
+                    return Ok(TopLevelItem::TypeDecl(type_decl));
                 } else if self.check(TokenKind::Enum) {
-                    return Ok(TopLevelItem::TypeDecl(self.parse_type_decl(name)?));
+                    let mut type_decl = self.parse_type_decl(name)?;
+                    type_decl.attrs = attrs;
+                    return Ok(TopLevelItem::TypeDecl(type_decl));
                 }
             }
         }
@@ -154,8 +169,29 @@ impl<'de> Parser<'de> {
             Vec::new()
         };
 
-        // Parse parameters
-        let params = self.parse_function_params()?;
+        // Check for empty parameter list: ()
+        let params = if self.check(TokenKind::LeftParen) {
+            self.next_token(); // consume (
+            if self.consume(TokenKind::RightParen) {
+                // Empty parameter list: ()
+                Vec::new()
+            } else {
+                // Not empty, restore by parsing as normal parameters
+                // Actually, we've already consumed the (, so we need to handle this differently
+                // Let's check if the next token is an identifier or if it's something else
+                // For now, let's just parse it as a tuple type and convert
+                // Actually, that's wrong. Let me think...
+                // If we see ( after ::, it could be:
+                // 1. Empty params: () 
+                // 2. A tuple type as a parameter? No, that doesn't make sense
+                // 3. Actually, parameters are just identifiers, not types
+                // So if we see ( and it's not immediately ), we have an error
+                return Err(self.error_eof("empty parameter list () or parameter name"));
+            }
+        } else {
+            // Parse parameters normally
+            self.parse_function_params()?
+        };
 
         // Parse return type (optional)
         let return_type = if self.consume(TokenKind::RArrow) {
@@ -204,6 +240,30 @@ impl<'de> Parser<'de> {
             return Ok(params);
         }
 
+        // Check for empty tuple parameter list: ()
+        if self.check(TokenKind::LeftParen) {
+            let start_offset = self.peek_token().map(|t| t.offset).unwrap_or(0);
+            self.next_token(); // consume (
+            if self.consume(TokenKind::RightParen) {
+                // Empty parameter list: ()
+                return Ok(params);
+            }
+            // Not an empty tuple, restore and continue
+            // We can't easily restore, so we'll handle this differently
+            // Actually, we've already consumed the (, so we need to parse it as a parameter
+            // But that doesn't make sense. Let me think...
+            // Actually, () in function params means no parameters, which we already handled above
+            // So if we see ( and it's not immediately followed by ), we have an error
+            return Err(self.error_at_token(
+                &Token {
+                    origin: "(",
+                    offset: start_offset,
+                    kind: TokenKind::LeftParen,
+                },
+                "Unexpected ( in parameter list"
+            ));
+        }
+
         // Parse first parameter (required if we get here)
         loop {
             let name_token = self.expect_token(TokenKind::Ident, "identifier")?;
@@ -239,7 +299,7 @@ impl<'de> Parser<'de> {
     fn parse_type_decl(&mut self, name: Cow<'de, str>) -> Result<TypeDecl<'de>, Error> {
         // Attributes are parsed before we get here (in parse_top_level_item)
         // We've already consumed `let Name :=`, now we need to parse struct or enum
-        let attrs = Vec::new(); // TODO: parse attributes before let
+        let attrs = Vec::new(); // Attributes are set by the caller
         
         let decl = if self.consume(TokenKind::Struct) {
             TypeDeclKind::Struct(self.parse_struct_decl()?)
@@ -353,6 +413,11 @@ impl<'de> Parser<'de> {
             return Ok(self.parse_function_type()?);
         }
 
+        // Check for inline struct type: struct { ... }
+        if self.check(TokenKind::Struct) {
+            return self.parse_inline_struct_type();
+        }
+
         // Check for tuple type (Type1, Type2, ...)
         if self.check(TokenKind::LeftParen) {
             self.next_token(); // consume (
@@ -403,6 +468,28 @@ impl<'de> Parser<'de> {
         } else {
             Ok(base)
         }
+    }
+
+    fn parse_inline_struct_type(&mut self) -> Result<Type<'de>, Error> {
+        // Parse inline struct type: struct { field: Type, ... }
+        self.expect_token(TokenKind::Struct, "struct")?;
+        self.expect_token(TokenKind::LeftBrace, "{")?;
+        let mut fields = Vec::new();
+        
+        while !self.check(TokenKind::RightBrace) {
+            let name_token = self.expect_token(TokenKind::Ident, "identifier")?;
+            let name = Cow::Borrowed(name_token.origin);
+            self.expect_token(TokenKind::Colon, ":")?;
+            let type_ = self.parse_type()?;
+            fields.push(StructField { name, type_ });
+            
+            if !self.consume(TokenKind::Comma) {
+                break;
+            }
+        }
+        
+        self.expect_token(TokenKind::RightBrace, "}")?;
+        Ok(Type::AnonymousStruct(fields))
     }
 
     fn parse_primitive_type(&mut self) -> Result<PrimitiveType, Error> {
