@@ -1,0 +1,32 @@
+/* Match on literal */
+match my_int {
+| 1 -> @println("one"),
+| 2, 3 -> @println("zwei oder drei"),
+| x if x == 4 -> @println("cuatro"),
+| x -> @println("uhhh, I don't know this one..."),
+}
+
+/* Match on lists */
+match my_list {
+| [head, ..] -> do_head(head),
+| [_, ..tail] -> do_tail(tail),
+| [.., last] -> do_last(last),
+| [] -> do_empty(),
+| _ -> @unreachable
+}
+
+/* Match on strings */
+
+/* `str` is a special type in Supernova
+ * In this example, `head` will become
+ *  all characters BEFORE delimeter,
+ *  and `tail` will be all characters AFTER
+ *  the delimeter
+ */
+let lex :: s, ls -> list<str> =
+    match s {
+    | word :: ' ' :: tail -> lex(tail, ls.append(word)),
+    | word -> ls.append(word)
+    | _ -> @unreachable
+    }
+
