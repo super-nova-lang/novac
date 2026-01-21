@@ -1,0 +1,40 @@
+// Enum
+#[display]
+let Job
+:= enum {
+    #[display := self.lang <> " dev"]
+    programmer: struct { lang: string }
+    #[display := "telemarketer who makes $" <> @stringify(self.0)]
+    telemarketer: (i32) // salary
+    #[display := self]
+    other: str,
+    // the auto display trait would just be 'unemployed'
+    unemployed,
+}
+
+// Structs
+let Person
+:= struct {
+    name: str,
+    age: u8,
+    job: Job,
+} with {
+    let new
+    :: name, age, job
+    -> Self = .{
+        .name = name,
+        .age  = age,
+        .job  = job,
+    }
+
+    let intro
+    :: self = {
+        // `@println` and `@display` are compiler builtins
+        @println("Hello! My name is" <> self.name <> ".")
+        @println("I am {} years old.", self.age)
+        @println("And my current job is" <> @display(self.job))
+    }
+}
+
+let my_person := Person:new("Ashton", 19, .programmer(.{ .lang = "Supernova" }))
+my_person.intro()
