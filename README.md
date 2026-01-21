@@ -34,9 +34,9 @@ let apply :: f: |i32, i32|, a, b
 let Job
 := enum {
     #[display := self.lang <> " dev"]
-    programmer: struct { lang: string }
+    programmer: struct { lang: string },
     #[display := "telemarketer who makes $" <> @stringify(self.0)]
-    telemarketer: (i32) // salary
+    telemarketer: (i32), // salary
     #[display := self]
     other: str,
     // the auto display trait would just be 'unemployed'
