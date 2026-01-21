@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_assignments)]
 use std::borrow::Cow;
 
 use miette::{Diagnostic, Error, LabeledSpan, SourceSpan};
@@ -70,8 +71,13 @@ pub enum TokenKind {
     Return, // return
     Struct, // struct
     With,   // with
+    True,   // true
+    False,  // false
+    Nil,    // nil
     // Tokens
     At,          // @
+    Bang,        // !
+    BangEqual,   // !=
     Bar,         // |
     Carrot,      // ^
     Colon,       // :
@@ -89,7 +95,6 @@ pub enum TokenKind {
     LessEqual,   // <=
     LessThan,    // <
     Minus,       // -
-    Not,         // !
     Perc,        // %
     Pipe,        // |>
     Plus,        // +
@@ -125,45 +130,45 @@ impl<'de> Lexer<'de> {
         }
     }
 }
-//
-// impl<'de> Lexer<'de> {
-//     pub fn expect(
-//         &mut self,
-//         expected: TokenKind,
-//         unexpected: &str,
-//     ) -> Result<Token<'de>, miette::Error> {
-//         self.expect_where(|next| next.kind == expected, unexpected)
-//     }
-//
-//     pub fn expect_where(
-//         &mut self,
-//         mut check: impl FnMut(&Token<'de>) -> bool,
-//         unexpected: &str,
-//     ) -> Result<Token<'de>, miette::Error> {
-//         match self.next() {
-//             Some(Ok(token)) if check(&token) => Ok(token),
-//             Some(Ok(token)) => Err(miette::miette! {
-//                 labels = vec![
-//                     LabeledSpan::at(token.offset..token.offset + token.origin.len(), "here"),
-//                 ],
-//                 help = format!("Expected {token:?}"),
-//                 "{unexpected}",
-//             }
-//             .with_source_code(self.whole.to_string())),
-//             Some(Err(e)) => Err(e),
-//             None => Err(Eof.into()),
-//         }
-//     }
-//
-//     pub fn peek(&mut self) -> Option<&Result<Token<'de>, miette::Error>> {
-//         if self.peeked.is_some() {
-//             return self.peeked.as_ref();
-//         }
-//
-//         self.peeked = self.next();
-//         self.peeked.as_ref()
-//     }
-// }
+
+impl<'de> Lexer<'de> {
+    pub fn expect(
+        &mut self,
+        expected: TokenKind,
+        unexpected: &str,
+    ) -> Result<Token<'de>, miette::Error> {
+        self.expect_where(|next| next.kind == expected, unexpected)
+    }
+
+    pub fn expect_where(
+        &mut self,
+        mut check: impl FnMut(&Token<'de>) -> bool,
+        unexpected: &str,
+    ) -> Result<Token<'de>, miette::Error> {
+        match self.next() {
+            Some(Ok(token)) if check(&token) => Ok(token),
+            Some(Ok(token)) => Err(miette::miette! {
+                labels = vec![
+                    LabeledSpan::at(token.offset..token.offset + token.origin.len(), "here"),
+                ],
+                help = format!("Expected {token:?}"),
+                "{unexpected}",
+            }
+            .with_source_code(self.whole.to_string())),
+            Some(Err(e)) => Err(e),
+            None => Err(Eof.into()),
+        }
+    }
+
+    pub fn peek(&mut self) -> Option<&Result<Token<'de>, miette::Error>> {
+        if self.peeked.is_some() {
+            return self.peeked.as_ref();
+        }
+
+        self.peeked = self.next();
+        self.peeked.as_ref()
+    }
+}
 
 impl<'de> Iterator for Lexer<'de> {
     type Item = Result<Token<'de>, Error>;
@@ -201,9 +206,10 @@ impl<'de> Iterator for Lexer<'de> {
             };
 
             let started = match c {
-                ':' => Started::IfCharElse(';', TokenKind::DoubleColon, TokenKind::Colon),
+                ':' => Started::IfCharElse(':', TokenKind::DoubleColon, TokenKind::Colon),
                 '=' => Started::IfCharElse('=', TokenKind::DoubleEqual, TokenKind::Equal),
                 '>' => Started::IfCharElse('=', TokenKind::GrtrEqual, TokenKind::GrtrThan),
+                '!' => Started::IfCharElse('!', TokenKind::BangEqual, TokenKind::Bang),
                 '|' => Started::IfCharElse('>', TokenKind::Pipe, TokenKind::Bar),
                 '-' => Started::IfCharElse('>', TokenKind::RArrow, TokenKind::Minus),
                 '<' => Started::Less,
@@ -217,7 +223,6 @@ impl<'de> Iterator for Lexer<'de> {
                 '{' => return just(TokenKind::LeftBrace),
                 '(' => return just(TokenKind::LeftParen),
                 '[' => return just(TokenKind::LeftSquare),
-                '!' => return just(TokenKind::Not),
                 '%' => return just(TokenKind::Perc),
                 '+' => return just(TokenKind::Plus),
                 '}' => return just(TokenKind::RightBrace),
@@ -301,6 +306,9 @@ impl<'de> Iterator for Lexer<'de> {
                         "return" => TokenKind::Return,
                         "struct" => TokenKind::Struct,
                         "with" => TokenKind::With,
+                        "true" => TokenKind::True,
+                        "false" => TokenKind::False,
+                        "nil" => TokenKind::Nil,
                         _ => TokenKind::Ident,
                     };
 

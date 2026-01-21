@@ -1,12 +1,12 @@
 use std::fs::{self};
 use std::path::PathBuf;
 
-use lexer::Lexer;
-
 use clap::{Parser, Subcommand};
 use miette::{IntoDiagnostic, WrapErr};
 
+mod ast;
 mod lexer;
+mod parser;
 
 fn main() -> miette::Result<()> {
     let args = Args::parse();
@@ -16,10 +16,19 @@ fn main() -> miette::Result<()> {
                 .into_diagnostic()
                 .wrap_err_with(|| format!("reading '{}' failed", filepath.display()))?;
 
-            for token in Lexer::new(&file_contents) {
+            for token in lexer::Lexer::new(&file_contents) {
                 let token = token?;
                 println!("Found: {:?}", token);
             }
+        }
+        Command::Parse { filepath } => {
+            let file_contents = fs::read_to_string(&filepath)
+                .into_diagnostic()
+                .wrap_err_with(|| format!("reading '{}' failed", filepath.display()))?;
+
+            let parser = parser::Parser::new(&file_contents);
+            let expr = parser.parse()?;
+            println!("Found: {:?}", expr);
         }
     }
     Ok(())
@@ -34,4 +43,5 @@ struct Args {
 #[derive(Subcommand)]
 enum Command {
     Tokenize { filepath: PathBuf },
+    Parse { filepath: PathBuf },
 }

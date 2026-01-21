@@ -95,6 +95,11 @@ impl<'de> Parser<'de> {
         let name_token = self.expect_token(TokenKind::Ident, "identifier")?;
         let name = Cow::Borrowed(name_token.origin);
 
+        // Check if it's a function (has ::) - check this first before consuming :
+        if self.check(TokenKind::DoubleColon) {
+            return Ok(TopLevelItem::Function(self.parse_function(name)?));
+        }
+
         // Check if it's a type declaration (struct or enum)
         if self.check(TokenKind::Colon) {
             self.next_token(); // consume :
@@ -107,11 +112,6 @@ impl<'de> Parser<'de> {
                     return Ok(TopLevelItem::TypeDecl(self.parse_type_decl(name)?));
                 }
             }
-        }
-
-        // Check if it's a function (has ::)
-        if self.check(TokenKind::DoubleColon) {
-            return Ok(TopLevelItem::Function(self.parse_function(name)?));
         }
 
         // Otherwise it's a variable declaration
@@ -198,6 +198,13 @@ impl<'de> Parser<'de> {
     fn parse_function_params(&mut self) -> Result<Vec<FunctionParam<'de>>, Error> {
         let mut params = Vec::new();
 
+        // Parse parameters until we hit = or ->
+        // Check if we have any parameters at all
+        if self.check(TokenKind::Equal) || self.check(TokenKind::RArrow) {
+            return Ok(params);
+        }
+
+        // Parse first parameter (required if we get here)
         loop {
             let name_token = self.expect_token(TokenKind::Ident, "identifier")?;
             let name = Cow::Borrowed(name_token.origin);
@@ -213,7 +220,13 @@ impl<'de> Parser<'de> {
                 type_annotation,
             });
 
-            if !self.consume(TokenKind::Comma) {
+            // Check if there's a comma - if so, there's another parameter
+            // Otherwise, we're done
+            if self.check(TokenKind::Comma) {
+                self.next_token(); // consume comma
+                // Continue to parse next parameter
+            } else {
+                // No comma means end of parameter list
                 break;
             }
         }
