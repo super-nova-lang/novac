@@ -445,7 +445,7 @@ impl<'de> Parser<'de> {
     fn parse_type(&mut self) -> Result<Type<'de>, Error> {
         trace!("Entering"); // Check for function type first (|Type1, Type2|)
         if self.check(TokenKind::Bar) {
-            return Ok(self.parse_function_type()?);
+            return self.parse_function_type();
         }
 
         // Check for inline struct type: struct { ... }

@@ -251,7 +251,7 @@ impl<'de> Iterator for Lexer<'de> {
                 Started::Slash => {
                     if self.rest.starts_with('/') {
                         // this is a comment!
-                        let line_end = self.rest.find('\n').unwrap_or_else(|| self.rest.len());
+                        let line_end = self.rest.find('\n').unwrap_or(self.rest.len());
                         self.byte += line_end;
                         self.rest = &self.rest[line_end..];
                         continue;
@@ -291,7 +291,7 @@ impl<'de> Iterator for Lexer<'de> {
                 Started::Ident => {
                     let first_non_ident = c_onwards
                         .find(|c| !matches!(c, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_'))
-                        .unwrap_or_else(|| c_onwards.len());
+                        .unwrap_or(c_onwards.len());
 
                     let literal = &c_onwards[..first_non_ident];
                     let extra_bytes = literal.len() - c.len_utf8();
@@ -324,7 +324,7 @@ impl<'de> Iterator for Lexer<'de> {
                 Started::Number => {
                     let first_non_digit = c_onwards
                         .find(|c| !matches!(c, '.' | '0'..='9'))
-                        .unwrap_or_else(|| c_onwards.len());
+                        .unwrap_or(c_onwards.len());
 
                     let mut literal = &c_onwards[..first_non_digit];
                     let mut dotted = literal.splitn(3, '.');
