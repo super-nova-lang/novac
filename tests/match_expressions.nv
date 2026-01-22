@@ -1,19 +1,19 @@
-/* Match on literal */
-match my_int {
-| 1 -> @println("one"),
-| 2, 3 -> @println("zwei oder drei"),
-| x if x == 4 -> @println("cuatro"),
-| x -> @println("uhhh, I don't know this one..."),
-}
+let test_match_literal :: my_int 
+= match my_int {
+    | 1 -> @println("one")
+    | x if x == 2 or x == 3 -> @println("zwei oder drei")
+    }
 
-/* Match on lists */
-match my_list {
-| [head, ..] -> do_head(head),
-| [_, ..tail] -> do_tail(tail),
-| [.., last] -> do_last(last),
-| [] -> do_empty(),
-| _ -> @unreachable
-}
+let x := "placeholder for testing"
+
+let test_match_list :: my_list 
+= match my_list {
+    | [head, ..] -> do_head(head),
+    | [_, ..tail] -> do_tail(tail),
+    | [.., last] -> do_last(last),
+    | [] -> do_empty(),
+    | _ -> @unreachable
+    }
 
 /* Match on strings */
 
@@ -29,4 +29,5 @@ let lex :: s, ls -> list<str> =
     | word -> ls.append(word)
     | _ -> @unreachable
     }
+
 

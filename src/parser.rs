@@ -36,7 +36,10 @@ impl<'de> Parser<'de> {
     // Helper methods for token handling
 
     fn peek_kind(&mut self) -> Option<TokenKind> {
-        self.lexer.peek().and_then(|r| r.as_ref().ok()).map(|t| t.kind)
+        self.lexer
+            .peek()
+            .and_then(|r| r.as_ref().ok())
+            .map(|t| t.kind)
     }
 
     fn peek_token(&mut self) -> Option<&Token<'de>> {
@@ -97,7 +100,7 @@ impl<'de> Parser<'de> {
     fn parse_top_level_item(&mut self) -> Result<TopLevelItem<'de>, Error> {
         // Parse attributes (optional)
         let attrs = self.parse_attrs()?;
-        
+
         if !self.check(TokenKind::Let) {
             return Err(self.error_eof("let"));
         }
@@ -182,7 +185,7 @@ impl<'de> Parser<'de> {
                 // For now, let's just parse it as a tuple type and convert
                 // Actually, that's wrong. Let me think...
                 // If we see ( after ::, it could be:
-                // 1. Empty params: () 
+                // 1. Empty params: ()
                 // 2. A tuple type as a parameter? No, that doesn't make sense
                 // 3. Actually, parameters are just identifiers, not types
                 // So if we see ( and it's not immediately ), we have an error
@@ -260,7 +263,7 @@ impl<'de> Parser<'de> {
                     offset: start_offset,
                     kind: TokenKind::LeftParen,
                 },
-                "Unexpected ( in parameter list"
+                "Unexpected ( in parameter list",
             ));
         }
 
@@ -284,7 +287,7 @@ impl<'de> Parser<'de> {
             // Otherwise, we're done
             if self.check(TokenKind::Comma) {
                 self.next_token(); // consume comma
-                // Continue to parse next parameter
+            // Continue to parse next parameter
             } else {
                 // No comma means end of parameter list
                 break;
@@ -300,7 +303,7 @@ impl<'de> Parser<'de> {
         // Attributes are parsed before we get here (in parse_top_level_item)
         // We've already consumed `let Name :=`, now we need to parse struct or enum
         let attrs = Vec::new(); // Attributes are set by the caller
-        
+
         let decl = if self.consume(TokenKind::Struct) {
             TypeDeclKind::Struct(self.parse_struct_decl()?)
         } else if self.consume(TokenKind::Enum) {
@@ -368,10 +371,7 @@ impl<'de> Parser<'de> {
             None
         };
 
-        Ok(StructDecl {
-            fields,
-            impl_block,
-        })
+        Ok(StructDecl { fields, impl_block })
     }
 
     fn parse_function_in_impl(&mut self) -> Result<Function<'de>, Error> {
@@ -475,19 +475,19 @@ impl<'de> Parser<'de> {
         self.expect_token(TokenKind::Struct, "struct")?;
         self.expect_token(TokenKind::LeftBrace, "{")?;
         let mut fields = Vec::new();
-        
+
         while !self.check(TokenKind::RightBrace) {
             let name_token = self.expect_token(TokenKind::Ident, "identifier")?;
             let name = Cow::Borrowed(name_token.origin);
             self.expect_token(TokenKind::Colon, ":")?;
             let type_ = self.parse_type()?;
             fields.push(StructField { name, type_ });
-            
+
             if !self.consume(TokenKind::Comma) {
                 break;
             }
         }
-        
+
         self.expect_token(TokenKind::RightBrace, "}")?;
         Ok(Type::AnonymousStruct(fields))
     }
@@ -682,7 +682,13 @@ impl<'de> Parser<'de> {
             }
             Some(TokenKind::StringLit) => {
                 let token = self.next_token().unwrap().unwrap();
-                Ok(Expr::Literal(Literal::String(Token::unescape(token.origin))))
+                Ok(Expr::Literal(Literal::String(Token::unescape(
+                    token.origin,
+                ))))
+            }
+            Some(TokenKind::CharLit(c)) => {
+                self.next_token();
+                Ok(Expr::Literal(Literal::Char(c)))
             }
             Some(TokenKind::True) => {
                 self.next_token();
@@ -705,7 +711,10 @@ impl<'de> Parser<'de> {
                 } else {
                     None
                 };
-                Ok(Expr::Literal(Literal::BuiltinCall(BuiltinCall { name, args })))
+                Ok(Expr::Literal(Literal::BuiltinCall(BuiltinCall {
+                    name,
+                    args,
+                })))
             }
             Some(TokenKind::Bar) => {
                 // Anonymous function
@@ -985,7 +994,7 @@ impl<'de> Parser<'de> {
     fn parse_pattern(&mut self) -> Result<Pattern<'de>, Error> {
         match self.peek_kind() {
             Some(TokenKind::NumberLit(_)) => {
-                let token = self.next_token().unwrap().unwrap();
+                let token = self.next_token().unwrap()?;
                 if let TokenKind::NumberLit(n) = token.kind {
                     Ok(Pattern::Literal(Literal::Number(n)))
                 } else {
@@ -993,8 +1002,14 @@ impl<'de> Parser<'de> {
                 }
             }
             Some(TokenKind::StringLit) => {
-                let token = self.next_token().unwrap().unwrap();
-                Ok(Pattern::Literal(Literal::String(Token::unescape(token.origin))))
+                let token = self.next_token().unwrap()?;
+                Ok(Pattern::Literal(Literal::String(Token::unescape(
+                    token.origin,
+                ))))
+            }
+            Some(TokenKind::CharLit(c)) => {
+                self.next_token();
+                Ok(Pattern::Literal(Literal::Char(c)))
             }
             Some(TokenKind::True) => {
                 self.next_token();
@@ -1009,34 +1024,43 @@ impl<'de> Parser<'de> {
                 Ok(Pattern::Literal(Literal::Nil))
             }
             Some(TokenKind::Ident) => {
+                let token = self.next_token().unwrap()?;
                 // Check for string pattern: ident :: char :: ident
-                if let Some(next) = self.lexer.peek() {
-                    if let Ok(next_token) = next {
-                        if next_token.kind == TokenKind::DoubleColon {
-                            // This might be a string pattern
-                            let head_token = self.next_token().unwrap().unwrap();
-                            self.next_token(); // consume ::
-                            // Parse char - for now, treat as single char string
-                            let char_token = if self.check(TokenKind::StringLit) {
-                                self.next_token().unwrap().unwrap()
-                            } else {
-                                return Err(self.error_eof("character literal"));
-                            };
-                            let char_str = Token::unescape(char_token.origin);
-                            let delimiter = char_str.chars().next().unwrap_or(' ');
-                            self.expect_token(TokenKind::DoubleColon, "::")?;
-                            let tail_token = self.expect_token(TokenKind::Ident, "identifier")?;
-                            return Ok(Pattern::Str(StrPattern::Segments {
-                                head: Cow::Borrowed(head_token.origin),
-                                delimiter,
-                                tail: Cow::Borrowed(tail_token.origin),
-                            }));
+                if self
+                    .peek_kind()
+                    .is_some_and(|t| t == TokenKind::DoubleColon)
+                {
+                    // self.check(TokenKind::DoubleColon) {
+                    // This is a string pattern
+                    self.next_token(); // consume ::
+                    // Parse char - can be CharLit or StringLit
+                    let delimiter_result = match self.peek_kind() {
+                        Some(TokenKind::CharLit(c)) => {
+                            self.next_token();
+                            Ok(c)
                         }
-                    }
+                        _ => {
+                            if self.check(TokenKind::StringLit) {
+                                let char_token = self.next_token().unwrap().unwrap();
+                                let char_str = Token::unescape(char_token.origin);
+                                Ok(char_str.chars().next().unwrap_or(' '))
+                            } else {
+                                Err(self.error_eof("character literal"))
+                            }
+                        }
+                    };
+                    let delimiter = delimiter_result?;
+                    self.expect_token(TokenKind::DoubleColon, "::")?;
+                    let tail_token = self.expect_token(TokenKind::Ident, "identifier")?;
+                    Ok(Pattern::Str(StrPattern::Segments {
+                        head: Cow::Borrowed(token.origin),
+                        delimiter,
+                        tail: Cow::Borrowed(tail_token.origin),
+                    }))
+                } else {
+                    // Regular identifier pattern
+                    Ok(Pattern::Ident(Cow::Borrowed(token.origin)))
                 }
-                // Regular identifier pattern
-                let token = self.next_token().unwrap().unwrap();
-                Ok(Pattern::Ident(Cow::Borrowed(token.origin)))
             }
             Some(TokenKind::LeftSquare) => self.parse_list_pattern(),
             Some(TokenKind::LeftParen) => {
@@ -1118,13 +1142,47 @@ impl<'de> Parser<'de> {
             return Ok(Pattern::List(ListPattern::Empty));
         }
 
+        // Check for [.., tail] or [..tail]
+        if self.consume(TokenKind::Spread) {
+            if self.consume(TokenKind::Comma) {
+                // .., tail
+                let tail = self.parse_pattern()?;
+                self.expect_token(TokenKind::RightSquare, "]")?;
+                return Ok(Pattern::List(ListPattern::RestTail {
+                    tail: Box::new(tail),
+                }));
+            }
+
+            // ..tail (no comma)
+            if self.check(TokenKind::RightSquare) {
+                // unexpected: [..] alone -> treat as empty rest
+                self.next_token();
+                return Ok(Pattern::List(ListPattern::RestTail {
+                    tail: Box::new(Pattern::List(ListPattern::Empty as _)),
+                }));
+            } else {
+                let tail = self.parse_pattern()?;
+                self.expect_token(TokenKind::RightSquare, "]")?;
+                return Ok(Pattern::List(ListPattern::RestTail {
+                    tail: Box::new(tail),
+                }));
+            }
+        }
+
+        // Parse first pattern
         let first = self.parse_pattern()?;
 
         if self.consume(TokenKind::Comma) {
             // Check for .. pattern
-            if self.consume(TokenKind::Dot) && self.consume(TokenKind::Dot) {
+            if self.consume(TokenKind::Spread) {
                 // [head, ..] or [head, .., tail]
-                if self.consume(TokenKind::Comma) {
+                if self.check(TokenKind::RightSquare) {
+                    // [head, ..]
+                    self.next_token(); // consume RightSquare
+                    Ok(Pattern::List(ListPattern::HeadRest {
+                        head: Box::new(first),
+                    }))
+                } else if self.consume(TokenKind::Comma) {
                     // [head, .., tail]
                     let tail = self.parse_pattern()?;
                     self.expect_token(TokenKind::RightSquare, "]")?;
@@ -1133,10 +1191,12 @@ impl<'de> Parser<'de> {
                         tail: Box::new(tail),
                     }))
                 } else {
-                    // [head, ..]
+                    // [head, ..tail] (no comma)
+                    let tail = self.parse_pattern()?;
                     self.expect_token(TokenKind::RightSquare, "]")?;
-                    Ok(Pattern::List(ListPattern::HeadRest {
+                    Ok(Pattern::List(ListPattern::HeadRestTail {
                         head: Box::new(first),
+                        tail: Box::new(tail),
                     }))
                 }
             } else {
@@ -1151,14 +1211,6 @@ impl<'de> Parser<'de> {
                 self.expect_token(TokenKind::RightSquare, "]")?;
                 Ok(Pattern::List(ListPattern::Exact(patterns)))
             }
-        } else if self.consume(TokenKind::Dot) && self.consume(TokenKind::Dot) {
-            // [.., tail]
-            self.expect_token(TokenKind::Comma, ",")?;
-            let tail = self.parse_pattern()?;
-            self.expect_token(TokenKind::RightSquare, "]")?;
-            Ok(Pattern::List(ListPattern::RestTail {
-                tail: Box::new(tail),
-            }))
         } else {
             // Single element [pat]
             self.expect_token(TokenKind::RightSquare, "]")?;

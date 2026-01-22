@@ -264,9 +264,9 @@ pub struct ElifBlock<'de> {
 /// Pattern
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pattern<'de> {
+    Wildcard,
     Literal(Literal<'de>),
     Ident(Cow<'de, str>),
-    Wildcard,
     List(ListPattern<'de>),
     Str(StrPattern<'de>),
     Struct(StructPattern<'de>),

@@ -123,11 +123,13 @@ pub enum TokenKind {
     SemiColon,   // ;
     Slash,       // /
     Star,        // *
+    Spread,      // ..
     // Literals
     Ident,
     NumberLit(u64),
     // FloatLit(f64),
     StringLit,
+    CharLit(char),
 }
 
 pub struct Lexer<'de> {
@@ -211,6 +213,7 @@ impl<'de> Iterator for Lexer<'de> {
                 Number,
                 Slash,
                 String,
+                Char,
                 IfCharElse(char, TokenKind, TokenKind),
             }
 
@@ -229,14 +232,15 @@ impl<'de> Iterator for Lexer<'de> {
                 '!' => Started::IfCharElse('!', TokenKind::BangEqual, TokenKind::Bang),
                 '|' => Started::IfCharElse('>', TokenKind::Pipe, TokenKind::Bar),
                 '-' => Started::IfCharElse('>', TokenKind::RArrow, TokenKind::Minus),
+                '.' => Started::IfCharElse('.', TokenKind::Spread, TokenKind::Dot),
                 '<' => Started::Less,
                 '"' => Started::String,
+                '\'' => Started::Char,
                 '/' => Started::Slash,
                 '@' => return just(TokenKind::At),
                 '#' => return just(TokenKind::Pound),
                 '^' => return just(TokenKind::Carrot),
                 ',' => return just(TokenKind::Comma),
-                '.' => return just(TokenKind::Dot),
                 '{' => return just(TokenKind::LeftBrace),
                 '(' => return just(TokenKind::LeftParen),
                 '[' => return just(TokenKind::LeftSquare),
@@ -281,6 +285,34 @@ impl<'de> Iterator for Lexer<'de> {
                         self.byte += self.rest.len();
                         self.rest = &self.rest[self.rest.len()..];
 
+                        return Some(Err(err.into()));
+                    }
+                }
+                Started::Char => {
+                    if let Some(end) = self.rest.find('\'') {
+                        let literal = &c_onwards[..end + 1 + 1];
+                        let char_content = &literal[1..literal.len() - 1];
+                        let ch = if char_content.len() == 1 {
+                            char_content.chars().next().unwrap()
+                        } else {
+                            // Handle escape sequences if needed
+                            char_content.chars().next().unwrap()
+                        };
+                        self.byte += end + 1;
+                        self.rest = &self.rest[end + 1..];
+                        Some(Ok(Token {
+                            origin: literal,
+                            offset: c_at,
+                            kind: TokenKind::CharLit(ch),
+                        }))
+                    } else {
+                        // Unterminated char literal
+                        let err = StringTerminationError {
+                            src: self.whole.to_string(),
+                            err_span: SourceSpan::from(c_at..self.whole.len()),
+                        };
+                        self.byte += self.rest.len();
+                        self.rest = &self.rest[self.rest.len()..];
                         return Some(Err(err.into()));
                     }
                 }
@@ -398,11 +430,8 @@ impl<'de> Iterator for Lexer<'de> {
                     }));
                 }
                 Started::IfCharElse(check, yes, no) => {
-                    self.rest = self.rest.trim_start();
-                    let trimmed = c_onwards.len() - self.rest.len() - 1;
-                    self.byte += trimmed;
                     if self.rest.starts_with(check) {
-                        let span = &c_onwards[..c.len_utf8() + trimmed + 1];
+                        let span = &c_onwards[..c.len_utf8() + 1];
                         self.rest = &self.rest[1..];
                         self.byte += 1;
                         Some(Ok(Token {
