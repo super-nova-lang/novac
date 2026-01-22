@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use miette::{IntoDiagnostic, WrapErr};
 use tracing::info;
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Registry;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_tree::HierarchicalLayer;
@@ -16,7 +17,9 @@ fn main() -> miette::Result<()> {
     let args = Args::parse();
 
     // Set up subscriber
-    let subscriber = Registry::default().with(HierarchicalLayer::default());
+    let subscriber = Registry::default()
+        .with(get_env_filter())
+        .with(HierarchicalLayer::default());
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
     // Act on arguments
@@ -57,4 +60,18 @@ struct Args {
 enum Command {
     Tokenize { filepath: PathBuf },
     Parse { filepath: PathBuf },
+}
+
+fn get_env_filter() -> EnvFilter {
+    let debug = std::env::var("NOVAC_DEBUG")
+        .map(|v| {
+            let v = v.to_lowercase();
+            v == "1" || v == "true" || v == "yes"
+        })
+        .unwrap_or(false);
+    if debug {
+        EnvFilter::new("trace")
+    } else {
+        EnvFilter::new("info")
+    }
 }
