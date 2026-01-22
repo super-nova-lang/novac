@@ -44,6 +44,23 @@ impl StringTerminationError {
     }
 }
 
+#[derive(Diagnostic, Debug, Error)]
+#[error("Unterminated comment")]
+pub struct CommentTerminationError {
+    #[source_code]
+    src: String,
+
+    #[label = "this comment"]
+    err_span: SourceSpan,
+}
+
+impl CommentTerminationError {
+    pub fn line(&self) -> usize {
+        let until_unrecongized = &self.src[..=self.err_span.offset()];
+        until_unrecongized.lines().count()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Token<'de> {
     pub origin: &'de str,
@@ -276,7 +293,29 @@ impl<'de> Iterator for Lexer<'de> {
                         continue;
                     } else if self.rest.starts_with('*') {
                         /* this is also a comment! */
-                        todo!("lex multiline comments")
+                        // consume the '*'
+                        self.rest = &self.rest[1..];
+                        self.byte += 1;
+
+                        // find the closing "*/"
+                        if let Some(end) = self.rest.find("*/") {
+                            // skip to after "*/"
+                            self.byte += end + 2;
+                            self.rest = &self.rest[end + 2..];
+                            continue;
+                        } else {
+                            // unterminated comment
+                            let err = CommentTerminationError {
+                                src: self.whole.to_string(),
+                                err_span: SourceSpan::from(c_at..self.whole.len()),
+                            };
+
+                            // swallow the remainder of input as being a comment
+                            self.byte += self.rest.len();
+                            self.rest = &self.rest[self.rest.len()..];
+
+                            return Some(Err(err.into()));
+                        }
                     } else {
                         Some(Ok(Token {
                             origin: c_str,

@@ -36,5 +36,7 @@ let Person
     }
 }
 
-let my_person := Person:new("Ashton", 19, .programmer(.{ .lang = "Supernova" }))
-my_person.intro()
+let main :: () = {
+    let my_person := Person:new("Ashton", 19, .programmer(.{ .lang = "Supernova" }))
+    my_person.intro()
+}
