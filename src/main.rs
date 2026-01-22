@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use miette::{IntoDiagnostic, WrapErr};
 
-mod ast;
 mod lexer;
 mod parser;
 

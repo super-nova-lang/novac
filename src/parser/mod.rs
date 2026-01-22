@@ -1,8 +1,13 @@
 #![allow(dead_code, unused_imports)]
-use crate::ast::*;
-use crate::lexer::{Lexer, Token, TokenKind};
+use crate::lexer::{
+    Lexer,
+    token::{Token, TokenKind},
+};
+use ast::*;
 use miette::{Error, LabeledSpan};
 use std::borrow::Cow;
+
+pub mod ast;
 
 pub struct Parser<'de> {
     whole: &'de str,
