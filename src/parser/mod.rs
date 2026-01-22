@@ -16,7 +16,7 @@ pub struct Parser<'de> {
 }
 
 impl fmt::Debug for Parser<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Parser")
     }
 }
@@ -32,6 +32,7 @@ impl<'de> Parser<'de> {
     #[instrument]
     pub fn parse(mut self) -> Result<Program<'de>, Error> {
         trace!("Entering");
+        self.trace_state("parse");
         let mut items = Vec::new();
         // Keep parsing while we have tokens and can parse a top-level item
         // Top-level items start with attributes (optional) or 'let'
@@ -89,6 +90,18 @@ impl<'de> Parser<'de> {
         }
     }
 
+    // Helper to log current parser state for tracing
+    fn trace_state(&mut self, label: &str) {
+        if let Some(t) = self.peek_token() {
+            trace!(
+                "{}: peek_kind={:?} peek_orig=\"{}\" offset={}",
+                label, t.kind, t.origin, t.offset
+            );
+        } else {
+            trace!("{}: peek=None", label);
+        }
+    }
+
     fn error_at_token(&self, token: &Token<'de>, msg: &str) -> Error {
         miette::miette! {
             labels = vec![
@@ -114,6 +127,7 @@ impl<'de> Parser<'de> {
     #[instrument]
     fn parse_top_level_item(&mut self) -> Result<TopLevelItem<'de>, Error> {
         trace!("Entering");
+        self.trace_state("parse_top_level_item");
         // Parse attributes (optional)
         let attrs = self.parse_attrs()?;
 
@@ -181,6 +195,7 @@ impl<'de> Parser<'de> {
     #[instrument]
     fn parse_function(&mut self, name: Cow<'de, str>) -> Result<Function<'de>, Error> {
         trace!("Entering");
+        self.trace_state("parse_function");
         self.expect_token(TokenKind::DoubleColon, "::")?;
 
         // Parse generics (optional)
@@ -444,6 +459,7 @@ impl<'de> Parser<'de> {
     #[instrument]
     fn parse_type(&mut self) -> Result<Type<'de>, Error> {
         trace!("Entering"); // Check for function type first (|Type1, Type2|)
+        self.trace_state("parse_type");
         if self.check(TokenKind::Bar) {
             return self.parse_function_type();
         }
@@ -650,6 +666,7 @@ impl<'de> Parser<'de> {
     #[instrument]
     fn parse_expr(&mut self) -> Result<Expr<'de>, Error> {
         trace!("Entering");
+        self.trace_state("parse_expr");
         self.parse_expr_binary(0)
     }
 
@@ -728,6 +745,7 @@ impl<'de> Parser<'de> {
     #[instrument]
     fn parse_expr_primary(&mut self) -> Result<Expr<'de>, Error> {
         trace!("Entering");
+        self.trace_state("parse_expr_primary");
         match self.peek_kind() {
             Some(TokenKind::NumberLit(_)) => {
                 let token = self.next_token().unwrap().unwrap();
@@ -868,6 +886,7 @@ impl<'de> Parser<'de> {
     #[instrument]
     fn parse_expr_ident(&mut self) -> Result<Expr<'de>, Error> {
         trace!("Entering");
+        self.trace_state("parse_expr_ident");
         let token = self.next_token().unwrap().unwrap();
         let name = Cow::Borrowed(token.origin);
         let mut expr: Expr<'de> = Expr::Ident(name);
@@ -984,6 +1003,7 @@ impl<'de> Parser<'de> {
     #[instrument]
     fn parse_match(&mut self) -> Result<Expr<'de>, Error> {
         trace!("Entering"); // "match" is parsed as an identifier
+        self.trace_state("parse_match");
         self.next_token(); // consume "match"
         let expr = Box::new(self.parse_expr()?);
         self.expect_token(TokenKind::LeftBrace, "{")?;
@@ -1031,6 +1051,7 @@ impl<'de> Parser<'de> {
     #[instrument]
     fn parse_if(&mut self) -> Result<Expr<'de>, Error> {
         trace!("Entering");
+        self.trace_state("parse_if");
         self.expect_token(TokenKind::If, "if")?;
         let condition = Box::new(self.parse_expr()?);
         let then_block = self.parse_block()?;
@@ -1064,6 +1085,7 @@ impl<'de> Parser<'de> {
     #[instrument]
     fn parse_pattern(&mut self) -> Result<Pattern<'de>, Error> {
         trace!("Entering");
+        self.trace_state("parse_pattern");
         match self.peek_kind() {
             Some(TokenKind::NumberLit(_)) => {
                 let token = self.next_token().unwrap()?;
@@ -1210,6 +1232,7 @@ impl<'de> Parser<'de> {
     #[instrument]
     fn parse_list_pattern(&mut self) -> Result<Pattern<'de>, Error> {
         trace!("Entering");
+        self.trace_state("parse_list_pattern");
         self.expect_token(TokenKind::LeftSquare, "[")?;
 
         if self.consume(TokenKind::RightSquare) {

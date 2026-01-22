@@ -1,7 +1,8 @@
 let x := 10
 let y := 11
 
-if   x < y { @println("{} < {}", x, y) }
-elif x > y { @println("{} > {}", x, y) }
-else       { @println("{} == {}", x, y) }
-
+let main :: () = {
+  if   x < y { @println("{} < {}", x, y) }
+  elif x > y { @println("{} > {}", x, y) }
+  else       { @println("{} == {}", x, y) }
+}
