@@ -5,13 +5,20 @@ use crate::lexer::{
 };
 use ast::*;
 use miette::{Error, LabeledSpan};
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt};
+use tracing::{instrument, trace};
 
 pub mod ast;
 
 pub struct Parser<'de> {
-    whole: &'de str,
-    lexer: Lexer<'de>,
+    pub whole: &'de str,
+    pub lexer: Lexer<'de>,
+}
+
+impl fmt::Debug for Parser<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Parser")
+    }
 }
 
 impl<'de> Parser<'de> {
@@ -22,7 +29,9 @@ impl<'de> Parser<'de> {
         }
     }
 
+    #[instrument]
     pub fn parse(mut self) -> Result<Program<'de>, Error> {
+        trace!("Entering");
         let mut items = Vec::new();
         // Keep parsing while we have tokens and can parse a top-level item
         // Top-level items start with attributes (optional) or 'let'
@@ -102,7 +111,9 @@ impl<'de> Parser<'de> {
 
     // Top-level parsing
 
+    #[instrument]
     fn parse_top_level_item(&mut self) -> Result<TopLevelItem<'de>, Error> {
+        trace!("Entering");
         // Parse attributes (optional)
         let attrs = self.parse_attrs()?;
 
@@ -167,7 +178,9 @@ impl<'de> Parser<'de> {
 
     // Function parsing
 
+    #[instrument]
     fn parse_function(&mut self, name: Cow<'de, str>) -> Result<Function<'de>, Error> {
+        trace!("Entering");
         self.expect_token(TokenKind::DoubleColon, "::")?;
 
         // Parse generics (optional)
@@ -222,7 +235,9 @@ impl<'de> Parser<'de> {
         })
     }
 
+    #[instrument]
     fn parse_generic_params(&mut self) -> Result<Vec<Cow<'de, str>>, Error> {
+        trace!("Entering");
         self.expect_token(TokenKind::LessThan, "<")?;
         let mut params = Vec::new();
 
@@ -239,7 +254,9 @@ impl<'de> Parser<'de> {
         Ok(params)
     }
 
+    #[instrument]
     fn parse_function_params(&mut self) -> Result<Vec<FunctionParam<'de>>, Error> {
+        trace!("Entering");
         let mut params = Vec::new();
 
         // Parse parameters until we hit = or ->
@@ -304,7 +321,9 @@ impl<'de> Parser<'de> {
 
     // Type parsing
 
+    #[instrument]
     fn parse_type_decl(&mut self, name: Cow<'de, str>) -> Result<TypeDecl<'de>, Error> {
+        trace!("Entering");
         // Attributes are parsed before we get here (in parse_top_level_item)
         // We've already consumed `let Name :=`, now we need to parse struct or enum
         let attrs = Vec::new(); // Attributes are set by the caller
@@ -320,7 +339,9 @@ impl<'de> Parser<'de> {
         Ok(TypeDecl { attrs, name, decl })
     }
 
+    #[instrument]
     fn parse_attrs(&mut self) -> Result<Vec<Attr<'de>>, Error> {
+        trace!("Entering");
         let mut attrs = Vec::new();
         while self.check(TokenKind::Pound) {
             attrs.push(self.parse_attr()?);
@@ -328,7 +349,9 @@ impl<'de> Parser<'de> {
         Ok(attrs)
     }
 
+    #[instrument]
     fn parse_attr(&mut self) -> Result<Attr<'de>, Error> {
+        trace!("Entering");
         self.expect_token(TokenKind::Pound, "#")?;
         self.expect_token(TokenKind::LeftSquare, "[")?;
 
@@ -346,7 +369,9 @@ impl<'de> Parser<'de> {
         Ok(Attr { name, value })
     }
 
+    #[instrument]
     fn parse_struct_decl(&mut self) -> Result<StructDecl<'de>, Error> {
+        trace!("Entering");
         self.expect_token(TokenKind::LeftBrace, "{")?;
         let mut fields = Vec::new();
 
@@ -379,14 +404,18 @@ impl<'de> Parser<'de> {
         Ok(StructDecl { fields, impl_block })
     }
 
+    #[instrument]
     fn parse_function_in_impl(&mut self) -> Result<Function<'de>, Error> {
+        trace!("Entering");
         self.expect_token(TokenKind::Let, "let")?;
         let name_token = self.expect_token(TokenKind::Ident, "identifier")?;
         let name = Cow::Borrowed(name_token.origin);
         self.parse_function(name)
     }
 
+    #[instrument]
     fn parse_enum_decl(&mut self) -> Result<EnumDecl<'de>, Error> {
+        trace!("Entering");
         self.expect_token(TokenKind::LeftBrace, "{")?;
         let mut variants = Vec::new();
 
@@ -412,8 +441,9 @@ impl<'de> Parser<'de> {
         Ok(EnumDecl { variants })
     }
 
+    #[instrument]
     fn parse_type(&mut self) -> Result<Type<'de>, Error> {
-        // Check for function type first (|Type1, Type2|)
+        trace!("Entering"); // Check for function type first (|Type1, Type2|)
         if self.check(TokenKind::Bar) {
             return Ok(self.parse_function_type()?);
         }
@@ -475,7 +505,9 @@ impl<'de> Parser<'de> {
         }
     }
 
+    #[instrument]
     fn parse_inline_struct_type(&mut self) -> Result<Type<'de>, Error> {
+        trace!("Entering");
         // Parse inline struct type: struct { field: Type, ... }
         self.expect_token(TokenKind::Struct, "struct")?;
         self.expect_token(TokenKind::LeftBrace, "{")?;
@@ -497,7 +529,9 @@ impl<'de> Parser<'de> {
         Ok(Type::AnonymousStruct(fields))
     }
 
+    #[instrument]
     fn parse_primitive_type(&mut self) -> Result<PrimitiveType, Error> {
+        trace!("Entering");
         let token = self.expect_token(TokenKind::Ident, "primitive type")?;
         match token.origin {
             "i8" => Ok(PrimitiveType::I8),
@@ -518,7 +552,9 @@ impl<'de> Parser<'de> {
         }
     }
 
+    #[instrument]
     fn parse_function_type(&mut self) -> Result<Type<'de>, Error> {
+        trace!("Entering");
         self.expect_token(TokenKind::Bar, "|")?;
         let mut params = Vec::new();
 
@@ -535,7 +571,9 @@ impl<'de> Parser<'de> {
 
     // Expression parsing
 
+    #[instrument]
     fn parse_expr_list(&mut self) -> Result<ExprList<'de>, Error> {
+        trace!("Entering");
         if self.check(TokenKind::LeftBrace) {
             Ok(ExprList::Block(self.parse_block()?))
         } else {
@@ -543,7 +581,9 @@ impl<'de> Parser<'de> {
         }
     }
 
+    #[instrument]
     fn parse_block(&mut self) -> Result<Vec<Stmt<'de>>, Error> {
+        trace!("Entering");
         self.expect_token(TokenKind::LeftBrace, "{")?;
         let mut stmts = Vec::new();
 
@@ -555,7 +595,9 @@ impl<'de> Parser<'de> {
         Ok(stmts)
     }
 
+    #[instrument]
     fn parse_stmt(&mut self) -> Result<Stmt<'de>, Error> {
+        trace!("Entering");
         if self.consume(TokenKind::Return) {
             let expr = if !self.check(TokenKind::SemiColon)
                 && !self.check(TokenKind::RightBrace)
@@ -575,7 +617,9 @@ impl<'de> Parser<'de> {
         Ok(Stmt::Expr(Box::new(self.parse_expr()?)))
     }
 
+    #[instrument]
     fn parse_variable_decl(&mut self) -> Result<VariableDecl<'de>, Error> {
+        trace!("Entering");
         self.expect_token(TokenKind::Let, "let")?;
         let name_token = self.expect_token(TokenKind::Ident, "identifier")?;
         let name = Cow::Borrowed(name_token.origin);
@@ -603,7 +647,9 @@ impl<'de> Parser<'de> {
         })
     }
 
+    #[instrument]
     fn parse_expr(&mut self) -> Result<Expr<'de>, Error> {
+        trace!("Entering");
         self.parse_expr_binary(0)
     }
 
@@ -616,7 +662,9 @@ impl<'de> Parser<'de> {
     // 5: exponentiation (^)
     // 6: unary (-, !)
 
+    #[instrument]
     fn parse_expr_binary(&mut self, min_prec: u8) -> Result<Expr<'de>, Error> {
+        trace!("Entering");
         let mut left = self.parse_expr_unary()?;
 
         loop {
@@ -659,7 +707,9 @@ impl<'de> Parser<'de> {
         Ok(left)
     }
 
+    #[instrument]
     fn parse_expr_unary(&mut self) -> Result<Expr<'de>, Error> {
+        trace!("Entering");
         if self.consume(TokenKind::Minus) {
             Ok(Expr::Unary {
                 op: UnaryOp::Neg,
@@ -675,7 +725,9 @@ impl<'de> Parser<'de> {
         }
     }
 
+    #[instrument]
     fn parse_expr_primary(&mut self) -> Result<Expr<'de>, Error> {
+        trace!("Entering");
         match self.peek_kind() {
             Some(TokenKind::NumberLit(_)) => {
                 let token = self.next_token().unwrap().unwrap();
@@ -813,7 +865,9 @@ impl<'de> Parser<'de> {
         }
     }
 
+    #[instrument]
     fn parse_expr_ident(&mut self) -> Result<Expr<'de>, Error> {
+        trace!("Entering");
         let token = self.next_token().unwrap().unwrap();
         let name = Cow::Borrowed(token.origin);
         let mut expr: Expr<'de> = Expr::Ident(name);
@@ -873,7 +927,9 @@ impl<'de> Parser<'de> {
         Ok(expr)
     }
 
+    #[instrument]
     fn parse_arg_list(&mut self) -> Result<Vec<Expr<'de>>, Error> {
+        trace!("Entering");
         let mut args = Vec::new();
         while !self.check(TokenKind::RightParen) {
             args.push(self.parse_expr()?);
@@ -884,7 +940,9 @@ impl<'de> Parser<'de> {
         Ok(args)
     }
 
+    #[instrument]
     fn parse_enum_variant_value(&mut self) -> Result<EnumVariantValue<'de>, Error> {
+        trace!("Entering");
         self.expect_token(TokenKind::LeftParen, "(")?;
         let first = self.parse_expr()?;
         if self.consume(TokenKind::Comma) {
@@ -904,7 +962,9 @@ impl<'de> Parser<'de> {
         }
     }
 
+    #[instrument]
     fn parse_anon_fn(&mut self) -> Result<Expr<'de>, Error> {
+        trace!("Entering");
         self.expect_token(TokenKind::Bar, "|")?;
         let mut params = Vec::new();
 
@@ -921,8 +981,9 @@ impl<'de> Parser<'de> {
         Ok(Expr::AnonFn { params, body })
     }
 
+    #[instrument]
     fn parse_match(&mut self) -> Result<Expr<'de>, Error> {
-        // "match" is parsed as an identifier
+        trace!("Entering"); // "match" is parsed as an identifier
         self.next_token(); // consume "match"
         let expr = Box::new(self.parse_expr()?);
         self.expect_token(TokenKind::LeftBrace, "{")?;
@@ -936,7 +997,9 @@ impl<'de> Parser<'de> {
         Ok(Expr::Match { expr, arms })
     }
 
+    #[instrument]
     fn parse_match_arm(&mut self) -> Result<MatchArm<'de>, Error> {
+        trace!("Entering");
         self.expect_token(TokenKind::Bar, "|")?;
         let mut patterns = Vec::new();
 
@@ -965,7 +1028,9 @@ impl<'de> Parser<'de> {
         })
     }
 
+    #[instrument]
     fn parse_if(&mut self) -> Result<Expr<'de>, Error> {
+        trace!("Entering");
         self.expect_token(TokenKind::If, "if")?;
         let condition = Box::new(self.parse_expr()?);
         let then_block = self.parse_block()?;
@@ -996,7 +1061,9 @@ impl<'de> Parser<'de> {
 
     // Pattern parsing
 
+    #[instrument]
     fn parse_pattern(&mut self) -> Result<Pattern<'de>, Error> {
+        trace!("Entering");
         match self.peek_kind() {
             Some(TokenKind::NumberLit(_)) => {
                 let token = self.next_token().unwrap()?;
@@ -1140,7 +1207,9 @@ impl<'de> Parser<'de> {
         }
     }
 
+    #[instrument]
     fn parse_list_pattern(&mut self) -> Result<Pattern<'de>, Error> {
+        trace!("Entering");
         self.expect_token(TokenKind::LeftSquare, "[")?;
 
         if self.consume(TokenKind::RightSquare) {
@@ -1223,7 +1292,9 @@ impl<'de> Parser<'de> {
         }
     }
 
+    #[instrument]
     fn parse_enum_pattern_value(&mut self) -> Result<EnumPatternValue<'de>, Error> {
+        trace!("Entering");
         self.expect_token(TokenKind::LeftParen, "(")?;
         let first = self.parse_pattern()?;
         if self.consume(TokenKind::Comma) {

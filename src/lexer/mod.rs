@@ -63,11 +63,12 @@ impl CommentTerminationError {
     }
 }
 
+#[derive(Debug)]
 pub struct Lexer<'de> {
-    whole: &'de str,
-    rest: &'de str,
-    byte: usize,
-    peeked: Option<Result<Token<'de>, miette::Error>>,
+    pub whole: &'de str,
+    pub rest: &'de str,
+    pub byte: usize,
+    pub peeked: Option<Result<Token<'de>, miette::Error>>,
 }
 
 impl<'de> Lexer<'de> {
