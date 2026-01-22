@@ -835,9 +835,9 @@ impl<'de> fmt::Display for ListPattern<'de> {
             ListPattern::Empty => write!(f, "[]"),
             ListPattern::Single(pat) => write!(f, "[{}]", pat),
             ListPattern::HeadRest { head } => write!(f, "[{}, ..]", head),
-            ListPattern::RestTail { tail } => write!(f, "[.., {}]", tail),
+            ListPattern::RestTail { tail } => write!(f, "[..{}]", tail),
             ListPattern::HeadRestTail { head, tail } => {
-                write!(f, "[{}, .., {}]", head, tail)
+                write!(f, "[{}, ..{}]", head, tail)
             }
             ListPattern::Exact(pats) => {
                 write!(f, "[")?;
