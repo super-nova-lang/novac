@@ -1,6 +1,15 @@
-# Novac - The Supernova Compiler
+# Novac: The Supernova Compiler
 
 Supernova is a statically typed functional language written in Rust
+
+## Commands & Such
+
+- **tokenize <FILE>**: Run the tokenizer
+- **parse <FILE>**: Run the parser
+
+To print the debugging info (i.e. run Novac's `tracer`) enable the `NOVAC_DEBUG` environment variable.
+
+- `env NOVAC_DEBUG=true novac parse my_file.nv`
 
 ## Syntax & Semantics
 
