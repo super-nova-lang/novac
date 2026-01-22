@@ -380,37 +380,38 @@ impl<'de> Iterator for Lexer<'de> {
                     }
                 }
                 Started::Less => {
-                    self.rest = self.rest.trim_start();
-                    let trimmed = c_onwards.len() - self.rest.len() - 1;
-                    self.byte += trimmed;
-
-                    if self.rest.starts_with('>') {
-                        let span = &c_onwards[..c.len_utf8() + trimmed + 1];
-                        self.rest = &self.rest[1..];
-                        self.byte += 1;
-                        Some(Ok(Token {
-                            origin: span,
-                            offset: c_at,
-                            kind: TokenKind::Concat,
-                        }))
-                    } else if self.rest.starts_with('=') {
-                        let span = &c_onwards[..c.len_utf8() + trimmed + 1];
-                        self.rest = &self.rest[1..];
-                        self.byte += 1;
-                        Some(Ok(Token {
-                            origin: span,
-                            offset: c_at,
-                            kind: TokenKind::LessEqual,
-                        }))
+                    // Check the immediate next character without skipping whitespace.
+                    if let Some(next_ch) = self.rest.chars().next() {
+                        if next_ch == '>' {
+                            // concat operator "<>"
+                            let span = &c_onwards[..c.len_utf8() + next_ch.len_utf8()];
+                            self.rest = &self.rest[next_ch.len_utf8()..];
+                            self.byte += next_ch.len_utf8();
+                            Some(Ok(Token {
+                                origin: span,
+                                offset: c_at,
+                                kind: TokenKind::Concat,
+                            }))
+                        } else if next_ch == '=' {
+                            // <= operator
+                            let span = &c_onwards[..c.len_utf8() + next_ch.len_utf8()];
+                            self.rest = &self.rest[next_ch.len_utf8()..];
+                            self.byte += next_ch.len_utf8();
+                            Some(Ok(Token {
+                                origin: span,
+                                offset: c_at,
+                                kind: TokenKind::LessEqual,
+                            }))
+                        } else {
+                            // simple less-than
+                            Some(Ok(Token {
+                                origin: c_str,
+                                offset: c_at,
+                                kind: TokenKind::LessThan,
+                            }))
+                        }
                     } else {
-                        let span = &c_onwards[..c.len_utf8() + trimmed + 1];
-                        self.rest = &self.rest[1..];
-                        self.byte += 1;
-                        Some(Ok(Token {
-                            origin: span,
-                            offset: c_at,
-                            kind: TokenKind::LessThan,
-                        }))
+                        Some(Ok(Token { origin: c_str, offset: c_at, kind: TokenKind::LessThan }))
                     }
                 }
             };
