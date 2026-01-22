@@ -161,7 +161,7 @@ impl<'de> Iterator for Lexer<'de> {
                 ':' => Started::IfCharElse(':', TokenKind::DoubleColon, TokenKind::Colon),
                 '=' => Started::IfCharElse('=', TokenKind::DoubleEqual, TokenKind::Equal),
                 '>' => Started::IfCharElse('=', TokenKind::GrtrEqual, TokenKind::GrtrThan),
-                '!' => Started::IfCharElse('!', TokenKind::BangEqual, TokenKind::Bang),
+                '!' => Started::IfCharElse('=', TokenKind::BangEqual, TokenKind::Bang),
                 '|' => Started::IfCharElse('>', TokenKind::Pipe, TokenKind::Bar),
                 '-' => Started::IfCharElse('>', TokenKind::RArrow, TokenKind::Minus),
                 '.' => Started::IfCharElse('.', TokenKind::Spread, TokenKind::Dot),
@@ -411,10 +411,125 @@ impl<'de> Iterator for Lexer<'de> {
                             }))
                         }
                     } else {
-                        Some(Ok(Token { origin: c_str, offset: c_at, kind: TokenKind::LessThan }))
+                        Some(Ok(Token {
+                            origin: c_str,
+                            offset: c_at,
+                            kind: TokenKind::LessThan,
+                        }))
                     }
                 }
             };
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ident_and_symbols() {
+        let input = "let add :: a, b = a + b";
+        let tokens = Lexer::new(input).collect::<Result<Vec<_>, _>>().unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|t| t.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                TokenKind::Let,
+                TokenKind::Ident,
+                TokenKind::DoubleColon,
+                TokenKind::Ident,
+                TokenKind::Comma,
+                TokenKind::Ident,
+                TokenKind::Equal,
+                TokenKind::Ident,
+                TokenKind::Plus,
+                TokenKind::Ident,
+            ]
+        );
+        assert_eq!(tokens[1].origin, "add");
+        assert_eq!(tokens[3].origin, "a");
+        assert_eq!(tokens[5].origin, "b");
+    }
+
+    #[test]
+    fn test_string_and_char_literals() {
+        let input = "\"hello\" 'c'";
+        let tokens = Lexer::new(input).collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(tokens[0].kind, TokenKind::StringLit);
+        assert_eq!(tokens[1].kind, TokenKind::CharLit('c'));
+        let unescaped = token::Token::unescape(tokens[0].origin);
+        assert_eq!(unescaped, "hello");
+    }
+
+    #[test]
+    fn test_number_literals() {
+        let input = "42 0 12345";
+        let tokens = Lexer::new(input).collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(tokens[0].kind, TokenKind::NumberLit(42));
+        assert_eq!(tokens[1].kind, TokenKind::NumberLit(0));
+        assert_eq!(tokens[2].kind, TokenKind::NumberLit(12345));
+    }
+
+    #[test]
+    fn test_comments_are_skipped() {
+        let input = "// line comment\nlet x = 1 /* block comment */ let y = 2";
+        let tokens = Lexer::new(input).collect::<Result<Vec<_>, _>>().unwrap();
+        // Ensure comments are skipped: we expect two `let` keywords and identifiers `x` and `y`.
+        let let_count = tokens.iter().filter(|t| t.kind == TokenKind::Let).count();
+        assert_eq!(let_count, 2);
+        assert!(tokens.iter().any(|t| t.origin == "x"));
+        assert!(tokens.iter().any(|t| t.origin == "y"));
+    }
+
+    #[test]
+    fn test_multichar_tokens() {
+        let input = ":: == >= |> -> .. <> <= !=";
+        let tokens = Lexer::new(input).collect::<Result<Vec<_>, _>>().unwrap();
+        let kinds: Vec<_> = tokens.iter().map(|t| t.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                TokenKind::DoubleColon,
+                TokenKind::DoubleEqual,
+                TokenKind::GrtrEqual,
+                TokenKind::Pipe,
+                TokenKind::RArrow,
+                TokenKind::Spread,
+                TokenKind::Concat,
+                TokenKind::LessEqual,
+                TokenKind::BangEqual,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_peek_and_expect() {
+        let mut l = Lexer::new("let a");
+        let p = l.peek().unwrap().as_ref().unwrap();
+        assert_eq!(p.kind, TokenKind::Let);
+        let tok = l.expect(TokenKind::Let, "let").unwrap();
+        assert_eq!(tok.kind, TokenKind::Let);
+        let next = l.next().unwrap().unwrap();
+        assert_eq!(next.kind, TokenKind::Ident);
+    }
+
+    #[test]
+    fn test_unterminated_string_error() {
+        let mut l = Lexer::new("\"no end");
+        match l.next() {
+            Some(Err(e)) => assert!(format!("{}", e).contains("Unterminated string")),
+            _ => panic!("expected unterminated string error"),
+        }
+    }
+
+    #[test]
+    fn test_unterminated_comment_error() {
+        let mut l = Lexer::new("/* unfinished");
+        // First character is '/', so next() will return error for unterminated comment
+        match l.next() {
+            Some(Err(e)) => assert!(format!("{}", e).contains("Unterminated comment")),
+            _ => panic!("expected unterminated comment error"),
         }
     }
 }

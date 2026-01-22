@@ -1096,6 +1096,10 @@ impl<'de> Parser<'de> {
             }
             Some(TokenKind::Ident) => {
                 let token = self.next_token().unwrap()?;
+                // Treat `_` as a wildcard pattern
+                if token.origin == "_" {
+                    return Ok(Pattern::Wildcard);
+                }
                 // Check for string pattern: ident :: char :: ident
                 if self
                     .peek_kind()
@@ -1311,5 +1315,142 @@ impl<'de> Parser<'de> {
             self.expect_token(TokenKind::RightParen, ")")?;
             Ok(EnumPatternValue::Single(Box::new(first)))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ast::*;
+
+    #[test]
+    fn test_parse_simple_function() {
+        let src = "let add :: a, b = a + b";
+        let program = Parser::new(src).parse().unwrap();
+        assert_eq!(program.items.len(), 1);
+        match &program.items[0] {
+            TopLevelItem::Function(f) => {
+                assert_eq!(f.name, "add");
+                assert_eq!(f.params.len(), 2);
+                assert!(f.return_type.is_none());
+                if let ExprList::Single(expr) = &f.body {
+                    assert!(matches!(**expr, Expr::Binary { .. }));
+                } else {
+                    panic!("expected single expression body")
+                }
+            }
+            _ => panic!("expected function"),
+        }
+    }
+
+    #[test]
+    fn test_parse_variable_decl() {
+        let src = "let x := 1";
+        let program = Parser::new(src).parse().unwrap();
+        assert_eq!(program.items.len(), 1);
+        match &program.items[0] {
+            TopLevelItem::VariableDecl(v) => {
+                assert_eq!(v.name, "x");
+                assert!(v.type_annotation.is_none());
+                match *v.value {
+                    Expr::Literal(Literal::Number(n)) => assert_eq!(n, 1),
+                    _ => panic!("expected numeric literal"),
+                }
+            }
+            _ => panic!("expected variable declaration"),
+        }
+    }
+
+    #[test]
+    fn test_parse_function_with_return_type() {
+        let src = "let sub :: a: i32, b: i32 -> i32 = a - b";
+        let program = Parser::new(src).parse().unwrap();
+        match &program.items[0] {
+            TopLevelItem::Function(f) => {
+                assert_eq!(f.name, "sub");
+                assert_eq!(f.params.len(), 2);
+                assert!(f.return_type.is_some());
+                if let Some(Type::Named(name)) = &f.return_type {
+                    assert_eq!(name.as_ref(), "i32");
+                } else {
+                    panic!("expected named return type");
+                }
+            }
+            _ => panic!("expected function"),
+        }
+    }
+
+    #[test]
+    fn test_match_list_and_wildcard_patterns() {
+        let src = "let r := match a { | [x, y] -> 1, | _ -> 0 }";
+        let program = Parser::new(src).parse().unwrap();
+        match &program.items[0] {
+            TopLevelItem::VariableDecl(v) => {
+                match *v.value {
+                    Expr::Match { ref arms, .. } => {
+                        // first arm: list pattern [x, y]
+                        assert!(!arms.is_empty());
+                        let first_arm = &arms[0];
+                        assert!(!first_arm.patterns.is_empty());
+                        match &first_arm.patterns[0] {
+                            Pattern::List(ListPattern::Exact(pats)) => {
+                                assert_eq!(pats.len(), 2);
+                                assert!(matches!(pats[0], Pattern::Ident(_)));
+                                assert!(matches!(pats[1], Pattern::Ident(_)));
+                            }
+                            _ => panic!("expected exact list pattern"),
+                        }
+                        // Ensure there is a wildcard pattern among the arms
+                        assert!(arms.iter().any(|arm| {
+                            arm.patterns.iter().any(|p| matches!(p, Pattern::Wildcard))
+                        }));
+                    }
+                    _ => panic!("expected match expression"),
+                }
+            }
+            _ => panic!("expected variable declaration"),
+        }
+    }
+
+    #[test]
+    fn test_enum_and_struct_type_declarations() {
+        let src = "let Color := enum { Red, Green }\nlet Point := struct { x: i32, y: i32 }";
+        let program = Parser::new(src).parse().unwrap();
+        assert_eq!(program.items.len(), 2);
+
+        match &program.items[0] {
+            TopLevelItem::TypeDecl(td) => match &td.decl {
+                TypeDeclKind::Enum(e) => {
+                    assert_eq!(e.variants.len(), 2);
+                    assert_eq!(e.variants[0].name, "Red");
+                    assert_eq!(e.variants[1].name, "Green");
+                }
+                _ => panic!("expected enum type decl"),
+            },
+            _ => panic!("expected type decl"),
+        }
+
+        match &program.items[1] {
+            TopLevelItem::TypeDecl(td) => match &td.decl {
+                TypeDeclKind::Struct(s) => {
+                    assert_eq!(s.fields.len(), 2);
+                    assert_eq!(s.fields[0].name, "x");
+                    assert_eq!(s.fields[1].name, "y");
+                    match &s.fields[0].type_ {
+                        Type::Named(name) => assert_eq!(name.as_ref(), "i32"),
+                        Type::Primitive(PrimitiveType::I32) => {}
+                        _ => panic!("expected i32 type"),
+                    }
+                }
+                _ => panic!("expected struct type decl"),
+            },
+            _ => panic!("expected type decl"),
+        }
+    }
+
+    #[test]
+    fn test_parse_error_missing_value() {
+        let src = "let x =";
+        assert!(Parser::new(src).parse().is_err());
     }
 }
