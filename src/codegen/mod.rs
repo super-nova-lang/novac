@@ -1,5 +1,9 @@
+use crate::analyzer::{
+    AnnotatedExpr, AnnotatedExprList, AnnotatedFunction, AnnotatedProgram,
+    AnnotatedStmt, AnnotatedTopLevelItem, AnnotatedVariableDecl,
+};
 use crate::parser::ast::*;
-use crate::parser::{Parser, ast::Program};
+use crate::parser::Parser;
 use emitter::Emitter;
 use mangler::Mangler;
 use miette::Error;
@@ -9,30 +13,26 @@ mod mangler;
 
 #[derive(Debug)]
 pub struct Codegen<'de> {
-    program: Program<'de>,
+    program: AnnotatedProgram<'de>,
     emitter: Emitter,
     mangler: Mangler,
     label_counter: u64,
 }
 
 impl<'de> Codegen<'de> {
-    pub fn new(name: String, parser: Parser<'de>) -> Result<Self, Error> {
-        Ok(Self {
-            program: parser.parse()?,
-            emitter: Emitter::default(),
-            mangler: Mangler::new(name),
-            label_counter: 0,
-        })
-    }
-
-    /// Create a Codegen from an already-parsed program
-    pub fn from_program(name: String, program: Program<'de>) -> Result<Self, Error> {
+    /// Create a Codegen from an annotated program
+    pub fn from_annotated_program(name: String, program: AnnotatedProgram<'de>) -> Result<Self, Error> {
         Ok(Self {
             program,
             emitter: Emitter::default(),
             mangler: Mangler::new(name),
             label_counter: 0,
         })
+    }
+
+    /// Create a Codegen from an annotated program (alias for convenience)
+    pub fn from_program(name: String, program: AnnotatedProgram<'de>) -> Result<Self, Error> {
+        Self::from_annotated_program(name, program)
     }
 
     /// Generate a unique label
@@ -50,22 +50,13 @@ impl<'de> Codegen<'de> {
         let items = self.program.items.clone();
         for item in items {
             match item {
-                TopLevelItem::Function(func) => {
-                    // Mangle function with type information if available
+                AnnotatedTopLevelItem::Function(func) => {
+                    // Mangle function with type information from annotated AST
                     let param_types: Vec<Type> = func
                         .params
                         .iter()
-                        .map(|p| {
-                            p.type_annotation.clone().unwrap_or_else(|| {
-                                // Default to i32 if no annotation
-                                Type::Primitive(PrimitiveType::I32)
-                            })
-                        })
+                        .map(|p| p.type_annotation.clone())
                         .collect();
-                    let return_type = func.return_type.clone().unwrap_or_else(|| {
-                        // Default to nil if no return type
-                        Type::Primitive(PrimitiveType::Nil)
-                    });
                     let generics: Option<Vec<&str>> = if func.generics.is_empty() {
                         None
                     } else {
@@ -74,7 +65,7 @@ impl<'de> Codegen<'de> {
                     let label = self.mangler.mangle_function(
                         func.name.as_ref(),
                         &param_types,
-                        &return_type,
+                        &func.return_type,
                         generics.as_deref(),
                     );
                     // x86_64 / System V: export symbol (NASM syntax)
@@ -104,7 +95,7 @@ impl<'de> Codegen<'de> {
                     let mut locals: std::collections::HashMap<&str, i32> = std::collections::HashMap::new();
                     let mut stack_offset = 8; // Start at rbp - 8
                     for stmt in Self::get_statements(&func.body) {
-                        if let Stmt::VariableDecl(var) = stmt {
+                        if let AnnotatedStmt::VariableDecl(var) = stmt {
                             locals.insert(var.name.as_ref(), stack_offset);
                             stack_offset += 8; // Each local is 8 bytes (64-bit)
                         }
@@ -117,20 +108,10 @@ impl<'de> Codegen<'de> {
                     self.emitter.write_txt("leave");
                     self.emitter.write_txt("ret");
                 }
-                TopLevelItem::VariableDecl(var) => {
-                    // Infer type from value expression
-                    let var_type = Self::infer_type_from_expr(&var.value);
-                    let label = if let Some(ty) = &var.type_annotation {
-                        // Use explicit type annotation if available
-                        self.mangler.mangle_variable(var.name.as_ref(), ty)
-                    } else if let Some(ty) = &var_type {
-                        // Use inferred type
-                        self.mangler.mangle_variable(var.name.as_ref(), ty)
-                    } else {
-                        // Fallback to simple mangling
-                        self.mangler.mangle(var.name.as_ref())
-                    };
-                    match *var.value.clone() {
+                AnnotatedTopLevelItem::VariableDecl(var) => {
+                    // Use type from annotated AST
+                    let label = self.mangler.mangle_variable(var.name.as_ref(), &var.type_annotation);
+                    match var.value.expr {
                         Expr::Literal(Literal::String(ref s)) => {
                             // data symbol, align and export (NASM syntax)
                             self.emitter.write_dat(&format!(".global {}", label));
@@ -150,7 +131,7 @@ impl<'de> Codegen<'de> {
                         }
                     }
                 }
-                TopLevelItem::TypeDecl(_) => {
+                AnnotatedTopLevelItem::TypeDecl(_) => {
                     // TODO: emit type declarations when needed
                 }
             }
@@ -169,30 +150,19 @@ impl<'de> Codegen<'de> {
         }
     }
 
-    /// Infer type from an expression (simple inference for codegen)
-    fn infer_type_from_expr(expr: &Expr<'de>) -> Option<Type<'de>> {
-        match expr {
-            Expr::Literal(Literal::Number(_)) => Some(Type::Primitive(PrimitiveType::I32)),
-            Expr::Literal(Literal::String(_)) => Some(Type::Primitive(PrimitiveType::Str)),
-            Expr::Literal(Literal::Char(_)) => Some(Type::Primitive(PrimitiveType::Char)),
-            Expr::Literal(Literal::Boolean(_)) => Some(Type::Primitive(PrimitiveType::Bool)),
-            Expr::Literal(Literal::Nil) => Some(Type::Primitive(PrimitiveType::Nil)),
-            _ => None,
-        }
-    }
 
     fn generate_function_body_with_locals(
         &mut self,
-        func: &Function<'de>,
+        func: &AnnotatedFunction<'de>,
         params: &Vec<(&str, &str)>,
         locals: &std::collections::HashMap<&str, i32>,
     ) {
         // Only handle simple bodies for now: Single(expr) or Block with return
         match &func.body {
-            ExprList::Single(expr) => {
+            AnnotatedExprList::Single(expr) => {
                 self.emit_expr_to_rax_with_locals(expr, params, locals);
             }
-            ExprList::Block(stmts) => {
+            AnnotatedExprList::Block(stmts) => {
                 self.emit_block_to_rax_with_locals(stmts, params, locals);
             }
         }
@@ -201,20 +171,20 @@ impl<'de> Codegen<'de> {
     /// Emit a block of statements, returning the result in rax
     fn emit_block_to_rax_with_locals(
         &mut self,
-        stmts: &[Stmt<'de>],
+        stmts: &[AnnotatedStmt<'de>],
         params: &Vec<(&str, &str)>,
         locals: &std::collections::HashMap<&str, i32>,
     ) {
         for stmt in stmts {
             match stmt {
-                Stmt::Return(Some(expr)) => {
+                AnnotatedStmt::Return(Some(expr)) => {
                     self.emit_expr_to_rax_with_locals(expr, params, locals);
                     return;
                 }
-                Stmt::Expr(expr) => {
+                AnnotatedStmt::Expr(expr) => {
                     let _ = self.emit_expr_to_rax_with_locals(expr, params, locals);
                 }
-                Stmt::VariableDecl(var) => {
+                AnnotatedStmt::VariableDecl(var) => {
                     // Evaluate initializer
                     self.emit_expr_to_rax_with_locals(&var.value, params, locals);
                     // Store to stack location
@@ -222,7 +192,7 @@ impl<'de> Codegen<'de> {
                         self.emitter.write_txt(&format!("mov [rbp - {}], rax", offset));
                     }
                 }
-                Stmt::Return(None) => {
+                AnnotatedStmt::Return(None) => {
                     self.emitter.write_txt("mov rax, 0");
                     return;
                 }
@@ -233,44 +203,45 @@ impl<'de> Codegen<'de> {
     }
 
     /// Count local variables in a function body
-    fn count_local_variables(body: &ExprList<'de>) -> usize {
+    fn count_local_variables(body: &AnnotatedExprList<'de>) -> usize {
         match body {
-            ExprList::Single(_) => 0,
-            ExprList::Block(stmts) => {
+            AnnotatedExprList::Single(_) => 0,
+            AnnotatedExprList::Block(stmts) => {
                 stmts
                     .iter()
-                    .filter(|s| matches!(s, Stmt::VariableDecl(_)))
+                    .filter(|s| matches!(s, AnnotatedStmt::VariableDecl(_)))
                     .count()
             }
         }
     }
 
     /// Get all statements from a function body
-    fn get_statements<'a>(body: &'a ExprList<'de>) -> Vec<&'a Stmt<'de>> {
+    fn get_statements<'a>(body: &'a AnnotatedExprList<'de>) -> Vec<&'a AnnotatedStmt<'de>> {
         match body {
-            ExprList::Single(_) => vec![],
-            ExprList::Block(stmts) => stmts.iter().collect(),
+            AnnotatedExprList::Single(_) => vec![],
+            AnnotatedExprList::Block(stmts) => stmts.iter().collect(),
         }
     }
 
     /// Emit a block of statements (legacy version without locals)
-    fn emit_block_to_rax(&mut self, stmts: &[Stmt<'de>], params: &Vec<(&str, &str)>) {
+    fn emit_block_to_rax(&mut self, stmts: &[AnnotatedStmt<'de>], params: &Vec<(&str, &str)>) {
         let empty_locals = std::collections::HashMap::new();
         self.emit_block_to_rax_with_locals(stmts, params, &empty_locals);
     }
 
-    fn emit_expr_to_rax(&mut self, expr: &Expr<'de>, params: &Vec<(&str, &str)>) {
+    fn emit_expr_to_rax(&mut self, expr: &AnnotatedExpr<'de>, params: &Vec<(&str, &str)>) {
         let empty_locals = std::collections::HashMap::new();
         self.emit_expr_to_rax_with_locals(expr, params, &empty_locals);
     }
 
     fn emit_expr_to_rax_with_locals(
         &mut self,
-        expr: &Expr<'de>,
+        annotated_expr: &AnnotatedExpr<'de>,
         params: &Vec<(&str, &str)>,
         locals: &std::collections::HashMap<&str, i32>,
     ) {
-        match expr {
+        // Pattern match on the underlying expression
+        match &annotated_expr.expr {
             Expr::Literal(Literal::Number(n)) => {
                 self.emitter.write_txt(&format!("mov rax, {}", n));
             }
@@ -295,19 +266,29 @@ impl<'de> Codegen<'de> {
                     // It's a parameter
                     self.emitter.write_txt(&format!("mov rax, {}", reg));
                 } else {
-                    // It's a global variable
-                    let g = self.mangler.mangle(name.as_ref());
+                    // It's a global variable - use type information for better mangling
+                    let g = self.mangler.mangle_variable(name.as_ref(), &annotated_expr.ty);
                     // NASM syntax: use [rel symbol] for position-independent code
                     self.emitter
                         .write_txt(&format!("mov rax, [rel {}]", g));
                 }
             }
             Expr::Binary { left, op, right } => {
+                // left and right are Box<Expr>, need to create AnnotatedExpr wrappers
+                // Infer types for nested expressions
+                let left_ty = Self::infer_type_from_expr_simple(left)
+                    .unwrap_or_else(|| annotated_expr.ty.clone());
+                let right_ty = Self::infer_type_from_expr_simple(right)
+                    .unwrap_or_else(|| annotated_expr.ty.clone());
+                
+                let left_annotated = AnnotatedExpr::new(*left.clone(), left_ty);
+                let right_annotated = AnnotatedExpr::new(*right.clone(), right_ty);
+                
                 // Evaluate left into rax
-                self.emit_expr_to_rax_with_locals(left, params, locals);
+                self.emit_expr_to_rax_with_locals(&left_annotated, params, locals);
 
                     // Prepare right operand
-                    let right_op = match &**right {
+                    let right_op = match &right_annotated.expr {
                         Expr::Literal(Literal::Number(n)) => format!("{}", n),
                         Expr::Ident(n) => {
                             // Check if it's a local variable
@@ -316,12 +297,13 @@ impl<'de> Codegen<'de> {
                             } else if let Some((_, reg)) = params.iter().find(|(name, _)| name == &n.as_ref()) {
                                 (*reg).to_string()
                             } else {
-                                let g = self.mangler.mangle(n.as_ref());
+                                // Use type information for better mangling
+                                let g = self.mangler.mangle_variable(n.as_ref(), &right_annotated.ty);
                                 format!("[rel {}]", g)
                             }
                         }
                         _ => {
-                            self.emit_expr_to_rcx_with_locals(right, params, locals);
+                            self.emit_expr_to_rcx_with_locals(&right_annotated, params, locals);
                             "rcx".to_string()
                         }
                     };
@@ -402,8 +384,8 @@ impl<'de> Codegen<'de> {
                         self.emitter.write_txt(&format!("jz {}", end_label));
                         self.emitter.write_txt(&format!("jmp {}", check_right_label));
                         self.emitter.write_txt_label(&check_right_label);
-                        // Evaluate right operand to rcx
-                        self.emit_expr_to_rcx(right, params);
+                        // Evaluate right operand to rcx (right_annotated already created above)
+                        self.emit_expr_to_rcx_with_locals(&right_annotated, params, locals);
                         self.emitter.write_txt("test rcx, rcx");
                         self.emitter.write_txt("mov rax, 0");
                         self.emitter.write_txt(&format!("jz {}", end_label));
@@ -419,8 +401,8 @@ impl<'de> Codegen<'de> {
                         self.emitter.write_txt(&format!("jnz {}", end_label));
                         self.emitter.write_txt(&format!("jmp {}", check_right_label));
                         self.emitter.write_txt_label(&check_right_label);
-                        // Evaluate right operand to rcx
-                        self.emit_expr_to_rcx(right, params);
+                        // Evaluate right operand to rcx (right_annotated already created above)
+                        self.emit_expr_to_rcx_with_locals(&right_annotated, params, locals);
                         self.emitter.write_txt("test rcx, rcx");
                         self.emitter.write_txt("mov rax, 0");
                         self.emitter.write_txt(&format!("jz {}", end_label));
@@ -437,7 +419,16 @@ impl<'de> Codegen<'de> {
             }
             Expr::Unary { op, expr } => {
                 // Evaluate operand first
-                self.emit_expr_to_rax_with_locals(expr, params, locals);
+                // The expr here is Box<Expr>, but we need AnnotatedExpr
+                // Since we're in an AnnotatedExpr context, we can infer the operand type
+                // For negation, operand type is same as result type
+                // For logical not, operand should be bool, result is bool
+                let operand_ty = match op {
+                    UnaryOp::Neg => annotated_expr.ty.clone(), // Same type as result
+                    UnaryOp::Not => Type::Primitive(PrimitiveType::Bool),
+                };
+                let operand_annotated = AnnotatedExpr::new(*expr.clone(), operand_ty);
+                self.emit_expr_to_rax_with_locals(&operand_annotated, params, locals);
                 match op {
                     UnaryOp::Neg => {
                         // Negation: negate the value
@@ -453,18 +444,25 @@ impl<'de> Codegen<'de> {
             }
             Expr::Call { callee, args } => {
                 // Function call: System V ABI
-                // Save caller-saved registers if needed (rax, rcx, rdx, rsi, rdi, r8, r9, r10, r11)
-                // For now, we'll assume we can use r10, r11 as temporaries
+                // Note: callee and args are Expr, but we need to handle them
+                // For now, we'll create AnnotatedExpr wrappers
+                // TODO: The annotated AST should have AnnotatedCall with AnnotatedExpr
                 
                 // Evaluate arguments and place in System V parameter registers
                 let param_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
-                for (i, arg) in args.iter().take(6).enumerate() {
+                for (i, arg_expr) in args.iter().take(6).enumerate() {
+                    // Create AnnotatedExpr wrapper (type will be inferred from context)
+                    // For now, use a placeholder type
+                    let arg_annotated = AnnotatedExpr::new(
+                        arg_expr.clone(),
+                        Type::Primitive(PrimitiveType::I32), // Placeholder
+                    );
                     if i == 0 {
-                        self.emit_expr_to_rax_with_locals(arg, params, locals);
+                        self.emit_expr_to_rax_with_locals(&arg_annotated, params, locals);
                         self.emitter.write_txt(&format!("mov {}, rax", param_regs[i]));
                     } else {
                         // Use r10 as temporary for other arguments
-                        self.emit_expr_to_rax_with_locals(arg, params, locals);
+                        self.emit_expr_to_rax_with_locals(&arg_annotated, params, locals);
                         self.emitter.write_txt("mov r10, rax");
                         self.emitter.write_txt(&format!("mov {}, r10", param_regs[i]));
                     }
@@ -477,18 +475,28 @@ impl<'de> Codegen<'de> {
                 
                 // Call the function
                 if let Expr::Ident(name) = callee.as_ref() {
+                    // Use return type for better mangling if available
                     let func_label = self.mangler.mangle(name.as_ref());
                     self.emitter.write_txt(&format!("call {}", func_label));
                 } else {
                     // Indirect call - evaluate callee to rax, then call
-                    self.emit_expr_to_rax_with_locals(callee, params, locals);
+                    let callee_annotated = AnnotatedExpr::new(
+                        *callee.clone(),
+                        Type::Function { params: vec![] }, // Placeholder
+                    );
+                    self.emit_expr_to_rax_with_locals(&callee_annotated, params, locals);
                     self.emitter.write_txt("call rax");
                 }
                 // Return value is already in rax
             }
             Expr::Paren(expr) => {
                 // Parentheses: just evaluate inner expression
-                self.emit_expr_to_rax_with_locals(expr, params, locals);
+                // Create AnnotatedExpr wrapper
+                let inner_annotated = AnnotatedExpr::new(
+                    *expr.clone(),
+                    annotated_expr.ty.clone(), // Same type as outer
+                );
+                self.emit_expr_to_rax_with_locals(&inner_annotated, params, locals);
             }
             Expr::If {
                 condition,
@@ -497,8 +505,17 @@ impl<'de> Codegen<'de> {
                 else_block,
             } => {
                 // If/elif/else expression
+                // Note: These are Vec<Stmt>, not AnnotatedStmt
+                // We need to convert them or handle differently
+                // For now, we'll need to work with the unannotated structure
+                // TODO: The annotated AST should have AnnotatedIf with AnnotatedStmt
+                
                 // Evaluate condition
-                self.emit_expr_to_rax_with_locals(condition, params, locals);
+                let cond_annotated = AnnotatedExpr::new(
+                    *condition.clone(),
+                    Type::Primitive(PrimitiveType::Bool),
+                );
+                self.emit_expr_to_rax_with_locals(&cond_annotated, params, locals);
                 self.emitter.write_txt("test rax, rax");
                 
                 let end_label = self.generate_label("if_end");
@@ -507,8 +524,12 @@ impl<'de> Codegen<'de> {
                 // Jump to else/end if condition is false
                 self.emitter.write_txt(&format!("jz {}", next_label));
                 
-                // Then block
-                self.emit_block_to_rax_with_locals(then_block, params, locals);
+                // Then block - convert Stmt to AnnotatedStmt
+                let then_annotated: Vec<AnnotatedStmt> = then_block
+                    .iter()
+                    .map(|s| Self::stmt_to_annotated(s))
+                    .collect();
+                self.emit_block_to_rax_with_locals(&then_annotated, params, locals);
                 self.emitter.write_txt(&format!("jmp {}", end_label));
                 
                 // Elif blocks
@@ -517,19 +538,32 @@ impl<'de> Codegen<'de> {
                     next_label = self.generate_label("if_else");
                     
                     // Evaluate elif condition
-                    self.emit_expr_to_rax_with_locals(&elif_block.condition, params, locals);
+                    let elif_cond_annotated = AnnotatedExpr::new(
+                        *elif_block.condition.clone(),
+                        Type::Primitive(PrimitiveType::Bool),
+                    );
+                    self.emit_expr_to_rax_with_locals(&elif_cond_annotated, params, locals);
                     self.emitter.write_txt("test rax, rax");
                     self.emitter.write_txt(&format!("jz {}", next_label));
                     
                     // Elif body
-                    self.emit_block_to_rax_with_locals(&elif_block.body, params, locals);
+                    let elif_body_annotated: Vec<AnnotatedStmt> = elif_block
+                        .body
+                        .iter()
+                        .map(|s| Self::stmt_to_annotated(s))
+                        .collect();
+                    self.emit_block_to_rax_with_locals(&elif_body_annotated, params, locals);
                     self.emitter.write_txt(&format!("jmp {}", end_label));
                 }
                 
                 // Else block (if present)
                 if let Some(else_body) = else_block {
                     self.emitter.write_txt_label(&next_label);
-                    self.emit_block_to_rax_with_locals(else_body, params, locals);
+                    let else_body_annotated: Vec<AnnotatedStmt> = else_body
+                        .iter()
+                        .map(|s| Self::stmt_to_annotated(s))
+                        .collect();
+                    self.emit_block_to_rax_with_locals(&else_body_annotated, params, locals);
                 } else {
                     // No else: result is nil/0 if all conditions false
                     self.emitter.write_txt_label(&next_label);
@@ -540,24 +574,24 @@ impl<'de> Codegen<'de> {
             }
             _ => {
                 self.emitter
-                    .write_comment(&format!("unhandled expr: {:?}", expr));
+                    .write_comment(&format!("unhandled expr: {:?}", annotated_expr.expr));
                 self.emitter.write_txt("mov rax, 0");
             }
         }
     }
 
-    fn emit_expr_to_rcx(&mut self, expr: &Expr<'de>, params: &Vec<(&str, &str)>) {
+    fn emit_expr_to_rcx(&mut self, expr: &AnnotatedExpr<'de>, params: &Vec<(&str, &str)>) {
         let empty_locals = std::collections::HashMap::new();
         self.emit_expr_to_rcx_with_locals(expr, params, &empty_locals);
     }
 
     fn emit_expr_to_rcx_with_locals(
         &mut self,
-        expr: &Expr<'de>,
+        annotated_expr: &AnnotatedExpr<'de>,
         params: &Vec<(&str, &str)>,
         locals: &std::collections::HashMap<&str, i32>,
     ) {
-        match expr {
+        match &annotated_expr.expr {
             Expr::Literal(Literal::Number(n)) => {
                 self.emitter.write_txt(&format!("mov rcx, {}", n));
             }
@@ -568,16 +602,58 @@ impl<'de> Codegen<'de> {
                 } else if let Some((_, reg)) = params.iter().find(|(n, _)| n == &name.as_ref()) {
                     self.emitter.write_txt(&format!("mov rcx, {}", reg));
                 } else {
-                    let g = self.mangler.mangle(name.as_ref());
+                    // Use type information for better mangling
+                    let g = self.mangler.mangle_variable(name.as_ref(), &annotated_expr.ty);
                     // NASM syntax: use [rel symbol] for position-independent code
                     self.emitter
                         .write_txt(&format!("mov rcx, [rel {}]", g));
                 }
             }
             _ => {
-                self.emit_expr_to_rax_with_locals(expr, params, locals);
+                self.emit_expr_to_rax_with_locals(annotated_expr, params, locals);
                 self.emitter.write_txt("mov rcx, rax");
             }
+        }
+    }
+
+    /// Convert a Stmt to AnnotatedStmt (helper for unannotated structures)
+    fn stmt_to_annotated(stmt: &Stmt<'de>) -> AnnotatedStmt<'de> {
+        match stmt {
+            Stmt::Return(Some(expr)) => {
+                // Infer type from expression
+                let ty = Self::infer_type_from_expr_simple(expr)
+                    .unwrap_or_else(|| Type::Primitive(PrimitiveType::Nil));
+                AnnotatedStmt::Return(Some(Box::new(AnnotatedExpr::new(*expr.clone(), ty))))
+            }
+            Stmt::Return(None) => AnnotatedStmt::Return(None),
+            Stmt::Expr(expr) => {
+                let ty = Self::infer_type_from_expr_simple(expr)
+                    .unwrap_or_else(|| Type::Primitive(PrimitiveType::Nil));
+                AnnotatedStmt::Expr(Box::new(AnnotatedExpr::new(*expr.clone(), ty)))
+            }
+            Stmt::VariableDecl(var) => {
+                let var_ty = var.type_annotation.clone().or_else(|| {
+                    Self::infer_type_from_expr_simple(&var.value)
+                }).unwrap_or_else(|| Type::Primitive(PrimitiveType::I32));
+                let value_annotated = AnnotatedExpr::new(*var.value.clone(), var_ty.clone());
+                AnnotatedStmt::VariableDecl(AnnotatedVariableDecl {
+                    name: var.name.clone(),
+                    type_annotation: var_ty,
+                    value: Box::new(value_annotated),
+                })
+            }
+        }
+    }
+
+    /// Simple type inference for unannotated expressions (used as fallback)
+    fn infer_type_from_expr_simple(expr: &Expr<'de>) -> Option<Type<'de>> {
+        match expr {
+            Expr::Literal(Literal::Number(_)) => Some(Type::Primitive(PrimitiveType::I32)),
+            Expr::Literal(Literal::String(_)) => Some(Type::Primitive(PrimitiveType::Str)),
+            Expr::Literal(Literal::Char(_)) => Some(Type::Primitive(PrimitiveType::Char)),
+            Expr::Literal(Literal::Boolean(_)) => Some(Type::Primitive(PrimitiveType::Bool)),
+            Expr::Literal(Literal::Nil) => Some(Type::Primitive(PrimitiveType::Nil)),
+            _ => None,
         }
     }
 

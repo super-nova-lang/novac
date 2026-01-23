@@ -558,4 +558,7 @@ pub fn analyze<'de>(
 }
 
 // Re-export annotated types for convenience
-pub use annotated::*;
+pub use annotated::{
+    AnnotatedExpr, AnnotatedExprList, AnnotatedFunction, AnnotatedProgram,
+    AnnotatedStmt, AnnotatedTopLevelItem, AnnotatedVariableDecl,
+};

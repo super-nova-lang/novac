@@ -89,11 +89,11 @@ fn main() -> miette::Result<()> {
             let program = parser.parse()?;
             
             // Analyze (type checking and inference)
-            analyzer::analyze(program.clone(), &file_contents)
+            let annotated_program = analyzer::analyze(program, &file_contents)
                 .wrap_err("Type analysis failed")?;
             
-            // Generate code
-            let cg = codegen::Codegen::from_program("main".to_string(), program)?;
+            // Generate code from annotated program
+            let cg = codegen::Codegen::from_annotated_program("main".to_string(), annotated_program)?;
             let generated = cg.emit();
             info!("Generated: {}", generated);
         }
