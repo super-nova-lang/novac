@@ -12,6 +12,7 @@ pub struct Codegen<'de> {
     program: Program<'de>,
     emitter: Emitter,
     mangler: Mangler,
+    label_counter: u64,
 }
 
 impl<'de> Codegen<'de> {
@@ -20,6 +21,7 @@ impl<'de> Codegen<'de> {
             program: parser.parse()?,
             emitter: Emitter::default(),
             mangler: Mangler::new(name),
+            label_counter: 0,
         })
     }
 
@@ -29,7 +31,15 @@ impl<'de> Codegen<'de> {
             program,
             emitter: Emitter::default(),
             mangler: Mangler::new(name),
+            label_counter: 0,
         })
+    }
+
+    /// Generate a unique label
+    fn generate_label(&mut self, prefix: &str) -> String {
+        let label = format!("{}_{}", prefix, self.label_counter);
+        self.label_counter += 1;
+        label
     }
 
     fn codegen(&mut self) {
@@ -42,17 +52,22 @@ impl<'de> Codegen<'de> {
             match item {
                 TopLevelItem::Function(func) => {
                     let label = self.mangler.mangle(func.name.as_ref());
-                    // x86_64 / System V: export symbol and mark as function
-                    self.emitter.write_txt(&format!(".globl {}", label));
-                    self.emitter
-                        .write_txt(&format!(".type {}, @function", label));
+                    // x86_64 / System V: export symbol (NASM syntax)
+                    self.emitter.write_txt(&format!(".global {}", label));
                     self.emitter.write_txt_label(&label);
                     self.emitter
                         .write_comment(&format!("function {}", func.name));
                     // System V prologue
                     self.emitter.write_txt("push rbp");
                     self.emitter.write_txt("mov rbp, rsp");
-                    // align stack if needed later
+                    
+                    // Count local variables to allocate stack space
+                    let local_count = Self::count_local_variables(&func.body);
+                    if local_count > 0 {
+                        // Allocate stack space for locals (8 bytes each, aligned to 16 bytes)
+                        let stack_size = ((local_count * 8 + 15) / 16) * 16;
+                        self.emitter.write_txt(&format!("sub rsp, {}", stack_size));
+                    }
 
                     // Parameter register mapping
                     let mut param_regs: Vec<(&str, &str)> = Vec::new();
@@ -60,30 +75,37 @@ impl<'de> Codegen<'de> {
                         param_regs.push((p.name.as_ref(), Self::reg_for_param(i)));
                     }
 
+                    // Create local variable map (stack offsets)
+                    let mut locals: std::collections::HashMap<&str, i32> = std::collections::HashMap::new();
+                    let mut stack_offset = 8; // Start at rbp - 8
+                    for stmt in Self::get_statements(&func.body) {
+                        if let Stmt::VariableDecl(var) = stmt {
+                            locals.insert(var.name.as_ref(), stack_offset);
+                            stack_offset += 8; // Each local is 8 bytes (64-bit)
+                        }
+                    }
+
                     // Lower the function body into instructions
-                    self.generate_function_body(&func, &param_regs);
+                    self.generate_function_body_with_locals(&func, &param_regs, &locals);
 
                     // System V epilogue
                     self.emitter.write_txt("leave");
                     self.emitter.write_txt("ret");
-                    // size directive
-                    self.emitter
-                        .write_txt(&format!(".size {}, .-{}", label, label));
                 }
                 TopLevelItem::VariableDecl(var) => {
                     let label = self.mangler.mangle(var.name.as_ref());
                     match *var.value.clone() {
                         Expr::Literal(Literal::String(ref s)) => {
-                            // data symbol, align and export
-                            self.emitter.write_dat(&format!(".globl {}", label));
-                            self.emitter.write_dat(&format!(".align 8"));
+                            // data symbol, align and export (NASM syntax)
+                            self.emitter.write_dat(&format!(".global {}", label));
+                            self.emitter.write_dat(&format!("align 8"));
                             self.emitter.emit_data_string(&label, s.as_ref());
                         }
                         Expr::Literal(Literal::Number(n)) => {
-                            self.emitter.write_dat(&format!(".globl {}", label));
-                            self.emitter.write_dat(&format!(".align 8"));
+                            self.emitter.write_dat(&format!(".global {}", label));
+                            self.emitter.write_dat(&format!("align 8"));
                             self.emitter.write_dat_label(&label);
-                            self.emitter.write_dat(&format!(".quad {}", n));
+                            self.emitter.write_dat(&format!("dq {}", n));
                         }
                         _ => {
                             // fallback: emit label and a comment placeholder
@@ -111,75 +133,157 @@ impl<'de> Codegen<'de> {
         }
     }
 
-    fn generate_function_body(&mut self, func: &Function<'de>, params: &Vec<(&str, &str)>) {
+    fn generate_function_body_with_locals(
+        &mut self,
+        func: &Function<'de>,
+        params: &Vec<(&str, &str)>,
+        locals: &std::collections::HashMap<&str, i32>,
+    ) {
         // Only handle simple bodies for now: Single(expr) or Block with return
         match &func.body {
             ExprList::Single(expr) => {
-                self.emit_expr_to_rax(expr, params);
+                self.emit_expr_to_rax_with_locals(expr, params, locals);
             }
             ExprList::Block(stmts) => {
-                for stmt in stmts {
-                    match stmt {
-                        Stmt::Return(Some(expr)) => {
-                            self.emit_expr_to_rax(expr, params);
-                            break;
-                        }
-                        Stmt::Expr(expr) => {
-                            let _ = self.emit_expr_to_rax(expr, params);
-                        }
-                        Stmt::VariableDecl(_) => {
-                            // TODO: support locals later
-                        }
-                        Stmt::Return(None) => {
-                            self.emitter.write_txt("mov rax, 0");
-                            break;
-                        }
-                    }
-                }
+                self.emit_block_to_rax_with_locals(stmts, params, locals);
             }
         }
     }
 
+    /// Emit a block of statements, returning the result in rax
+    fn emit_block_to_rax_with_locals(
+        &mut self,
+        stmts: &[Stmt<'de>],
+        params: &Vec<(&str, &str)>,
+        locals: &std::collections::HashMap<&str, i32>,
+    ) {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Return(Some(expr)) => {
+                    self.emit_expr_to_rax_with_locals(expr, params, locals);
+                    return;
+                }
+                Stmt::Expr(expr) => {
+                    let _ = self.emit_expr_to_rax_with_locals(expr, params, locals);
+                }
+                Stmt::VariableDecl(var) => {
+                    // Evaluate initializer
+                    self.emit_expr_to_rax_with_locals(&var.value, params, locals);
+                    // Store to stack location
+                    if let Some(&offset) = locals.get(var.name.as_ref()) {
+                        self.emitter.write_txt(&format!("mov [rbp - {}], rax", offset));
+                    }
+                }
+                Stmt::Return(None) => {
+                    self.emitter.write_txt("mov rax, 0");
+                    return;
+                }
+            }
+        }
+        // If no return statement, result is nil/0
+        self.emitter.write_txt("mov rax, 0");
+    }
+
+    /// Count local variables in a function body
+    fn count_local_variables(body: &ExprList<'de>) -> usize {
+        match body {
+            ExprList::Single(_) => 0,
+            ExprList::Block(stmts) => {
+                stmts
+                    .iter()
+                    .filter(|s| matches!(s, Stmt::VariableDecl(_)))
+                    .count()
+            }
+        }
+    }
+
+    /// Get all statements from a function body
+    fn get_statements<'a>(body: &'a ExprList<'de>) -> Vec<&'a Stmt<'de>> {
+        match body {
+            ExprList::Single(_) => vec![],
+            ExprList::Block(stmts) => stmts.iter().collect(),
+        }
+    }
+
+    /// Emit a block of statements (legacy version without locals)
+    fn emit_block_to_rax(&mut self, stmts: &[Stmt<'de>], params: &Vec<(&str, &str)>) {
+        let empty_locals = std::collections::HashMap::new();
+        self.emit_block_to_rax_with_locals(stmts, params, &empty_locals);
+    }
+
     fn emit_expr_to_rax(&mut self, expr: &Expr<'de>, params: &Vec<(&str, &str)>) {
+        let empty_locals = std::collections::HashMap::new();
+        self.emit_expr_to_rax_with_locals(expr, params, &empty_locals);
+    }
+
+    fn emit_expr_to_rax_with_locals(
+        &mut self,
+        expr: &Expr<'de>,
+        params: &Vec<(&str, &str)>,
+        locals: &std::collections::HashMap<&str, i32>,
+    ) {
         match expr {
             Expr::Literal(Literal::Number(n)) => {
                 self.emitter.write_txt(&format!("mov rax, {}", n));
             }
+            Expr::Literal(Literal::Boolean(b)) => {
+                if *b {
+                    self.emitter.write_txt("mov rax, 1");
+                } else {
+                    self.emitter.write_txt("mov rax, 0");
+                }
+            }
+            Expr::Literal(Literal::Char(c)) => {
+                self.emitter.write_txt(&format!("mov rax, {}", *c as u64));
+            }
+            Expr::Literal(Literal::Nil) => {
+                self.emitter.write_txt("mov rax, 0");
+            }
             Expr::Ident(name) => {
-                if let Some((_, reg)) = params.iter().find(|(n, _)| n == &name.as_ref()) {
+                // Check if it's a local variable
+                if let Some(&offset) = locals.get(name.as_ref()) {
+                    self.emitter.write_txt(&format!("mov rax, [rbp - {}]", offset));
+                } else if let Some((_, reg)) = params.iter().find(|(n, _)| n == &name.as_ref()) {
+                    // It's a parameter
                     self.emitter.write_txt(&format!("mov rax, {}", reg));
                 } else {
+                    // It's a global variable
                     let g = self.mangler.mangle(name.as_ref());
+                    // NASM syntax: use [rel symbol] for position-independent code
                     self.emitter
-                        .write_txt(&format!("mov rax, QWORD PTR [rel {}]", g));
+                        .write_txt(&format!("mov rax, [rel {}]", g));
                 }
             }
             Expr::Binary { left, op, right } => {
                 // Evaluate left into rax
-                self.emit_expr_to_rax(left, params);
+                self.emit_expr_to_rax_with_locals(left, params, locals);
 
-                // Prepare right operand
-                let right_op = match &**right {
-                    Expr::Literal(Literal::Number(n)) => format!("{}", n),
-                    Expr::Ident(n) => {
-                        if let Some((_, reg)) = params.iter().find(|(name, _)| name == &n.as_ref())
-                        {
-                            (*reg).to_string()
-                        } else {
-                            self.mangler.mangle(n.as_ref())
+                    // Prepare right operand
+                    let right_op = match &**right {
+                        Expr::Literal(Literal::Number(n)) => format!("{}", n),
+                        Expr::Ident(n) => {
+                            // Check if it's a local variable
+                            if let Some(&offset) = locals.get(n.as_ref()) {
+                                format!("[rbp - {}]", offset)
+                            } else if let Some((_, reg)) = params.iter().find(|(name, _)| name == &n.as_ref()) {
+                                (*reg).to_string()
+                            } else {
+                                let g = self.mangler.mangle(n.as_ref());
+                                format!("[rel {}]", g)
+                            }
                         }
-                    }
-                    _ => {
-                        self.emit_expr_to_rcx(right, params);
-                        "rcx".to_string()
-                    }
-                };
+                        _ => {
+                            self.emit_expr_to_rcx_with_locals(right, params, locals);
+                            "rcx".to_string()
+                        }
+                    };
 
                 match op {
                     BinOp::Add => self.emitter.write_txt(&format!("add rax, {}", right_op)),
                     BinOp::Sub => self.emitter.write_txt(&format!("sub rax, {}", right_op)),
                     BinOp::Mul => self.emitter.write_txt(&format!("imul rax, {}", right_op)),
                     BinOp::Div => {
+                        // Signed division: sign-extend rax into rdx:rax, then divide
                         self.emitter.write_txt("cqo");
                         if right_op.chars().all(|c| c.is_ascii_digit()) {
                             self.emitter.write_txt(&format!("mov rcx, {}", right_op));
@@ -188,11 +292,203 @@ impl<'de> Codegen<'de> {
                             self.emitter.write_txt(&format!("idiv {}", right_op));
                         }
                     }
-                    _ => {
+                    BinOp::Rem => {
+                        // Modulo: same as division, but remainder is in rdx
+                        self.emitter.write_txt("cqo");
+                        if right_op.chars().all(|c| c.is_ascii_digit()) {
+                            self.emitter.write_txt(&format!("mov rcx, {}", right_op));
+                            self.emitter.write_txt("idiv rcx");
+                        } else {
+                            self.emitter.write_txt(&format!("idiv {}", right_op));
+                        }
+                        // Move remainder from rdx to rax
+                        self.emitter.write_txt("mov rax, rdx");
+                    }
+                    BinOp::Pow => {
+                        // Exponentiation: for now, use a simple iterative approach
+                        // TODO: optimize for constant powers
                         self.emitter
-                            .write_comment(&format!("unhandled op: {:?}", op));
+                            .write_comment("exponentiation not fully implemented");
+                        // Placeholder: just multiply (only works for power of 1)
+                        self.emitter.write_txt("mov rax, 1");
+                    }
+                    // Comparison operations
+                    BinOp::Eq => {
+                        self.emitter.write_txt(&format!("cmp rax, {}", right_op));
+                        self.emitter.write_txt("sete al");
+                        self.emitter.write_txt("movzx rax, al");
+                    }
+                    BinOp::Ne => {
+                        self.emitter.write_txt(&format!("cmp rax, {}", right_op));
+                        self.emitter.write_txt("setne al");
+                        self.emitter.write_txt("movzx rax, al");
+                    }
+                    BinOp::Lt => {
+                        self.emitter.write_txt(&format!("cmp rax, {}", right_op));
+                        self.emitter.write_txt("setl al");
+                        self.emitter.write_txt("movzx rax, al");
+                    }
+                    BinOp::Gt => {
+                        self.emitter.write_txt(&format!("cmp rax, {}", right_op));
+                        self.emitter.write_txt("setg al");
+                        self.emitter.write_txt("movzx rax, al");
+                    }
+                    BinOp::Le => {
+                        self.emitter.write_txt(&format!("cmp rax, {}", right_op));
+                        self.emitter.write_txt("setle al");
+                        self.emitter.write_txt("movzx rax, al");
+                    }
+                    BinOp::Ge => {
+                        self.emitter.write_txt(&format!("cmp rax, {}", right_op));
+                        self.emitter.write_txt("setge al");
+                        self.emitter.write_txt("movzx rax, al");
+                    }
+                    // Logical operations
+                    BinOp::And => {
+                        // Logical AND: both operands must be non-zero
+                        // Test left operand (already in rax)
+                        self.emitter.write_txt("test rax, rax");
+                        // If left is zero, result is zero, else check right
+                        let end_label = self.generate_label("and_end");
+                        let check_right_label = self.generate_label("and_check_right");
+                        self.emitter.write_txt(&format!("jz {}", end_label));
+                        self.emitter.write_txt(&format!("jmp {}", check_right_label));
+                        self.emitter.write_txt_label(&check_right_label);
+                        // Evaluate right operand to rcx
+                        self.emit_expr_to_rcx(right, params);
+                        self.emitter.write_txt("test rcx, rcx");
+                        self.emitter.write_txt("mov rax, 0");
+                        self.emitter.write_txt(&format!("jz {}", end_label));
+                        self.emitter.write_txt("mov rax, 1");
+                        self.emitter.write_txt_label(&end_label);
+                    }
+                    BinOp::Or => {
+                        // Logical OR: at least one operand is non-zero
+                        // Test left operand (already in rax)
+                        self.emitter.write_txt("test rax, rax");
+                        let end_label = self.generate_label("or_end");
+                        let check_right_label = self.generate_label("or_check_right");
+                        self.emitter.write_txt(&format!("jnz {}", end_label));
+                        self.emitter.write_txt(&format!("jmp {}", check_right_label));
+                        self.emitter.write_txt_label(&check_right_label);
+                        // Evaluate right operand to rcx
+                        self.emit_expr_to_rcx(right, params);
+                        self.emitter.write_txt("test rcx, rcx");
+                        self.emitter.write_txt("mov rax, 0");
+                        self.emitter.write_txt(&format!("jz {}", end_label));
+                        self.emitter.write_txt("mov rax, 1");
+                        self.emitter.write_txt_label(&end_label);
+                    }
+                    BinOp::Concat => {
+                        // String concatenation: defer for now
+                        self.emitter
+                            .write_comment("string concatenation not implemented");
+                        self.emitter.write_txt("mov rax, 0");
                     }
                 }
+            }
+            Expr::Unary { op, expr } => {
+                // Evaluate operand first
+                self.emit_expr_to_rax_with_locals(expr, params, locals);
+                match op {
+                    UnaryOp::Neg => {
+                        // Negation: negate the value
+                        self.emitter.write_txt("neg rax");
+                    }
+                    UnaryOp::Not => {
+                        // Logical NOT: 0 -> 1, non-zero -> 0
+                        self.emitter.write_txt("test rax, rax");
+                        self.emitter.write_txt("sete al");
+                        self.emitter.write_txt("movzx rax, al");
+                    }
+                }
+            }
+            Expr::Call { callee, args } => {
+                // Function call: System V ABI
+                // Save caller-saved registers if needed (rax, rcx, rdx, rsi, rdi, r8, r9, r10, r11)
+                // For now, we'll assume we can use r10, r11 as temporaries
+                
+                // Evaluate arguments and place in System V parameter registers
+                let param_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
+                for (i, arg) in args.iter().take(6).enumerate() {
+                    if i == 0 {
+                        self.emit_expr_to_rax_with_locals(arg, params, locals);
+                        self.emitter.write_txt(&format!("mov {}, rax", param_regs[i]));
+                    } else {
+                        // Use r10 as temporary for other arguments
+                        self.emit_expr_to_rax_with_locals(arg, params, locals);
+                        self.emitter.write_txt("mov r10, rax");
+                        self.emitter.write_txt(&format!("mov {}, r10", param_regs[i]));
+                    }
+                }
+                
+                // More than 6 arguments would need stack, but we'll handle that later
+                if args.len() > 6 {
+                    self.emitter.write_comment("more than 6 arguments not yet supported");
+                }
+                
+                // Call the function
+                if let Expr::Ident(name) = callee.as_ref() {
+                    let func_label = self.mangler.mangle(name.as_ref());
+                    self.emitter.write_txt(&format!("call {}", func_label));
+                } else {
+                    // Indirect call - evaluate callee to rax, then call
+                    self.emit_expr_to_rax_with_locals(callee, params, locals);
+                    self.emitter.write_txt("call rax");
+                }
+                // Return value is already in rax
+            }
+            Expr::Paren(expr) => {
+                // Parentheses: just evaluate inner expression
+                self.emit_expr_to_rax_with_locals(expr, params, locals);
+            }
+            Expr::If {
+                condition,
+                then_block,
+                elif_blocks,
+                else_block,
+            } => {
+                // If/elif/else expression
+                // Evaluate condition
+                self.emit_expr_to_rax_with_locals(condition, params, locals);
+                self.emitter.write_txt("test rax, rax");
+                
+                let end_label = self.generate_label("if_end");
+                let mut next_label = self.generate_label("if_else");
+                
+                // Jump to else/end if condition is false
+                self.emitter.write_txt(&format!("jz {}", next_label));
+                
+                // Then block
+                self.emit_block_to_rax_with_locals(then_block, params, locals);
+                self.emitter.write_txt(&format!("jmp {}", end_label));
+                
+                // Elif blocks
+                for elif_block in elif_blocks {
+                    self.emitter.write_txt_label(&next_label);
+                    next_label = self.generate_label("if_else");
+                    
+                    // Evaluate elif condition
+                    self.emit_expr_to_rax_with_locals(&elif_block.condition, params, locals);
+                    self.emitter.write_txt("test rax, rax");
+                    self.emitter.write_txt(&format!("jz {}", next_label));
+                    
+                    // Elif body
+                    self.emit_block_to_rax_with_locals(&elif_block.body, params, locals);
+                    self.emitter.write_txt(&format!("jmp {}", end_label));
+                }
+                
+                // Else block (if present)
+                if let Some(else_body) = else_block {
+                    self.emitter.write_txt_label(&next_label);
+                    self.emit_block_to_rax_with_locals(else_body, params, locals);
+                } else {
+                    // No else: result is nil/0 if all conditions false
+                    self.emitter.write_txt_label(&next_label);
+                    self.emitter.write_txt("mov rax, 0");
+                }
+                
+                self.emitter.write_txt_label(&end_label);
             }
             _ => {
                 self.emitter
@@ -203,21 +499,35 @@ impl<'de> Codegen<'de> {
     }
 
     fn emit_expr_to_rcx(&mut self, expr: &Expr<'de>, params: &Vec<(&str, &str)>) {
+        let empty_locals = std::collections::HashMap::new();
+        self.emit_expr_to_rcx_with_locals(expr, params, &empty_locals);
+    }
+
+    fn emit_expr_to_rcx_with_locals(
+        &mut self,
+        expr: &Expr<'de>,
+        params: &Vec<(&str, &str)>,
+        locals: &std::collections::HashMap<&str, i32>,
+    ) {
         match expr {
             Expr::Literal(Literal::Number(n)) => {
                 self.emitter.write_txt(&format!("mov rcx, {}", n));
             }
             Expr::Ident(name) => {
-                if let Some((_, reg)) = params.iter().find(|(n, _)| n == &name.as_ref()) {
+                // Check if it's a local variable
+                if let Some(&offset) = locals.get(name.as_ref()) {
+                    self.emitter.write_txt(&format!("mov rcx, [rbp - {}]", offset));
+                } else if let Some((_, reg)) = params.iter().find(|(n, _)| n == &name.as_ref()) {
                     self.emitter.write_txt(&format!("mov rcx, {}", reg));
                 } else {
                     let g = self.mangler.mangle(name.as_ref());
+                    // NASM syntax: use [rel symbol] for position-independent code
                     self.emitter
-                        .write_txt(&format!("mov rcx, QWORD PTR [rel {}]", g));
+                        .write_txt(&format!("mov rcx, [rel {}]", g));
                 }
             }
             _ => {
-                self.emit_expr_to_rax(expr, params);
+                self.emit_expr_to_rax_with_locals(expr, params, locals);
                 self.emitter.write_txt("mov rcx, rax");
             }
         }
