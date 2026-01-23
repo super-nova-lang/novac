@@ -100,6 +100,9 @@ fn main() -> miette::Result<()> {
         Command::Build { filepath } => {
             build_command(&filepath)?;
         }
+        Command::Clean => {
+            clean_command()?;
+        }
     }
     Ok(())
 }
@@ -120,6 +123,7 @@ enum Command {
     Parse { filepath: PathBuf },
     Codegen { filepath: PathBuf },
     Build { filepath: PathBuf },
+    Clean,
 }
 
 fn get_env_filter(debug: bool) -> EnvFilter {
@@ -213,6 +217,29 @@ fn build_command(filepath: &Path) -> miette::Result<()> {
         return Err(miette::miette!("Linking failed:\n{}", stderr));
     }
     info!("Built executable: {}", exe_path.display());
+
+    Ok(())
+}
+
+fn clean_command() -> miette::Result<()> {
+    let emit_dir = PathBuf::from("build/emit");
+    let debug_dir = PathBuf::from("build/debug");
+
+    // Remove emit directory if it exists
+    if emit_dir.exists() {
+        fs::remove_dir_all(&emit_dir)
+            .into_diagnostic()
+            .wrap_err_with(|| format!("Failed to remove directory: {}", emit_dir.display()))?;
+        info!("Removed directory: {}", emit_dir.display());
+    }
+
+    // Remove debug directory if it exists
+    if debug_dir.exists() {
+        fs::remove_dir_all(&debug_dir)
+            .into_diagnostic()
+            .wrap_err_with(|| format!("Failed to remove directory: {}", debug_dir.display()))?;
+        info!("Removed directory: {}", debug_dir.display());
+    }
 
     Ok(())
 }
