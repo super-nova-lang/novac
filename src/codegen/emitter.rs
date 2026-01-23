@@ -60,9 +60,32 @@ impl Emitter {
 
     // Data helpers
     pub fn emit_data_string(&mut self, label: &str, value: &str) {
-        let esc = escape_asciz(value);
+        // NASM syntax: use db for null-terminated strings
+        // NASM doesn't interpret \n in double quotes, so we need to handle newlines specially
         self.write_dat_label(label);
-        self.write_dat(&format!(".asciz \"{}\"", esc));
+
+        // Split by newlines and emit each part with a newline byte (10)
+        let parts: Vec<&str> = value.split('\n').collect();
+        if parts.len() == 1 {
+            // No newlines, just emit the string normally
+            let esc = escape_asciz(value);
+            self.write_dat(&format!("db \"{}\", 0", esc));
+        } else {
+            // Has newlines - emit parts separated by 10 (newline byte)
+            let mut parts_iter = parts.iter();
+            if let Some(first) = parts_iter.next() {
+                let esc = escape_asciz(first);
+                self.write_dat(&format!("db \"{}\"", esc));
+            }
+            for part in parts_iter {
+                self.write_dat("db 10"); // Newline byte
+                if !part.is_empty() {
+                    let esc = escape_asciz(part);
+                    self.write_dat(&format!("db \"{}\"", esc));
+                }
+            }
+            self.write_dat("db 0"); // Null terminator
+        }
     }
 
     pub fn reserve_bss(&mut self, label: &str, size: usize) {
@@ -112,9 +135,8 @@ impl Emitter {
 }
 
 fn escape_asciz(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
+    // Escape backslashes and quotes, but NOT newlines (handled separately in emit_data_string)
+    s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 impl Default for Emitter {

@@ -939,7 +939,17 @@ impl<'de> Parser<'de> {
         trace!("Entering");
         let mut args = Vec::new();
         while !self.check(TokenKind::RightParen) {
-            args.push(self.parse_expr()?);
+            // Parse an expression, but if it's a tuple, unpack it into separate arguments
+            let expr = self.parse_expr()?;
+            match expr {
+                Expr::Tuple(tuple_exprs) => {
+                    // Unpack tuple into separate arguments
+                    args.extend(tuple_exprs);
+                }
+                _ => {
+                    args.push(expr);
+                }
+            }
             if !self.consume(TokenKind::Comma) {
                 break;
             }

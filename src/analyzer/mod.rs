@@ -26,6 +26,11 @@ impl<'de> Analyzer<'de> {
         }
     }
 
+    /// Wrap an error with source code for better diagnostics
+    fn wrap_error_with_source(&self, err: Error) -> Error {
+        err.with_source_code(self.source.to_string())
+    }
+
     /// Analyze a program and return an annotated AST
     pub fn analyze(&mut self, program: Program<'de>) -> Result<AnnotatedProgram<'de>, Error> {
         let mut ctx = TypeContext::new();
@@ -84,7 +89,7 @@ impl<'de> Analyzer<'de> {
         for param in &func.params {
             let param_type = if let Some(ty) = &param.type_annotation {
                 // Resolve the type
-                resolve_type(ty, &func_ctx, self.dummy_span())?
+                resolve_type(ty, &func_ctx, self.span_for_type(ty))?
             } else {
                 // No type annotation - try to infer from usage in function body
                 // For now, we'll use a placeholder type and let the body inference handle it
@@ -106,7 +111,7 @@ impl<'de> Analyzer<'de> {
         // Determine return type
         let return_type = if let Some(declared_return) = &func.return_type {
             // Function has explicit return type
-            resolve_type(declared_return, &func_ctx, self.dummy_span())?
+            resolve_type(declared_return, &func_ctx, self.span_for_type(declared_return))?
         } else {
             // Infer return type from body
             self.infer_expr_list_type(&func.body, &func_ctx)?
@@ -136,16 +141,18 @@ impl<'de> Analyzer<'de> {
 
         let var_type = if let Some(annotation) = &var.type_annotation {
             // Variable has explicit type annotation
-            let expected_type = resolve_type(annotation, ctx, self.dummy_span())?;
+            let expected_type = resolve_type(annotation, ctx, self.span_for_type(annotation))?;
             // Check compatibility
             if !types_compatible(&expected_type, value_type, ctx) {
-                return Err(TypeMismatchError {
-                    expected: format_type(&expected_type),
-                    actual: format_type(value_type),
-                    expected_span: self.dummy_span(),
-                    actual_span: self.dummy_span(),
-                }
-                .into());
+                return Err(self.wrap_error_with_source(
+                    TypeMismatchError {
+                        expected: format_type(&expected_type),
+                        actual: format_type(value_type),
+                        expected_span: self.span_for_type(annotation),
+                        actual_span: self.span_for_expr(&var.value),
+                    }
+                    .into(),
+                ));
             }
             expected_type
         } else {
@@ -181,15 +188,24 @@ impl<'de> Analyzer<'de> {
             }
             Expr::Literal(lit) => self.infer_literal_type(lit),
             Expr::Ident(name) => {
-                ctx.lookup_variable(name.as_ref())
-                    .ok_or_else(|| {
-                        UndefinedVariableError {
-                            name: name.to_string(),
-                            span: self.dummy_span(),
-                        }
-                        .into()
-                    })
-                    .map(|ty| ty.clone())
+                // First check if it's a type (for method calls like Person:new())
+                if ctx.lookup_type(name.as_ref()).is_some() {
+                    // It's a type - return the type
+                    Ok(Type::Named(name.clone()))
+                } else {
+                    // Check if it's a variable
+                    ctx.lookup_variable(name.as_ref())
+                        .ok_or_else(|| {
+                            self.wrap_error_with_source(
+                                UndefinedVariableError {
+                                    name: name.to_string(),
+                                    span: self.span_for_ident(name),
+                                }
+                                .into(),
+                            )
+                        })
+                        .map(|ty| ty.clone())
+                }
             }
             Expr::Binary { left, op, right } => {
                 let left_type = self.infer_expr_type(left, ctx)?;
@@ -208,24 +224,28 @@ impl<'de> Analyzer<'de> {
                     if let Some(func) = func_opt {
                         // Check argument count
                         if args.len() != func.params.len() {
-                            return Err(WrongArgumentCountError {
-                                expected: func.params.len(),
-                                actual: args.len(),
-                                span: self.dummy_span(),
-                            }
-                            .into());
+                            return Err(self.wrap_error_with_source(
+                                WrongArgumentCountError {
+                                    expected: func.params.len(),
+                                    actual: args.len(),
+                                    span: self.span_for_expr(callee),
+                                }
+                                .into(),
+                            ));
                         }
                         // Check argument types
                         for (arg, param) in args.iter().zip(func.params.iter()) {
                             let arg_type = self.infer_expr_type(arg, ctx)?;
                             if !types_compatible(&param.type_annotation, &arg_type, ctx) {
-                                return Err(TypeMismatchError {
-                                    expected: format_type(&param.type_annotation),
-                                    actual: format_type(&arg_type),
-                                    expected_span: self.dummy_span(),
-                                    actual_span: self.dummy_span(),
-                                }
-                                .into());
+                                return Err(self.wrap_error_with_source(
+                                    TypeMismatchError {
+                                        expected: format_type(&param.type_annotation),
+                                        actual: format_type(&arg_type),
+                                        expected_span: self.span_for_type(&param.type_annotation),
+                                        actual_span: self.span_for_expr(arg),
+                                    }
+                                    .into(),
+                                ));
                             }
                         }
                         // Return function's return type
@@ -237,24 +257,28 @@ impl<'de> Analyzer<'de> {
                             Type::Function { params } => {
                                 // Check argument count
                                 if args.len() != params.len() {
-                                    return Err(WrongArgumentCountError {
-                                        expected: params.len(),
-                                        actual: args.len(),
-                                        span: self.dummy_span(),
-                                    }
-                                    .into());
+                                    return Err(self.wrap_error_with_source(
+                                        WrongArgumentCountError {
+                                            expected: params.len(),
+                                            actual: args.len(),
+                                            span: self.span_for_expr(callee),
+                                        }
+                                        .into(),
+                                    ));
                                 }
                                 // Check argument types
                                 for (arg, param_type) in args.iter().zip(params.iter()) {
                                     let arg_type = self.infer_expr_type(arg, ctx)?;
                                     if !types_compatible(param_type, &arg_type, ctx) {
-                                        return Err(TypeMismatchError {
-                                            expected: format_type(param_type),
-                                            actual: format_type(&arg_type),
-                                            expected_span: self.dummy_span(),
-                                            actual_span: self.dummy_span(),
-                                        }
-                                        .into());
+                                        return Err(self.wrap_error_with_source(
+                                            TypeMismatchError {
+                                                expected: format_type(param_type),
+                                                actual: format_type(&arg_type),
+                                                expected_span: self.span_for_type(param_type),
+                                                actual_span: self.span_for_expr(arg),
+                                            }
+                                            .into(),
+                                        ));
                                     }
                                 }
                                 // Function types don't have return types in the current AST
@@ -264,7 +288,7 @@ impl<'de> Analyzer<'de> {
                             _ => Err(InvalidOperationError {
                                 operation: "function call".to_string(),
                                 type_name: format_type(&callee_type),
-                                span: self.dummy_span(),
+                                span: self.span_for_expr(callee),
                             }
                             .into()),
                         }
@@ -276,56 +300,272 @@ impl<'de> Analyzer<'de> {
                         Type::Function { params } => {
                             // Check argument count
                             if args.len() != params.len() {
-                                return Err(WrongArgumentCountError {
-                                    expected: params.len(),
-                                    actual: args.len(),
-                                    span: self.dummy_span(),
-                                }
-                                .into());
+                                return Err(self.wrap_error_with_source(
+                                    WrongArgumentCountError {
+                                        expected: params.len(),
+                                        actual: args.len(),
+                                        span: self.span_for_expr(callee),
+                                    }
+                                    .into(),
+                                ));
                             }
                             // Check argument types
                             for (arg, param_type) in args.iter().zip(params.iter()) {
                                 let arg_type = self.infer_expr_type(arg, ctx)?;
                                 if !types_compatible(param_type, &arg_type, ctx) {
-                                    return Err(TypeMismatchError {
-                                        expected: format_type(param_type),
-                                        actual: format_type(&arg_type),
-                                        expected_span: self.dummy_span(),
-                                        actual_span: self.dummy_span(),
-                                    }
-                                    .into());
+                                    return Err(self.wrap_error_with_source(
+                                        TypeMismatchError {
+                                            expected: format_type(param_type),
+                                            actual: format_type(&arg_type),
+                                            expected_span: self.span_for_type(param_type),
+                                            actual_span: self.span_for_expr(arg),
+                                        }
+                                        .into(),
+                                    ));
                                 }
                             }
                             // Function types don't have return types in the current AST
                             // For now, return a placeholder
                             Ok(Type::Primitive(PrimitiveType::Nil))
                         }
-                        _ => Err(InvalidOperationError {
-                            operation: "function call".to_string(),
-                            type_name: format_type(&callee_type),
-                            span: self.dummy_span(),
-                        }
-                        .into()),
+                        _ => Err(self.wrap_error_with_source(
+                            InvalidOperationError {
+                                operation: "function call".to_string(),
+                                type_name: format_type(&callee_type),
+                                span: self.span_for_expr(callee),
+                            }
+                            .into(),
+                        )),
                     }
                 }
             }
             Expr::MethodCall {
                 receiver,
-                method: _,
-                args: _,
+                method,
+                args,
             } => {
-                // TODO: Implement method call type inference
-                // For now, return a placeholder
-                let _receiver_type = self.infer_expr_type(receiver, ctx)?;
+                // Infer receiver type
+                let receiver_type = self.infer_expr_type(receiver, ctx)?;
+                
+                // Check if receiver is a type (for static methods like Person:new())
+                if let Type::Named(type_name) = &receiver_type {
+                    // Look up the type declaration
+                    if let Some(type_decl) = ctx.lookup_type(type_name.as_ref()) {
+                        if let TypeDeclKind::Struct(struct_decl) = &type_decl.decl {
+                            // Look for the method in the impl block
+                            if let Some(impl_block) = &struct_decl.impl_block {
+                                for func in impl_block {
+                                    if func.name.as_ref() == method.as_ref() {
+                                        // Found the method! Check arguments and return type
+                                        // Check argument count
+                                        // For static methods, check all params
+                                        // For instance methods, skip 'self' if present
+                                        let expected_arg_count = if func.params.first()
+                                            .map(|p| p.name.as_ref() == "self")
+                                            .unwrap_or(false)
+                                        {
+                                            func.params.len() - 1  // Skip 'self'
+                                        } else {
+                                            func.params.len()
+                                        };
+                                        
+                                        if args.len() != expected_arg_count {
+                                            return Err(self.wrap_error_with_source(
+                                                WrongArgumentCountError {
+                                                    expected: expected_arg_count,
+                                                    actual: args.len(),
+                                                    span: self.span_for_expr(receiver),
+                                                }
+                                                .into(),
+                                            ));
+                                        }
+                                        
+                                        // Check argument types
+                                        // For static methods (Person:new), check all params
+                                        // For instance methods, skip 'self' parameter
+                                        let params_to_check = if func.params.first()
+                                            .map(|p| p.name.as_ref() == "self")
+                                            .unwrap_or(false)
+                                        {
+                                            // Instance method - skip 'self' parameter
+                                            &func.params[1..]
+                                        } else {
+                                            // Static method - check all params
+                                            &func.params[..]
+                                        };
+                                        
+                                        for (arg, param) in args.iter().zip(params_to_check.iter()) {
+                                            let arg_type = self.infer_expr_type(arg, ctx)?;
+                                            
+                                            // If parameter has type annotation, check it
+                                            if let Some(param_ty) = &param.type_annotation {
+                                                let param_type = resolve_type(param_ty, ctx, self.span_for_type(param_ty))?;
+                                                if !types_compatible(&param_type, &arg_type, ctx) {
+                                                    return Err(self.wrap_error_with_source(
+                                                        TypeMismatchError {
+                                                            expected: format_type(&param_type),
+                                                            actual: format_type(&arg_type),
+                                                            expected_span: self.span_for_type(param_ty),
+                                                            actual_span: self.span_for_expr(arg),
+                                                        }
+                                                        .into(),
+                                                    ));
+                                                }
+                                            }
+                                            // If no type annotation, we can't strictly check, but that's okay for gradual typing
+                                        }
+                                        
+                                        // Return the method's return type, or the struct type if it's Self
+                                        if let Some(return_type) = &func.return_type {
+                                            // Check if return type is Self before resolving
+                                            if let Type::Named(name) = return_type {
+                                                if name.as_ref() == "Self" {
+                                                    // Return the struct type
+                                                    return Ok(receiver_type.clone());
+                                                }
+                                            }
+                                            // Resolve the return type
+                                            let resolved = resolve_type(return_type, ctx, self.span_for_type(return_type))?;
+                                            return Ok(resolved);
+                                        } else {
+                                            // No return type specified - infer from body or return struct type
+                                            // For now, if it's a constructor-like method (new), return the struct type
+                                            if method.as_ref() == "new" {
+                                                return Ok(receiver_type.clone());
+                                            }
+                                            // Otherwise, try to infer from body
+                                            return Ok(Type::Primitive(PrimitiveType::Nil));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // For instance method calls (receiver is a value, not a type)
+                // Infer the receiver type
+                let receiver_type = self.infer_expr_type(receiver, ctx)?;
+                
+                // Check if receiver is a struct type
+                if let Type::Named(type_name) = &receiver_type {
+                    // Look up the type declaration
+                    if let Some(type_decl) = ctx.lookup_type(type_name.as_ref()) {
+                        if let TypeDeclKind::Struct(struct_decl) = &type_decl.decl {
+                            // Look for the method in the impl block
+                            if let Some(impl_block) = &struct_decl.impl_block {
+                                for func in impl_block {
+                                    if func.name.as_ref() == method.as_ref() {
+                                        // Found the method! Check arguments and return type
+                                        // For instance methods, first param should be 'self'
+                                        let expected_arg_count = if func.params.first()
+                                            .map(|p| p.name.as_ref() == "self")
+                                            .unwrap_or(false)
+                                        {
+                                            func.params.len() - 1  // Skip 'self'
+                                        } else {
+                                            func.params.len()
+                                        };
+                                        
+                                        if args.len() != expected_arg_count {
+                                            return Err(self.wrap_error_with_source(
+                                                WrongArgumentCountError {
+                                                    expected: expected_arg_count,
+                                                    actual: args.len(),
+                                                    span: self.span_for_expr(receiver),
+                                                }
+                                                .into(),
+                                            ));
+                                        }
+                                        
+                                        // Check argument types (skip 'self' if present)
+                                        let params_to_check = if func.params.first()
+                                            .map(|p| p.name.as_ref() == "self")
+                                            .unwrap_or(false)
+                                        {
+                                            &func.params[1..]
+                                        } else {
+                                            &func.params[..]
+                                        };
+                                        
+                                        for (arg, param) in args.iter().zip(params_to_check.iter()) {
+                                            let arg_type = self.infer_expr_type(arg, ctx)?;
+                                            
+                                            // If parameter has type annotation, check it
+                                            if let Some(param_ty) = &param.type_annotation {
+                                                let param_type = resolve_type(param_ty, ctx, self.span_for_type(param_ty))?;
+                                                if !types_compatible(&param_type, &arg_type, ctx) {
+                                                    return Err(self.wrap_error_with_source(
+                                                        TypeMismatchError {
+                                                            expected: format_type(&param_type),
+                                                            actual: format_type(&arg_type),
+                                                            expected_span: self.span_for_type(param_ty),
+                                                            actual_span: self.span_for_expr(arg),
+                                                        }
+                                                        .into(),
+                                                    ));
+                                                }
+                                            }
+                                        }
+                                        
+                                        // Return the method's return type, or nil if none
+                                        if let Some(return_type) = &func.return_type {
+                                            // Check if return type is Self
+                                            if let Type::Named(name) = return_type {
+                                                if name.as_ref() == "Self" {
+                                                    // Return the struct type
+                                                    return Ok(receiver_type.clone());
+                                                }
+                                            }
+                                            // Resolve the return type
+                                            let resolved = resolve_type(return_type, ctx, self.span_for_type(return_type))?;
+                                            return Ok(resolved);
+                                        } else {
+                                            // No return type - return nil
+                                            return Ok(Type::Primitive(PrimitiveType::Nil));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Method not found - return nil (will cause error if called)
                 Ok(Type::Primitive(PrimitiveType::Nil))
             }
             Expr::Member { object, field } => {
-                let _object_type = self.infer_expr_type(object, ctx)?;
-                // TODO: Implement member access type inference
+                let object_type = self.infer_expr_type(object, ctx)?;
                 match field {
-                    MemberField::Name(_) => {
-                        // Lookup field in struct type
-                        Ok(Type::Primitive(PrimitiveType::Nil)) // Placeholder
+                    MemberField::Name(field_name) => {
+                        // Check if object is a struct type
+                        if let Type::Named(type_name) = &object_type {
+                            // Look up the type declaration
+                            if let Some(type_decl) = ctx.lookup_type(type_name.as_ref()) {
+                                if let TypeDeclKind::Struct(struct_decl) = &type_decl.decl {
+                                    // Look for the field in the struct
+                                    for struct_field in &struct_decl.fields {
+                                        if struct_field.name.as_ref() == field_name.as_ref() {
+                                            return Ok(struct_field.type_.clone());
+                                        }
+                                    }
+                                    // Field not found - might be a method call
+                                    // Check if it's a method in the impl block
+                                    if let Some(impl_block) = &struct_decl.impl_block {
+                                        for func in impl_block {
+                                            if func.name.as_ref() == field_name.as_ref() {
+                                                // Found a method! Return a function type
+                                                // For now, return a placeholder function type
+                                                // The actual call will be handled by MethodCall
+                                                return Ok(Type::Function { params: vec![] });
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Fallback: return nil for unknown member access
+                        Ok(Type::Primitive(PrimitiveType::Nil))
                     }
                     MemberField::Index(_) => {
                         // Index access - could be list or tuple
@@ -335,7 +575,7 @@ impl<'de> Analyzer<'de> {
             }
             Expr::StructLit { type_, fields: _ } => {
                 if let Some(ty) = type_ {
-                    resolve_type(ty, ctx, self.dummy_span())
+                    resolve_type(ty, ctx, self.span_for_type(ty))
                 } else {
                     // Anonymous struct - infer from fields
                     // TODO: Implement anonymous struct inference
@@ -368,11 +608,18 @@ impl<'de> Analyzer<'de> {
             Expr::List(elements) => {
                 if elements.is_empty() {
                     // Empty list - cannot infer element type
-                    Err(TypeInferenceError {
-                        message: "Cannot infer type of empty list, type annotation required".to_string(),
-                        span: self.dummy_span(),
-                    }
-                    .into())
+                    // Use a span for "[]" by searching for it
+                    let list_span = self.source
+                        .find("[]")
+                        .map(|pos| SourceSpan::new(pos.into(), 2))
+                        .unwrap_or_else(|| self.dummy_span());
+                    Err(self.wrap_error_with_source(
+                        TypeInferenceError {
+                            message: "Cannot infer type of empty list, type annotation required".to_string(),
+                            span: list_span,
+                        }
+                        .into(),
+                    ))
                 } else {
                     // Infer from first element
                     let first_type = self.infer_expr_type(&elements[0], ctx)?;
@@ -380,13 +627,15 @@ impl<'de> Analyzer<'de> {
                     for element in elements.iter().skip(1) {
                         let elem_type = self.infer_expr_type(element, ctx)?;
                         if !types_compatible(&first_type, &elem_type, ctx) {
-                            return Err(TypeMismatchError {
-                                expected: format_type(&first_type),
-                                actual: format_type(&elem_type),
-                                expected_span: self.dummy_span(),
-                                actual_span: self.dummy_span(),
-                            }
-                            .into());
+                            return Err(self.wrap_error_with_source(
+                                TypeMismatchError {
+                                    expected: format_type(&first_type),
+                                    actual: format_type(&elem_type),
+                                    expected_span: self.span_for_expr(&elements[0]),
+                                    actual_span: self.span_for_expr(element),
+                                }
+                                .into(),
+                            ));
                         }
                     }
                     // List type - for now return the element type
@@ -436,26 +685,31 @@ impl<'de> Analyzer<'de> {
         match name {
             "println" | "print" => {
                 // @println and @print require at least 1 argument (format string)
+                let builtin_span = self.span_for_expr(&Expr::Literal(Literal::BuiltinCall(builtin.clone())));
                 if args.is_empty() {
-                    return Err(WrongBuiltinArgumentCountError {
-                        name: name.to_string(),
-                        expected: 1,
-                        actual: 0,
-                        span: self.dummy_span(),
-                    }
-                    .into());
+                    return Err(self.wrap_error_with_source(
+                        WrongBuiltinArgumentCountError {
+                            name: name.to_string(),
+                            expected: 1,
+                            actual: 0,
+                            span: builtin_span,
+                        }
+                        .into(),
+                    ));
                 }
                 
                 // First argument must be a string
                 let first_arg_type = self.infer_expr_type(&args[0], ctx)?;
                 if !matches!(first_arg_type, Type::Primitive(PrimitiveType::Str)) {
-                    return Err(WrongBuiltinArgumentTypeError {
-                        name: name.to_string(),
-                        expected: "str".to_string(),
-                        actual: format_type(&first_arg_type),
-                        span: self.dummy_span(),
-                    }
-                    .into());
+                    return Err(self.wrap_error_with_source(
+                        WrongBuiltinArgumentTypeError {
+                            name: name.to_string(),
+                            expected: "str".to_string(),
+                            actual: format_type(&first_arg_type),
+                            span: self.span_for_expr(&args[0]),
+                        }
+                        .into(),
+                    ));
                 }
                 
                 // Additional arguments can be any type (variadic)
@@ -465,14 +719,17 @@ impl<'de> Analyzer<'de> {
             }
             "unreachable" => {
                 // @unreachable requires 0 arguments
+                let builtin_span = self.span_for_expr(&Expr::Literal(Literal::BuiltinCall(builtin.clone())));
                 if !args.is_empty() {
-                    return Err(WrongBuiltinArgumentCountError {
-                        name: name.to_string(),
-                        expected: 0,
-                        actual: args.len(),
-                        span: self.dummy_span(),
-                    }
-                    .into());
+                    return Err(self.wrap_error_with_source(
+                        WrongBuiltinArgumentCountError {
+                            name: name.to_string(),
+                            expected: 0,
+                            actual: args.len(),
+                            span: builtin_span,
+                        }
+                        .into(),
+                    ));
                 }
                 
                 // Return Nil type
@@ -480,11 +737,14 @@ impl<'de> Analyzer<'de> {
             }
             _ => {
                 // Unknown builtin
-                Err(UnknownBuiltinError {
-                    name: name.to_string(),
-                    span: self.dummy_span(),
-                }
-                .into())
+                let builtin_span = self.span_for_expr(&Expr::Literal(Literal::BuiltinCall(builtin.clone())));
+                Err(self.wrap_error_with_source(
+                    UnknownBuiltinError {
+                        name: name.to_string(),
+                        span: builtin_span,
+                    }
+                    .into(),
+                ))
             }
         }
     }
@@ -572,13 +832,15 @@ impl<'de> Analyzer<'de> {
                 // Single expression - check its type matches return type
                 let actual_type = self.infer_expr_type(expr, ctx)?;
                 if !types_compatible(expected_return, &actual_type, ctx) {
-                    return Err(ReturnTypeMismatchError {
-                        expected: format_type(expected_return),
-                        actual: format_type(&actual_type),
-                        expected_span: self.dummy_span(),
-                        actual_span: self.dummy_span(),
-                    }
-                    .into());
+                    return Err(self.wrap_error_with_source(
+                        ReturnTypeMismatchError {
+                            expected: format_type(expected_return),
+                            actual: format_type(&actual_type),
+                            expected_span: self.span_for_type(expected_return),
+                            actual_span: self.span_for_expr(expr),
+                        }
+                        .into(),
+                    ));
                 }
                 Ok(())
             }
@@ -588,22 +850,28 @@ impl<'de> Analyzer<'de> {
                     if let Stmt::Return(Some(expr)) = stmt {
                         let actual_type = self.infer_expr_type(expr, ctx)?;
                         if !types_compatible(expected_return, &actual_type, ctx) {
-                            return Err(ReturnTypeMismatchError {
-                                expected: format_type(expected_return),
-                                actual: format_type(&actual_type),
-                                expected_span: self.dummy_span(),
-                                actual_span: self.dummy_span(),
-                            }
-                            .into());
+                            return Err(self.wrap_error_with_source(
+                                ReturnTypeMismatchError {
+                                    expected: format_type(expected_return),
+                                    actual: format_type(&actual_type),
+                                    expected_span: self.span_for_type(expected_return),
+                                    actual_span: self.span_for_expr(expr),
+                                }
+                                .into(),
+                            ));
                         }
                     } else if let Stmt::Return(None) = stmt {
                         // Return without value - check if return type is nil
+                        // For return statements, we'll use a span for "return" keyword
+                        let return_span = self.span_for_ident("return");
                         if !types_compatible(expected_return, &Type::Primitive(PrimitiveType::Nil), ctx) {
-                            return Err(MissingReturnValueError {
-                                expected: format_type(expected_return),
-                                span: self.dummy_span(),
-                            }
-                            .into());
+                            return Err(self.wrap_error_with_source(
+                                MissingReturnValueError {
+                                    expected: format_type(expected_return),
+                                    span: return_span,
+                                }
+                                .into(),
+                            ));
                         }
                     }
                 }
@@ -612,9 +880,88 @@ impl<'de> Analyzer<'de> {
         }
     }
 
-    /// Get a dummy span for error reporting (in a real implementation, we'd track spans)
+    /// Get a dummy span for error reporting (fallback when we can't compute a real span)
     fn dummy_span(&self) -> SourceSpan {
         SourceSpan::from(0..0)
+    }
+
+    /// Compute a span for an identifier by searching in the source
+    fn span_for_ident(&self, name: &str) -> SourceSpan {
+        // Search for the identifier in the source
+        // We look for the identifier as a whole word (not part of another identifier)
+        if let Some(pos) = self.source.find(name) {
+            // Verify it's a whole word (not part of a larger identifier)
+            let before = if pos > 0 {
+                self.source.chars().nth(pos - 1)
+            } else {
+                None
+            };
+            let after = self.source.chars().nth(pos + name.len());
+            
+            let is_word_boundary = |c: Option<char>| {
+                c.map(|ch| !ch.is_alphanumeric() && ch != '_').unwrap_or(true)
+            };
+            
+            if is_word_boundary(before) && is_word_boundary(after) {
+                return SourceSpan::new(pos.into(), name.len());
+            }
+        }
+        // Fallback: search for any occurrence
+        self.source
+            .find(name)
+            .map(|pos| SourceSpan::new(pos.into(), name.len()))
+            .unwrap_or_else(|| self.dummy_span())
+    }
+
+    /// Compute a span for an expression by trying to find its identifier or using a fallback
+    fn span_for_expr(&self, expr: &Expr<'de>) -> SourceSpan {
+        match expr {
+            Expr::Ident(name) => self.span_for_ident(name),
+            Expr::Call { callee, .. } => self.span_for_expr(callee),
+            Expr::MethodCall { receiver, .. } => self.span_for_expr(receiver),
+            Expr::Member { object, .. } => self.span_for_expr(object),
+            Expr::Binary { left, .. } => self.span_for_expr(left),
+            Expr::Unary { expr, .. } => self.span_for_expr(expr),
+            Expr::Paren(expr) => self.span_for_expr(expr),
+            Expr::Literal(Literal::BuiltinCall(builtin)) => {
+                // Find the @ symbol followed by the builtin name
+                let search_str = format!("@{}", builtin.name);
+                self.source
+                    .find(&search_str)
+                    .map(|pos| SourceSpan::new(pos.into(), search_str.len()))
+                    .unwrap_or_else(|| self.dummy_span())
+            }
+            _ => self.dummy_span(),
+        }
+    }
+
+    /// Compute a span for a type by finding its name in the source
+    fn span_for_type(&self, ty: &Type<'de>) -> SourceSpan {
+        match ty {
+            Type::Named(name) => self.span_for_ident(name),
+            Type::Primitive(prim) => {
+                // Try to find the primitive type name
+                let name = match prim {
+                    PrimitiveType::I8 => "i8",
+                    PrimitiveType::I16 => "i16",
+                    PrimitiveType::I32 => "i32",
+                    PrimitiveType::I64 => "i64",
+                    PrimitiveType::Isize => "isize",
+                    PrimitiveType::U8 => "u8",
+                    PrimitiveType::U16 => "u16",
+                    PrimitiveType::U32 => "u32",
+                    PrimitiveType::U64 => "u64",
+                    PrimitiveType::Usize => "usize",
+                    PrimitiveType::Str => "str",
+                    PrimitiveType::Char => "char",
+                    PrimitiveType::Bool => "bool",
+                    PrimitiveType::Nil => "nil",
+                    PrimitiveType::List => "list",
+                };
+                self.span_for_ident(name)
+            }
+            _ => self.dummy_span(),
+        }
     }
 }
 

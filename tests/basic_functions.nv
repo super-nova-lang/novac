@@ -9,3 +9,9 @@ let do_many_things
     let res := res - z ^ x
     return res
 }
+
+let main :: () = {
+    @println("add(1, 2) = {}", add(1,2))
+    @println("sub(11, 2) = {}", sub(11, 2))
+    @println("do_many_things(1, 2, 4) = {}", do_many_things(1, 2, 4))
+}
