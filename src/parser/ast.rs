@@ -121,6 +121,7 @@ pub enum PrimitiveType {
     Usize,
     Str,
     Char,
+    Bool,
     Nil,
     List,
 }
@@ -569,6 +570,7 @@ impl fmt::Display for PrimitiveType {
             PrimitiveType::Usize => write!(f, "usize"),
             PrimitiveType::Str => write!(f, "str"),
             PrimitiveType::Char => write!(f, "char"),
+            PrimitiveType::Bool => write!(f, "bool"),
             PrimitiveType::Nil => write!(f, "nil"),
             PrimitiveType::List => write!(f, "list"),
         }

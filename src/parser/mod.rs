@@ -130,8 +130,9 @@ impl<'de> Parser<'de> {
         }
 
         // Check if it's a type declaration (struct or enum)
+        let mut colon_consumed = false;
         if self.check(TokenKind::Colon) {
-            self.next_token(); // consume :
+            self.next_token(); // consume : to inspect following token
             if self.check(TokenKind::Equal) {
                 self.next_token(); // consume =
                 // This is `let Name := ...` - type declaration
@@ -144,13 +145,19 @@ impl<'de> Parser<'de> {
                     type_decl.attrs = attrs;
                     return Ok(TopLevelItem::TypeDecl(type_decl));
                 }
+            } else {
+                // Not a type declaration (not ':='). Remember we consumed ':' so
+                // later parsing of variable type annotation should account for that.
+                colon_consumed = true;
             }
         }
 
         // Otherwise it's a variable declaration
         // We already consumed `let` and the name, need to check for type annotation
-        let type_annotation = if self.check(TokenKind::Colon) {
-            self.next_token(); // consume :
+        let type_annotation = if colon_consumed || self.check(TokenKind::Colon) {
+            if !colon_consumed {
+                self.next_token(); // consume :
+            }
             if self.check(TokenKind::Equal) {
                 // This is `:=` (type inference)
                 self.next_token(); // consume =
@@ -545,6 +552,7 @@ impl<'de> Parser<'de> {
             "usize" => Ok(PrimitiveType::Usize),
             "str" => Ok(PrimitiveType::Str),
             "char" => Ok(PrimitiveType::Char),
+            "bool" => Ok(PrimitiveType::Bool),
             "nil" => Ok(PrimitiveType::Nil),
             "list" => Ok(PrimitiveType::List),
             _ => Err(self.error_at_token(&token, "Expected primitive type")),
