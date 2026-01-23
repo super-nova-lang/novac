@@ -1,9 +1,12 @@
+#![allow(unused_assignments)]
+
 use crate::parser::ast::Type;
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("Type mismatch: expected {expected}, found {actual}")]
+#[allow(dead_code)]
 pub struct TypeMismatchError {
     pub expected: String,
     pub actual: String,
@@ -15,6 +18,7 @@ pub struct TypeMismatchError {
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("Undefined variable: {name}")]
+#[allow(dead_code)]
 pub struct UndefinedVariableError {
     pub name: String,
     #[label("variable `{name}` is not defined")]
@@ -23,6 +27,7 @@ pub struct UndefinedVariableError {
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("Undefined type: {name}")]
+#[allow(dead_code)]
 pub struct UndefinedTypeError {
     pub name: String,
     #[label("type `{name}` is not defined")]
@@ -31,6 +36,7 @@ pub struct UndefinedTypeError {
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("Cannot infer type: {message}")]
+#[allow(dead_code)]
 pub struct TypeInferenceError {
     pub message: String,
     #[label("{message}")]
@@ -39,6 +45,7 @@ pub struct TypeInferenceError {
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("Invalid operation: {operation} is not valid for type {type_name}")]
+#[allow(dead_code)]
 pub struct InvalidOperationError {
     pub operation: String,
     pub type_name: String,
@@ -48,14 +55,17 @@ pub struct InvalidOperationError {
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("Function not found: {name}")]
+#[allow(dead_code)]
 pub struct FunctionNotFoundError {
     pub name: String,
     #[label("function `{name}` is not defined")]
+    #[allow(dead_code)]
     pub span: SourceSpan,
 }
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("Wrong number of arguments: expected {expected}, found {actual}")]
+#[allow(dead_code)]
 pub struct WrongArgumentCountError {
     pub expected: usize,
     pub actual: usize,
@@ -65,6 +75,7 @@ pub struct WrongArgumentCountError {
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("Return type mismatch: function returns {expected}, but found {actual}")]
+#[allow(dead_code)]
 pub struct ReturnTypeMismatchError {
     pub expected: String,
     pub actual: String,
@@ -76,6 +87,7 @@ pub struct ReturnTypeMismatchError {
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("Missing return value: function expects return type {expected}")]
+#[allow(dead_code)]
 pub struct MissingReturnValueError {
     pub expected: String,
     #[label("function should return {expected}")]
@@ -84,6 +96,7 @@ pub struct MissingReturnValueError {
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("Unknown builtin: {name}")]
+#[allow(dead_code)]
 pub struct UnknownBuiltinError {
     pub name: String,
     #[label("unknown builtin `@{name}`")]
@@ -92,6 +105,7 @@ pub struct UnknownBuiltinError {
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("Wrong number of arguments for builtin @{name}: expected {expected}, found {actual}")]
+#[allow(dead_code)]
 pub struct WrongBuiltinArgumentCountError {
     pub name: String,
     pub expected: usize,
@@ -102,6 +116,7 @@ pub struct WrongBuiltinArgumentCountError {
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("Wrong argument type for builtin @{name}: expected {expected}, found {actual}")]
+#[allow(dead_code)]
 pub struct WrongBuiltinArgumentTypeError {
     pub name: String,
     pub expected: String,

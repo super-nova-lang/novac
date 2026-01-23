@@ -4,7 +4,6 @@ mod errors;
 mod types;
 
 use crate::analyzer::annotated::*;
-use crate::analyzer::context::TypeContext;
 use crate::analyzer::errors::*;
 use crate::analyzer::types::*;
 use crate::parser::ast::*;
@@ -75,8 +74,8 @@ impl<'de> Analyzer<'de> {
         })
     }
 
-    /// Analyze a function
-    fn analyze_function(
+    /// Analyze a function (public for use in documentation generation)
+    pub fn analyze_function(
         &mut self,
         func: &Function<'de>,
         ctx: &mut TypeContext<'de>,
@@ -976,6 +975,12 @@ pub fn analyze<'de>(
 
 // Re-export annotated types for convenience
 pub use annotated::{
-    AnnotatedExpr, AnnotatedExprList, AnnotatedFunction, AnnotatedProgram,
-    AnnotatedStmt, AnnotatedTopLevelItem, AnnotatedVariableDecl,
+    AnnotatedExpr, AnnotatedExprList, AnnotatedFunction, AnnotatedFunctionParam,
+    AnnotatedProgram, AnnotatedStmt, AnnotatedTopLevelItem, AnnotatedVariableDecl,
 };
+
+// Re-export context for documentation generation
+pub type TypeContext<'de> = context::TypeContext<'de>;
+
+// Re-export types utilities for documentation generation
+pub use types::default_numeric_type;

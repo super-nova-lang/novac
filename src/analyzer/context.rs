@@ -61,11 +61,13 @@ impl<'de> TypeContext<'de> {
     }
 
     /// Check if a variable exists in the current scope (not parent scopes)
+    #[allow(dead_code)]
     pub fn has_variable_in_current_scope(&self, name: &str) -> bool {
         self.variables.contains_key(name)
     }
 
     /// Get all variables in the current scope
+    #[allow(dead_code)]
     pub fn current_scope_variables(&self) -> &HashMap<Cow<'de, str>, Type<'de>> {
         &self.variables
     }

@@ -60,6 +60,7 @@ impl Mangler {
     }
 
     /// Mangle a type name
+    #[allow(dead_code)]
     pub fn mangle_type(&self, name: &str) -> String {
         let encoded_name = self.encode_name(name);
         format!("{}_t{}", self.prefix, encoded_name)

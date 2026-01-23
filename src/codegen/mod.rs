@@ -34,6 +34,7 @@ impl<'de> Codegen<'de> {
     }
 
     /// Create a Codegen from an annotated program (alias for convenience)
+    #[allow(dead_code)]
     pub fn from_program(name: String, program: AnnotatedProgram<'de>) -> Result<Self, Error> {
         Self::from_annotated_program(name, program)
     }
@@ -114,10 +115,7 @@ impl<'de> Codegen<'de> {
                         generics.as_deref(),
                     );
 
-                    // Track main function for _start entry point
-                    if func.name.as_ref() == "main" {
-                        main_function_name = Some(label.clone());
-                    }
+                    // Main function already handled in first pass
 
                     // x86_64 / System V: export symbol (NASM syntax)
                     self.emitter.write_txt(&format!("global {}", label));
@@ -316,11 +314,13 @@ impl<'de> Codegen<'de> {
     }
 
     /// Emit a block of statements (legacy version without locals)
+    #[allow(dead_code)]
     fn emit_block_to_rax(&mut self, stmts: &[AnnotatedStmt<'de>], params: &Vec<(&str, &str)>) {
         let empty_locals = std::collections::HashMap::new();
         self.emit_block_to_rax_with_locals(stmts, params, &empty_locals);
     }
 
+    #[allow(dead_code)]
     fn emit_expr_to_rax(&mut self, expr: &AnnotatedExpr<'de>, params: &Vec<(&str, &str)>) {
         let empty_locals = std::collections::HashMap::new();
         self.emit_expr_to_rax_with_locals(expr, params, &empty_locals);
@@ -580,7 +580,7 @@ impl<'de> Codegen<'de> {
                     // Try to infer the receiver type from the annotated expression type
                     // For method calls, the annotated type might be the return type
                     // We need to look up the variable type instead
-                    let type_name: Option<&str> = if let Expr::Ident(_var_name) = object.as_ref() {
+                    let _type_name: Option<&str> = if let Expr::Ident(_var_name) = object.as_ref() {
                         // Look up variable in locals or params to get its type
                         // For now, we'll try to infer from context
                         // This is a limitation - we should store variable types
@@ -807,6 +807,7 @@ impl<'de> Codegen<'de> {
         }
     }
 
+    #[allow(dead_code)]
     fn emit_expr_to_rcx(&mut self, expr: &AnnotatedExpr<'de>, params: &Vec<(&str, &str)>) {
         let empty_locals = std::collections::HashMap::new();
         self.emit_expr_to_rcx_with_locals(expr, params, &empty_locals);
@@ -880,7 +881,7 @@ impl<'de> Codegen<'de> {
     fn emit_builtin_call(
         &mut self,
         builtin: &BuiltinCall<'de>,
-        annotated_expr: &AnnotatedExpr<'de>,
+        _annotated_expr: &AnnotatedExpr<'de>,
         params: &Vec<(&str, &str)>,
         locals: &std::collections::HashMap<&str, i32>,
     ) {
@@ -1081,7 +1082,7 @@ impl<'de> Codegen<'de> {
             // Static method call: Person:new()
             if let Expr::Ident(type_name) = receiver {
                 // Look up the method
-                if let Some(func) = self.find_method_in_struct(type_name.as_ref(), method.as_ref())
+                if let Some(_func) = self.find_method_in_struct(type_name.as_ref(), method.as_ref())
                 {
                     // Evaluate arguments and place in System V parameter registers
                     let param_regs = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
@@ -1130,7 +1131,7 @@ impl<'de> Codegen<'de> {
             // For now, we'll use a simple approach: if receiver is an identifier, look it up
             let type_name = if let Expr::Ident(var_name) = receiver {
                 // Look up variable type
-                if let Some(&ty) = locals.get(var_name.as_ref()) {
+                if let Some(&_ty) = locals.get(var_name.as_ref()) {
                     // Variable is a local - we need to infer type from context
                     // For now, try to find type from annotated_expr.ty
                     if let Type::Named(name) = &annotated_expr.ty {
@@ -1138,7 +1139,7 @@ impl<'de> Codegen<'de> {
                     } else {
                         None
                     }
-                } else if let Some((_, reg)) =
+                } else if let Some((_, _reg)) =
                     params.iter().find(|(name, _)| *name == var_name.as_ref())
                 {
                     // Variable is a parameter - can't easily get type here
@@ -1254,8 +1255,8 @@ impl<'de> Codegen<'de> {
     /// Emit code for a struct literal
     fn emit_struct_literal(
         &mut self,
-        annotated_expr: &AnnotatedExpr<'de>,
-        type_: &Option<Type<'de>>,
+        _annotated_expr: &AnnotatedExpr<'de>,
+        _type_: &Option<Type<'de>>,
         fields: &[StructFieldInit<'de>],
         params: &Vec<(&str, &str)>,
         locals: &std::collections::HashMap<&str, i32>,
@@ -1475,7 +1476,7 @@ impl<'de> Codegen<'de> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::Parser;
+    use crate::{analyzer::analyze, parser::Parser};
 
     #[test]
     fn test_codegen_function_and_vars() {
@@ -1485,7 +1486,9 @@ let msg := "Hello \n"
 let x := 42
 "#;
         let parser = Parser::new(src);
-        let cg = Codegen::new("ns_".into(), parser).unwrap();
+        let whole = parser.whole.to_string();
+        let program = analyze(parser.parse().unwrap(), &whole).unwrap();
+        let cg = Codegen::from_annotated_program("ns_".into(), program).unwrap();
         let out = cg.emit();
         // function directives and label
         assert!(out.contains(".globl ns_add"));

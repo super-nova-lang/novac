@@ -22,16 +22,19 @@ impl Emitter {
     }
 
     // Indentation helpers
+    #[allow(dead_code)]
     pub fn push_indent(&mut self) {
         self.indent = self.indent.saturating_add(2);
     }
 
+    #[allow(dead_code)]
     pub fn pop_indent(&mut self) {
         if self.indent >= 2 {
             self.indent -= 2;
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_indent<F, R>(&mut self, f: F) -> R
     where
         F: FnOnce(&mut Self) -> R,
@@ -43,6 +46,7 @@ impl Emitter {
     }
 
     // Comments and raw output
+    #[allow(dead_code)]
     pub fn write_comment(&mut self, s: &str) {
         for _ in 0..self.indent {
             self.txt.push(' ');
@@ -53,6 +57,7 @@ impl Emitter {
     }
 
     /// Write a raw line into the text section without any indentation.
+    #[allow(dead_code)]
     pub fn write_raw(&mut self, s: &str) {
         self.txt.push_str(s);
         self.txt.push('\n');
@@ -88,6 +93,7 @@ impl Emitter {
         }
     }
 
+    #[allow(dead_code)]
     pub fn reserve_bss(&mut self, label: &str, size: usize) {
         self.write_bss_label(label);
         self.write_bss(&format!("resb {}", size));
@@ -107,6 +113,7 @@ impl Emitter {
         self.dat.push_str(":\n");
     }
 
+    #[allow(dead_code)]
     pub fn write_bss(&mut self, s: &str) {
         for _ in 0..self.indent {
             self.bss.push(' ');
@@ -115,6 +122,7 @@ impl Emitter {
         self.bss.push('\n');
     }
 
+    #[allow(dead_code)]
     pub fn write_bss_label(&mut self, s: &str) {
         self.bss.push_str(s);
         self.bss.push_str(":\n");
