@@ -51,7 +51,32 @@ impl<'de> Codegen<'de> {
         for item in items {
             match item {
                 TopLevelItem::Function(func) => {
-                    let label = self.mangler.mangle(func.name.as_ref());
+                    // Mangle function with type information if available
+                    let param_types: Vec<Type> = func
+                        .params
+                        .iter()
+                        .map(|p| {
+                            p.type_annotation.clone().unwrap_or_else(|| {
+                                // Default to i32 if no annotation
+                                Type::Primitive(PrimitiveType::I32)
+                            })
+                        })
+                        .collect();
+                    let return_type = func.return_type.clone().unwrap_or_else(|| {
+                        // Default to nil if no return type
+                        Type::Primitive(PrimitiveType::Nil)
+                    });
+                    let generics: Option<Vec<&str>> = if func.generics.is_empty() {
+                        None
+                    } else {
+                        Some(func.generics.iter().map(|g| g.as_ref()).collect())
+                    };
+                    let label = self.mangler.mangle_function(
+                        func.name.as_ref(),
+                        &param_types,
+                        &return_type,
+                        generics.as_deref(),
+                    );
                     // x86_64 / System V: export symbol (NASM syntax)
                     self.emitter.write_txt(&format!(".global {}", label));
                     self.emitter.write_txt_label(&label);
@@ -93,7 +118,18 @@ impl<'de> Codegen<'de> {
                     self.emitter.write_txt("ret");
                 }
                 TopLevelItem::VariableDecl(var) => {
-                    let label = self.mangler.mangle(var.name.as_ref());
+                    // Infer type from value expression
+                    let var_type = Self::infer_type_from_expr(&var.value);
+                    let label = if let Some(ty) = &var.type_annotation {
+                        // Use explicit type annotation if available
+                        self.mangler.mangle_variable(var.name.as_ref(), ty)
+                    } else if let Some(ty) = &var_type {
+                        // Use inferred type
+                        self.mangler.mangle_variable(var.name.as_ref(), ty)
+                    } else {
+                        // Fallback to simple mangling
+                        self.mangler.mangle(var.name.as_ref())
+                    };
                     match *var.value.clone() {
                         Expr::Literal(Literal::String(ref s)) => {
                             // data symbol, align and export (NASM syntax)
@@ -130,6 +166,18 @@ impl<'de> Codegen<'de> {
             4 => "r8",
             5 => "r9",
             _ => "rdi",
+        }
+    }
+
+    /// Infer type from an expression (simple inference for codegen)
+    fn infer_type_from_expr(expr: &Expr<'de>) -> Option<Type<'de>> {
+        match expr {
+            Expr::Literal(Literal::Number(_)) => Some(Type::Primitive(PrimitiveType::I32)),
+            Expr::Literal(Literal::String(_)) => Some(Type::Primitive(PrimitiveType::Str)),
+            Expr::Literal(Literal::Char(_)) => Some(Type::Primitive(PrimitiveType::Char)),
+            Expr::Literal(Literal::Boolean(_)) => Some(Type::Primitive(PrimitiveType::Bool)),
+            Expr::Literal(Literal::Nil) => Some(Type::Primitive(PrimitiveType::Nil)),
+            _ => None,
         }
     }
 
