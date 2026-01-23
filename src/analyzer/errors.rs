@@ -82,6 +82,34 @@ pub struct MissingReturnValueError {
     pub span: SourceSpan,
 }
 
+#[derive(Debug, Error, Diagnostic)]
+#[error("Unknown builtin: {name}")]
+pub struct UnknownBuiltinError {
+    pub name: String,
+    #[label("unknown builtin `@{name}`")]
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Error, Diagnostic)]
+#[error("Wrong number of arguments for builtin @{name}: expected {expected}, found {actual}")]
+pub struct WrongBuiltinArgumentCountError {
+    pub name: String,
+    pub expected: usize,
+    pub actual: usize,
+    #[label("builtin `@{name}` expects {expected} arguments, found {actual}")]
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Error, Diagnostic)]
+#[error("Wrong argument type for builtin @{name}: expected {expected}, found {actual}")]
+pub struct WrongBuiltinArgumentTypeError {
+    pub name: String,
+    pub expected: String,
+    pub actual: String,
+    #[label("builtin `@{name}` expects {expected}, found {actual}")]
+    pub span: SourceSpan,
+}
+
 // Helper function to format types for error messages
 pub fn format_type(ty: &Type) -> String {
     use crate::parser::ast::PrimitiveType;

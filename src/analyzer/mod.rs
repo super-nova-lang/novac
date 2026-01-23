@@ -176,6 +176,9 @@ impl<'de> Analyzer<'de> {
     /// Infer the type of an expression
     fn infer_expr_type(&mut self, expr: &Expr<'de>, ctx: &TypeContext<'de>) -> Result<Type<'de>, Error> {
         match expr {
+            Expr::Literal(Literal::BuiltinCall(builtin)) => {
+                self.infer_builtin_call_type(builtin, ctx)
+            }
             Expr::Literal(lit) => self.infer_literal_type(lit),
             Expr::Ident(name) => {
                 ctx.lookup_variable(name.as_ref())
@@ -413,8 +416,75 @@ impl<'de> Analyzer<'de> {
             }
             Literal::Nil => Ok(Type::Primitive(PrimitiveType::Nil)),
             Literal::BuiltinCall(_) => {
-                // TODO: Handle builtin calls
+                // Builtin calls are handled in infer_expr_type
+                unreachable!("BuiltinCall should be handled in infer_expr_type")
+            }
+        }
+    }
+
+    /// Infer the type of a builtin call
+    fn infer_builtin_call_type(
+        &mut self,
+        builtin: &BuiltinCall<'de>,
+        ctx: &TypeContext<'de>,
+    ) -> Result<Type<'de>, Error> {
+        use crate::analyzer::errors::*;
+        
+        let args = builtin.args.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
+        let name = builtin.name.as_ref();
+        
+        match name {
+            "println" | "print" => {
+                // @println and @print require at least 1 argument (format string)
+                if args.is_empty() {
+                    return Err(WrongBuiltinArgumentCountError {
+                        name: name.to_string(),
+                        expected: 1,
+                        actual: 0,
+                        span: self.dummy_span(),
+                    }
+                    .into());
+                }
+                
+                // First argument must be a string
+                let first_arg_type = self.infer_expr_type(&args[0], ctx)?;
+                if !matches!(first_arg_type, Type::Primitive(PrimitiveType::Str)) {
+                    return Err(WrongBuiltinArgumentTypeError {
+                        name: name.to_string(),
+                        expected: "str".to_string(),
+                        actual: format_type(&first_arg_type),
+                        span: self.dummy_span(),
+                    }
+                    .into());
+                }
+                
+                // Additional arguments can be any type (variadic)
+                // We don't need to check them, just verify they exist if provided
+                // Return Nil type
                 Ok(Type::Primitive(PrimitiveType::Nil))
+            }
+            "unreachable" => {
+                // @unreachable requires 0 arguments
+                if !args.is_empty() {
+                    return Err(WrongBuiltinArgumentCountError {
+                        name: name.to_string(),
+                        expected: 0,
+                        actual: args.len(),
+                        span: self.dummy_span(),
+                    }
+                    .into());
+                }
+                
+                // Return Nil type
+                Ok(Type::Primitive(PrimitiveType::Nil))
+            }
+            _ => {
+                // Unknown builtin
+                Err(UnknownBuiltinError {
+                    name: name.to_string(),
+                    span: self.dummy_span(),
+                }
+                .into())
             }
         }
     }
