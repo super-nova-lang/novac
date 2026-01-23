@@ -36,8 +36,30 @@ pub fn resolve_type<'de>(
     match ty {
         Type::Primitive(_) => Ok(ty.clone()),
             Type::Named(name) => {
-                // Lookup the type declaration
-                if let Some(type_decl) = ctx.lookup_type(name.as_ref()) {
+                // Check if it's a primitive type name first
+                let prim_opt = match name.as_ref() {
+                    "i8" => Some(PrimitiveType::I8),
+                    "i16" => Some(PrimitiveType::I16),
+                    "i32" => Some(PrimitiveType::I32),
+                    "i64" => Some(PrimitiveType::I64),
+                    "isize" => Some(PrimitiveType::Isize),
+                    "u8" => Some(PrimitiveType::U8),
+                    "u16" => Some(PrimitiveType::U16),
+                    "u32" => Some(PrimitiveType::U32),
+                    "u64" => Some(PrimitiveType::U64),
+                    "usize" => Some(PrimitiveType::Usize),
+                    "str" => Some(PrimitiveType::Str),
+                    "char" => Some(PrimitiveType::Char),
+                    "bool" => Some(PrimitiveType::Bool),
+                    "nil" => Some(PrimitiveType::Nil),
+                    "list" => Some(PrimitiveType::List),
+                    _ => None,
+                };
+                
+                if let Some(prim) = prim_opt {
+                    Ok(Type::Primitive(prim))
+                } else if let Some(type_decl) = ctx.lookup_type(name.as_ref()) {
+                    // Lookup the type declaration
                     match &type_decl.decl {
                         TypeDeclKind::Struct(_struct_decl) => {
                             // Return the struct type - we could create a resolved version
