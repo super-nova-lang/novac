@@ -4,7 +4,7 @@ use crate::analyzer::{
     AnnotatedVariableDecl,
 };
 use crate::parser::ast::{
-    BinOp, ElifBlock, EnumVariant, Expr, Literal, MemberField, PrimitiveType, Stmt, StructField,
+    BinOp, EnumVariant, Expr, Literal, MemberField, PrimitiveType, Stmt, StructField,
     Type, TypeDecl, TypeDeclKind, UnaryOp,
 };
 use inkwell::builder::Builder;
@@ -83,7 +83,7 @@ impl Mangler {
                 PrimitiveType::Nil => "nil".to_string(),
                 PrimitiveType::List => "list".to_string(),
             },
-            Type::Named(name) => format!("{}", name.as_ref()),
+            Type::Named(name) => name.as_ref().to_string(),
             Type::Generic { base, args } => {
                 let mut result = self.mangle_type(base);
                 result.push('<');
@@ -314,7 +314,7 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
             Type::Tuple(types) => {
                 let field_types: Result<Vec<_>> = types
                     .iter()
-                    .map(|ty| self.llvm_type(ty).map(|t| t.into()))
+                    .map(|ty| self.llvm_type(ty))
                     .collect();
                 let struct_ty = self.context.struct_type(&field_types?, false);
                 Ok(struct_ty.as_basic_type_enum())
@@ -334,7 +334,7 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
             Type::AnonymousStruct(fields) => {
                 let field_types: Result<Vec<_>> = fields
                     .iter()
-                    .map(|field| self.llvm_type(&field.type_).map(|t| t.into()))
+                    .map(|field| self.llvm_type(&field.type_))
                     .collect();
                 let struct_ty = self.context.struct_type(&field_types?, false);
                 Ok(struct_ty.as_basic_type_enum())
@@ -480,7 +480,7 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                 .get_nth_param(i as u32)
                 .ok_or_else(|| miette!("Parameter {} not found in function {}", i, mangled_name))?;
             self.variables
-                .insert(param.name.as_ref().to_string(), param_value.into());
+                .insert(param.name.as_ref().to_string(), param_value);
         }
 
         // Emit function body
@@ -502,12 +502,11 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                     self.emit_stmt(stmt)?;
                 }
                 // If no explicit return, add one
-                if !self
+                if self
                     .builder
                     .get_insert_block()
                     .unwrap()
-                    .get_terminator()
-                    .is_some()
+                    .get_terminator().is_none()
                 {
                     if matches!(func.return_type, Type::Primitive(PrimitiveType::Nil)) {
                         self.builder
@@ -718,13 +717,13 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                                 AnyValueEnum::StructValue(sv) => Ok(sv.into()),
                                 _ => {
                                     let span = self.span_for_expr(callee);
-                                    return Err(self.wrap_error_with_source(miette!(
+                                    Err(self.wrap_error_with_source(miette!(
                                         labels = vec![miette::LabeledSpan::at(
                                             span,
                                             "cannot extract struct return value"
                                         )],
                                         "Cannot extract struct return value"
-                                    )));
+                                    )))
                                 }
                             },
                             _ => {
@@ -806,12 +805,12 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                                 // Pointer to array or struct - use GEP
                                 // For pointer types, we need to get the pointee type differently
                                 // Use a simplified approach: assume it's a pointer to the element type
-                                let ptr_type = pv.get_type();
+                                let _ptr_type = pv.get_type();
                                 // Get the element type from the pointer type
                                 // PointerType doesn't have get_element_type, we need to use the type system differently
                                 // For now, use a workaround: create GEP with index and load
                                 let indices =
-                                    [self.context.i32_type().const_int(*idx as u64, false).into()];
+                                    [self.context.i32_type().const_int(*idx , false)];
                                 let gep = unsafe {
                                     self.builder
                                         .build_gep(self.context.i8_type(), pv, &indices, "ptr_idx")
@@ -829,7 +828,7 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                                 Err(self.wrap_error_with_source(miette!(
                                     labels = vec![miette::LabeledSpan::at(
                                         span,
-                                        format!("index access on unsupported type")
+                                        "index access on unsupported type".to_string()
                                     )],
                                     "Index access on unsupported type"
                                 )))
@@ -868,7 +867,7 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                         for field_init in fields {
                             // Find field index by name (simplified - would need struct layout info)
                             // For now, use a placeholder approach
-                            let field_val = self.emit_expr(&AnnotatedExpr::new(
+                            let _field_val = self.emit_expr(&AnnotatedExpr::new(
                                 *field_init.value.clone(),
                                 Type::Primitive(PrimitiveType::I32), // Placeholder
                             ))?;
@@ -902,9 +901,9 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                 }
             }
             Expr::MethodCall {
-                receiver,
+                receiver: _receiver,
                 method,
-                args,
+                args: _args,
             } => {
                 // Handle method calls
                 // Resolve receiver type and look up method
@@ -922,7 +921,7 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                     method.as_ref()
                 )))
             }
-            Expr::Match { expr, arms } => {
+            Expr::Match { expr, arms: _arms } => {
                 // Handle match expressions
                 // Create basic blocks for each arm and build switch/if-else chain
                 // For now, return an error
@@ -949,7 +948,7 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
 
                 let field_types: Result<Vec<_>> = element_types?
                     .iter()
-                    .map(|ty| self.llvm_type(ty).map(|t| t.into()))
+                    .map(|ty| self.llvm_type(ty))
                     .collect();
 
                 let tuple_struct = self.context.struct_type(&field_types?, false);
@@ -995,7 +994,7 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
 
                 Ok(current_val.into())
             }
-            Expr::List(elements) => {
+            Expr::List(_elements) => {
                 // Handle list construction
                 // Lists are represented as arrays or pointer-based structures
                 // For now, return an error
@@ -1066,7 +1065,6 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
 
                 // Emit then block
                 self.builder.position_at_end(then_bb);
-                let mut then_value = None;
                 for stmt in then_block {
                     match stmt {
                         Stmt::Return(Some(expr)) => {
@@ -1079,7 +1077,6 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                             self.builder
                                 .build_return(Some(&ret_val))
                                 .map_err(builder_error_to_miette)?;
-                            then_value = Some(ret_val);
                             break;
                         }
                         Stmt::Return(None) => {
@@ -1090,11 +1087,10 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                         }
                         Stmt::Expr(expr) => {
                             // Emit expression - infer type (simplified)
-                            let val = self.emit_expr(&AnnotatedExpr::new(
+                            let _val = self.emit_expr(&AnnotatedExpr::new(
                                 *expr.clone(),
                                 Type::Primitive(PrimitiveType::I32), // Placeholder
                             ))?;
-                            then_value = Some(val);
                         }
                         Stmt::VariableDecl(var) => {
                             // Emit variable declaration
@@ -1106,13 +1102,12 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                                     .unwrap_or(Type::Primitive(PrimitiveType::I32)),
                             ))?;
                             self.variables
-                                .insert(var.name.as_ref().to_string(), val.clone());
-                            then_value = Some(val);
+                                .insert(var.name.as_ref().to_string(), val);
                         }
                     }
                 }
                 // If block didn't return, branch to merge
-                if !then_bb.get_terminator().is_some() {
+                if then_bb.get_terminator().is_none() {
                     self.builder
                         .build_unconditional_branch(merge_bb)
                         .map_err(builder_error_to_miette)?;
@@ -1188,7 +1183,7 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                                 }
                             }
                         }
-                        if !elif_then_bb.get_terminator().is_some() {
+                        if elif_then_bb.get_terminator().is_none() {
                             self.builder
                                 .build_unconditional_branch(merge_bb)
                                 .map_err(builder_error_to_miette)?;
@@ -1199,7 +1194,6 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                 // Handle else block
                 if let Some(else_bb) = else_bb {
                     self.builder.position_at_end(else_bb);
-                    let mut else_value = None;
                     for stmt in else_block.as_ref().unwrap() {
                         match stmt {
                             Stmt::Return(Some(expr)) => {
@@ -1210,7 +1204,6 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                                 self.builder
                                     .build_return(Some(&ret_val))
                                     .map_err(builder_error_to_miette)?;
-                                else_value = Some(ret_val);
                                 break;
                             }
                             Stmt::Return(None) => {
@@ -1220,11 +1213,10 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                                 break;
                             }
                             Stmt::Expr(expr) => {
-                                let val = self.emit_expr(&AnnotatedExpr::new(
+                                let _val = self.emit_expr(&AnnotatedExpr::new(
                                     *expr.clone(),
                                     Type::Primitive(PrimitiveType::I32), // Placeholder
                                 ))?;
-                                else_value = Some(val);
                             }
                             Stmt::VariableDecl(var) => {
                                 let val = self.emit_expr(&AnnotatedExpr::new(
@@ -1234,12 +1226,11 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                                         .unwrap_or(Type::Primitive(PrimitiveType::I32)),
                                 ))?;
                                 self.variables
-                                    .insert(var.name.as_ref().to_string(), val.clone());
-                                else_value = Some(val);
+                                    .insert(var.name.as_ref().to_string(), val);
                             }
                         }
                     }
-                    if !else_bb.get_terminator().is_some() {
+                    if else_bb.get_terminator().is_none() {
                         self.builder
                             .build_unconditional_branch(merge_bb)
                             .map_err(builder_error_to_miette)?;
@@ -1293,30 +1284,30 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
         match lit {
             Literal::Number(n) => match ty {
                 Type::Primitive(PrimitiveType::I8) => {
-                    Ok(self.context.i8_type().const_int(*n as u64, false).into())
+                    Ok(self.context.i8_type().const_int(*n , false).into())
                 }
                 Type::Primitive(PrimitiveType::I16) => {
-                    Ok(self.context.i16_type().const_int(*n as u64, false).into())
+                    Ok(self.context.i16_type().const_int(*n , false).into())
                 }
                 Type::Primitive(PrimitiveType::I32) => {
-                    Ok(self.context.i32_type().const_int(*n as u64, false).into())
+                    Ok(self.context.i32_type().const_int(*n , false).into())
                 }
                 Type::Primitive(PrimitiveType::I64) => {
                     Ok(self.context.i64_type().const_int(*n, false).into())
                 }
                 Type::Primitive(PrimitiveType::U8) => {
-                    Ok(self.context.i8_type().const_int(*n as u64, false).into())
+                    Ok(self.context.i8_type().const_int(*n , false).into())
                 }
                 Type::Primitive(PrimitiveType::U16) => {
-                    Ok(self.context.i16_type().const_int(*n as u64, false).into())
+                    Ok(self.context.i16_type().const_int(*n , false).into())
                 }
                 Type::Primitive(PrimitiveType::U32) => {
-                    Ok(self.context.i32_type().const_int(*n as u64, false).into())
+                    Ok(self.context.i32_type().const_int(*n , false).into())
                 }
                 Type::Primitive(PrimitiveType::U64) => {
                     Ok(self.context.i64_type().const_int(*n, false).into())
                 }
-                _ => Ok(self.context.i32_type().const_int(*n as u64, false).into()),
+                _ => Ok(self.context.i32_type().const_int(*n , false).into()),
             },
             Literal::String(s) => {
                 // Create a global string constant
@@ -1638,7 +1629,7 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                 // Power operation - use LLVM pow intrinsic
                 // For integers, we can use a loop or call pow function
                 match (left, right) {
-                    (BasicValueEnum::IntValue(l), BasicValueEnum::IntValue(r)) => {
+                    (BasicValueEnum::IntValue(_l), BasicValueEnum::IntValue(_r)) => {
                         // For integer power, we can implement a loop or use pow from math library
                         // For now, declare pow function and call it
                         // This is simplified - in a real implementation, we'd handle different types
@@ -1780,7 +1771,7 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
             Expr::Literal(Literal::Char(_)) => Type::Primitive(PrimitiveType::Char),
             Expr::Literal(Literal::Boolean(_)) => Type::Primitive(PrimitiveType::Bool),
             Expr::Literal(Literal::Nil) => Type::Primitive(PrimitiveType::Nil),
-            Expr::Ident(name) => {
+            Expr::Ident(_name) => {
                 // Try to look up variable type from context
                 // For now, use a default - in a real implementation we'd track this
                 Type::Primitive(PrimitiveType::I32)
@@ -2009,7 +2000,7 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                 };
 
                 // Get arguments
-                let args = builtin.args.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
+                let args = builtin.args.as_deref().unwrap_or(&[]);
                 if args.is_empty() {
                     let span =
                         self.span_for_expr(&Expr::Literal(Literal::BuiltinCall(builtin.clone())));
@@ -2148,7 +2139,7 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
                 let field_types: Result<Vec<_>> = struct_decl
                     .fields
                     .iter()
-                    .map(|field| self.llvm_type(&field.type_).map(|t| t.into()))
+                    .map(|field| self.llvm_type(&field.type_))
                     .collect();
                 let struct_type = self.context.struct_type(&field_types?, false);
                 let _mangled_name = self
@@ -2184,12 +2175,12 @@ impl<'ctx, 'de> Emitter<'ctx, 'de> {
         let initial_value = match &var.value.expr {
             Expr::Literal(Literal::Number(n)) => match var.type_annotation {
                 Type::Primitive(PrimitiveType::I32) => {
-                    BasicValueEnum::IntValue(self.context.i32_type().const_int(*n as u64, false))
+                    BasicValueEnum::IntValue(self.context.i32_type().const_int(*n , false))
                 }
                 Type::Primitive(PrimitiveType::I64) => {
                     BasicValueEnum::IntValue(self.context.i64_type().const_int(*n, false))
                 }
-                _ => BasicValueEnum::IntValue(self.context.i32_type().const_int(*n as u64, false)),
+                _ => BasicValueEnum::IntValue(self.context.i32_type().const_int(*n , false)),
             },
             Expr::Literal(Literal::Boolean(b)) => BasicValueEnum::IntValue(
                 self.context

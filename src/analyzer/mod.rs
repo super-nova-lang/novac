@@ -1,9 +1,8 @@
-mod annotated;
+pub mod annotated;
 mod context;
 mod errors;
 mod types;
 
-use crate::analyzer::annotated::*;
 use crate::analyzer::errors::*;
 use crate::analyzer::types::*;
 use crate::parser::ast::*;
@@ -202,8 +201,7 @@ impl<'de> Analyzer<'de> {
                                 }
                                 .into(),
                             )
-                        })
-                        .map(|ty| ty.clone())
+                        }).cloned()
                 }
             }
             Expr::Binary { left, op, right } => {
@@ -349,8 +347,8 @@ impl<'de> Analyzer<'de> {
                 // Check if receiver is a type (for static methods like Person:new())
                 if let Type::Named(type_name) = &receiver_type {
                     // Look up the type declaration
-                    if let Some(type_decl) = ctx.lookup_type(type_name.as_ref()) {
-                        if let TypeDeclKind::Struct(struct_decl) = &type_decl.decl {
+                    if let Some(type_decl) = ctx.lookup_type(type_name.as_ref())
+                        && let TypeDeclKind::Struct(struct_decl) = &type_decl.decl {
                             // Look for the method in the impl block
                             if let Some(impl_block) = &struct_decl.impl_block {
                                 for func in impl_block {
@@ -417,12 +415,11 @@ impl<'de> Analyzer<'de> {
                                         // Return the method's return type, or the struct type if it's Self
                                         if let Some(return_type) = &func.return_type {
                                             // Check if return type is Self before resolving
-                                            if let Type::Named(name) = return_type {
-                                                if name.as_ref() == "Self" {
+                                            if let Type::Named(name) = return_type
+                                                && name.as_ref() == "Self" {
                                                     // Return the struct type
                                                     return Ok(receiver_type.clone());
                                                 }
-                                            }
                                             // Resolve the return type
                                             let resolved = resolve_type(return_type, ctx, self.span_for_type(return_type))?;
                                             return Ok(resolved);
@@ -439,7 +436,6 @@ impl<'de> Analyzer<'de> {
                                 }
                             }
                         }
-                    }
                 }
                 
                 // For instance method calls (receiver is a value, not a type)
@@ -449,8 +445,8 @@ impl<'de> Analyzer<'de> {
                 // Check if receiver is a struct type
                 if let Type::Named(type_name) = &receiver_type {
                     // Look up the type declaration
-                    if let Some(type_decl) = ctx.lookup_type(type_name.as_ref()) {
-                        if let TypeDeclKind::Struct(struct_decl) = &type_decl.decl {
+                    if let Some(type_decl) = ctx.lookup_type(type_name.as_ref())
+                        && let TypeDeclKind::Struct(struct_decl) = &type_decl.decl {
                             // Look for the method in the impl block
                             if let Some(impl_block) = &struct_decl.impl_block {
                                 for func in impl_block {
@@ -510,12 +506,11 @@ impl<'de> Analyzer<'de> {
                                         // Return the method's return type, or nil if none
                                         if let Some(return_type) = &func.return_type {
                                             // Check if return type is Self
-                                            if let Type::Named(name) = return_type {
-                                                if name.as_ref() == "Self" {
+                                            if let Type::Named(name) = return_type
+                                                && name.as_ref() == "Self" {
                                                     // Return the struct type
                                                     return Ok(receiver_type.clone());
                                                 }
-                                            }
                                             // Resolve the return type
                                             let resolved = resolve_type(return_type, ctx, self.span_for_type(return_type))?;
                                             return Ok(resolved);
@@ -527,7 +522,6 @@ impl<'de> Analyzer<'de> {
                                 }
                             }
                         }
-                    }
                 }
                 
                 // Method not found - return nil (will cause error if called)
@@ -540,8 +534,8 @@ impl<'de> Analyzer<'de> {
                         // Check if object is a struct type
                         if let Type::Named(type_name) = &object_type {
                             // Look up the type declaration
-                            if let Some(type_decl) = ctx.lookup_type(type_name.as_ref()) {
-                                if let TypeDeclKind::Struct(struct_decl) = &type_decl.decl {
+                            if let Some(type_decl) = ctx.lookup_type(type_name.as_ref())
+                                && let TypeDeclKind::Struct(struct_decl) = &type_decl.decl {
                                     // Look for the field in the struct
                                     for struct_field in &struct_decl.fields {
                                         if struct_field.name.as_ref() == field_name.as_ref() {
@@ -561,7 +555,6 @@ impl<'de> Analyzer<'de> {
                                         }
                                     }
                                 }
-                            }
                         }
                         // Fallback: return nil for unknown member access
                         Ok(Type::Primitive(PrimitiveType::Nil))
@@ -678,7 +671,7 @@ impl<'de> Analyzer<'de> {
     ) -> Result<Type<'de>, Error> {
         use crate::analyzer::errors::*;
         
-        let args = builtin.args.as_ref().map(|v| v.as_slice()).unwrap_or(&[]);
+        let args = builtin.args.as_deref().unwrap_or(&[]);
         let name = builtin.name.as_ref();
         
         match name {
