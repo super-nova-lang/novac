@@ -22,9 +22,7 @@ pub fn execute(filepath: PathBuf) -> Result<()> {
         analyzer::analyze(program, &file_contents).wrap_err("Type analysis failed")?;
 
     // Generate code from annotated program
-    let cg =
-        codegen::Codegen::from_annotated_program("main".to_string(), annotated_program)?;
-    let generated = cg.emit();
+    let generated = codegen::generate("main".to_string(), annotated_program, &file_contents)?;
     info!("Generated: {}", generated);
 
     Ok(())

@@ -135,12 +135,11 @@ pub fn types_compatible<'de>(
     }
 
     // Both are named types - check if they resolve to the same type
-    if let (Type::Named(e_name), Type::Named(a_name)) = (expected, actual) {
-        if e_name == a_name {
+    if let (Type::Named(e_name), Type::Named(a_name)) = (expected, actual)
+        && e_name == a_name {
             return true;
         }
         // Could check if they resolve to the same concrete type
-    }
 
     // Generic types - check base and args
     if let (
@@ -153,37 +152,32 @@ pub fn types_compatible<'de>(
             args: a_args,
         },
     ) = (expected, actual)
-    {
-        if e_args.len() == a_args.len() {
+        && e_args.len() == a_args.len() {
             return types_compatible(e_base, a_base, ctx)
                 && e_args
                     .iter()
                     .zip(a_args.iter())
                     .all(|(e, a)| types_compatible(e, a, ctx));
         }
-    }
 
     // Tuple types
-    if let (Type::Tuple(e_types), Type::Tuple(a_types)) = (expected, actual) {
-        if e_types.len() == a_types.len() {
+    if let (Type::Tuple(e_types), Type::Tuple(a_types)) = (expected, actual)
+        && e_types.len() == a_types.len() {
             return e_types
                 .iter()
                 .zip(a_types.iter())
                 .all(|(e, a)| types_compatible(e, a, ctx));
         }
-    }
 
     // Function types
     if let (Type::Function { params: e_params }, Type::Function { params: a_params }) =
         (expected, actual)
-    {
-        if e_params.len() == a_params.len() {
+        && e_params.len() == a_params.len() {
             return e_params
                 .iter()
                 .zip(a_params.iter())
                 .all(|(e, a)| types_compatible(e, a, ctx));
         }
-    }
 
     false
 }

@@ -3,6 +3,7 @@ pub mod clean;
 pub mod codegen;
 pub mod doc;
 pub mod parse;
+pub mod run;
 pub mod tokenize;
 
 use std::path::PathBuf;
@@ -16,6 +17,7 @@ pub enum Command {
     Parse { filepath: PathBuf },
     Codegen { filepath: PathBuf },
     Build { filepath: PathBuf },
+    Run { filepath: PathBuf },
     Clean,
     Doc { filepath: PathBuf },
 }
@@ -26,6 +28,7 @@ pub fn execute_command(command: Command) -> Result<()> {
         Command::Parse { filepath } => parse::execute(filepath),
         Command::Codegen { filepath } => codegen::execute(filepath),
         Command::Build { filepath } => build::execute(filepath),
+        Command::Run { filepath } => run::execute(filepath),
         Command::Clean => clean::execute(),
         Command::Doc { filepath } => doc::execute(filepath),
     }

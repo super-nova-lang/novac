@@ -23,8 +23,7 @@ pub fn execute(filepath: PathBuf) -> Result<()> {
         analyzer::analyze(program, &file_contents).wrap_err("Type analysis failed")?;
 
     // Generate code from annotated program
-    let cg = codegen::Codegen::from_annotated_program("main".to_string(), annotated_program)?;
-    let assembly = cg.emit();
+    let generated = codegen::generate("main".to_string(), annotated_program, &file_contents)?;
 
     // Get base filename without extension
     let base_name = filepath
@@ -46,49 +45,32 @@ pub fn execute(filepath: PathBuf) -> Result<()> {
         .into_diagnostic()
         .wrap_err_with(|| format!("Failed to create directory: {}", debug_dir.display()))?;
 
-    // Write assembly file
-    let asm_path = emit_dir.join(format!("{}.asm", base_name));
-    fs::write(&asm_path, assembly)
+    // Write LLVM IR file
+    let ll_path = emit_dir.join(format!("{}.ll", base_name));
+    fs::write(&ll_path, generated)
         .into_diagnostic()
-        .wrap_err_with(|| format!("Failed to write assembly file: {}", asm_path.display()))?;
-    info!("Wrote assembly to: {}", asm_path.display());
+        .wrap_err_with(|| format!("Failed to write LLVM IR file: {}", ll_path.display()))?;
+    info!("Wrote LLVM IR to: {}", ll_path.display());
 
-    // Assemble with NASM
-    let obj_path = emit_dir.join(format!("{}.o", base_name));
-    let nasm_output = std::process::Command::new("nasm")
-        .arg("-f")
-        .arg("elf64")
-        .arg(&asm_path)
-        .arg("-o")
-        .arg(&obj_path)
-        .output()
-        .into_diagnostic()
-        .wrap_err("Failed to run nasm. Is NASM installed?")?;
-
-    if !nasm_output.status.success() {
-        let stderr = String::from_utf8_lossy(&nasm_output.stderr);
-        return Err(miette::miette!("NASM assembly failed:\n{}", stderr));
-    }
-    info!("Assembled object file: {}", obj_path.display());
-
-    // Link with gcc (to get libc for printf/abort)
-    // Always use -nostartfiles and -e _start since we always generate _start
+    // Compile LLVM IR to executable with clang
     let exe_path = debug_dir.join(base_name);
-    let gcc_output = std::process::Command::new("gcc")
-        .arg(&obj_path)
+    let clang_output = std::process::Command::new("clang")
+        .arg(&ll_path)
         .arg("-o")
         .arg(&exe_path)
-        .arg("-nostartfiles") // Don't use C runtime's _start, use our own
-        .arg("-no-pie") // Position-independent executable can cause issues
-        .arg("-e")
-        .arg("_start") // Use our _start as entry point
+        .arg("-Wno-override-module") // Suppress warnings about overriding modules
         .output()
         .into_diagnostic()
-        .wrap_err("Failed to run gcc. Is GCC installed?")?;
+        .wrap_err("Failed to run clang. Is Clang installed?")?;
 
-    if !gcc_output.status.success() {
-        let stderr = String::from_utf8_lossy(&gcc_output.stderr);
-        return Err(miette::miette!("Linking failed:\n{}", stderr));
+    if !clang_output.status.success() {
+        let stderr = String::from_utf8_lossy(&clang_output.stderr);
+        let stdout = String::from_utf8_lossy(&clang_output.stdout);
+        return Err(miette::miette!(
+            "Clang compilation failed:\n{}\n{}",
+            stdout,
+            stderr
+        ));
     }
     info!("Built executable: {}", exe_path.display());
 

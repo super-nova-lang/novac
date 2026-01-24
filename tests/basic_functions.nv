@@ -5,8 +5,8 @@ let sub :: a: i32, b: i32
 let do_many_things
 :: x, y, z = {
     let res := x + y * 3
-    let res := y - res ^ 2
-    let res := res - z ^ x
+    let res := y - res / 2
+    let res := res - z + x
     return res
 }
 
